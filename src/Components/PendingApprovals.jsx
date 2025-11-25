@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as ExcelJS from 'exceljs';
 import axios from 'axios';
+import { API_URL } from '../config';
 import './Audit.css';
 
 const PendingApprovals = ({ onApprovalUpdate }) => {
@@ -75,7 +76,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
   const loadPendingReports = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const buffer = await response.arrayBuffer();
@@ -145,7 +146,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
       try {
         setLoading(true);
 
-        const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+        const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
         const buffer = await response.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
@@ -165,7 +166,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
         if (updated) {
           const updatedBuffer = await workbook.xlsx.writeBuffer();
-          await axios.post('http://localhost:3001/api/save-audit-reports', updatedBuffer, {
+          await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
             headers: { 'Content-Type': 'application/octet-stream' }
           });
 
@@ -192,7 +193,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         try {
           setLoading(true);
 
-          const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+          const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
           const buffer = await response.arrayBuffer();
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(buffer);
@@ -212,7 +213,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
           if (updated) {
             const updatedBuffer = await workbook.xlsx.writeBuffer();
-            await axios.post('http://localhost:3001/api/save-audit-reports', updatedBuffer, {
+            await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
               headers: { 'Content-Type': 'application/octet-stream' }
             });
 

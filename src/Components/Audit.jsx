@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import axios from 'axios';
+import { API_URL } from '../config';
 import './Audit.css';
 
 const AuditManagement = () => {
@@ -97,7 +98,7 @@ const AuditManagement = () => {
   const loadCenters = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/centers.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/centers.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const buffer = await response.arrayBuffer();
@@ -134,7 +135,7 @@ const AuditManagement = () => {
   const loadSavedReports = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const buffer = await response.arrayBuffer();
@@ -224,7 +225,7 @@ const AuditManagement = () => {
     let existingReport = null;
     
     try {
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       if (response.ok) {
         const buffer = await response.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
@@ -345,7 +346,7 @@ const AuditManagement = () => {
     try {
       setLoading(true);
 
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       const buffer = await response.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer);
@@ -393,7 +394,7 @@ const AuditManagement = () => {
 
       const updatedBuffer = await workbook.xlsx.writeBuffer();
       
-      await axios.post('http://localhost:3001/api/save-audit-reports', updatedBuffer, {
+      await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
         headers: { 'Content-Type': 'application/octet-stream' }
       });
 
@@ -417,7 +418,7 @@ const AuditManagement = () => {
     try {
       setLoading(true);
 
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       const buffer = await response.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer);
@@ -436,7 +437,7 @@ const AuditManagement = () => {
 
       if (updated) {
         const updatedBuffer = await workbook.xlsx.writeBuffer();
-        await axios.post('http://localhost:3001/api/save-audit-reports', updatedBuffer, {
+        await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
           headers: { 'Content-Type': 'application/octet-stream' }
         });
 
@@ -461,7 +462,7 @@ const AuditManagement = () => {
       try {
         setLoading(true);
 
-        const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+        const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
         const buffer = await response.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
@@ -482,7 +483,7 @@ const AuditManagement = () => {
 
         if (updated) {
           const updatedBuffer = await workbook.xlsx.writeBuffer();
-          await axios.post('http://localhost:3001/api/save-audit-reports', updatedBuffer, {
+          await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
             headers: { 'Content-Type': 'application/octet-stream' }
           });
 
@@ -511,7 +512,7 @@ const AuditManagement = () => {
 
   const handleDownloadExcel = async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       const blob = await response.blob();
       saveAs(blob, `Audit_Reports_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.xlsx`);
     } catch (err) {
@@ -577,7 +578,7 @@ ${loggedUser.firstname || 'Audit Team'}`
       setSendingEmail(true);
       
       // Send email via backend API
-      const response = await axios.post('http://localhost:3001/api/send-audit-email', {
+      const response = await axios.post('${API_URL}/api/send-audit-email', {
         to: emailData.to,
         cc: emailData.cc,
         subject: emailData.subject,

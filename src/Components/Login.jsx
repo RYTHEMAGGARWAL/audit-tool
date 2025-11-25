@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as ExcelJS from 'exceljs';
 import { useUsers } from '../contexts/UsersContext';
 import axios from 'axios';
+import { API_URL } from '../config';
 import './Login.css';
 
 const Login = () => {
@@ -42,7 +43,7 @@ const Login = () => {
         console.log('\n🔵 ========== LOGIN: LOADING USERS ==========');
         
         const timestamp = Date.now();
-        const url = `http://localhost:3001/api/users.xlsx?t=${timestamp}`;
+        const url = `${API_URL}/api/users.xlsx?t=${timestamp}`;
         console.log('🔵 Fetching from:', url);
         
         const response = await fetch(url);
@@ -212,7 +213,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('📧 Sending OTP to:', forgotEmail);
 
-      const response = await axios.post('http://localhost:3001/api/forgot-password/send-otp', {
+      const response = await axios.post('${API_URL}/api/forgot-password/send-otp', {
         email: forgotEmail
       });
 
@@ -255,7 +256,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('🔍 Verifying OTP:', otp);
 
-      const response = await axios.post('http://localhost:3001/api/forgot-password/verify-otp', {
+      const response = await axios.post('${API_URL}/api/forgot-password/verify-otp', {
         email: forgotEmail,
         otp: otp
       });
@@ -298,7 +299,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('🔄 Resetting password...');
 
-      const response = await axios.post('http://localhost:3001/api/forgot-password/reset-password', {
+      const response = await axios.post('${API_URL}/api/forgot-password/reset-password', {
         email: forgotEmail,
         otp: otp,
         newPassword: newPassword
@@ -309,7 +310,7 @@ const Login = () => {
         
         // Reload users to get updated password
         const timestamp = Date.now();
-        const url = `http://localhost:3001/api/users.xlsx?t=${timestamp}`;
+        const url = `${API_URL}/api/users.xlsx?t=${timestamp}`;
         const usersResponse = await fetch(url);
         const buffer = await usersResponse.arrayBuffer();
         const workbook = new ExcelJS.Workbook();

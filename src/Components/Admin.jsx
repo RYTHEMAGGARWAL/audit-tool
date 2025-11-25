@@ -4,6 +4,7 @@ import { useUsers } from '../contexts/UsersContext';
 import UserManagement from './UserManagement';
 import Audit from './Audit';
 import PendingApprovals from './PendingApprovals';
+import { API_URL } from '../config';
 import './Admin.css';
 
 const Admin = () => {
@@ -27,7 +28,7 @@ const Admin = () => {
 
   const loadPendingCount = async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/audit-reports.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
       if (!response.ok) return;
 
       const ExcelJS = (await import('exceljs')).default;

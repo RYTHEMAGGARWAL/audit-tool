@@ -3,6 +3,7 @@ import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import axios from 'axios';
 import { useUsers } from '../contexts/UsersContext';
+import { API_URL } from '../config';
 import './UserManagement.css';
 
 const UserManagement = () => {
@@ -89,7 +90,7 @@ const UserManagement = () => {
   const loadUsersData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/users.xlsx?t=${Date.now()}`);
+      const response = await fetch(`${API_URL}/api/users.xlsx?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const buffer = await response.arrayBuffer();
@@ -148,7 +149,7 @@ const UserManagement = () => {
         Role: String(user.Role || 'User')
       }));
 
-      await axios.post('http://localhost:3001/api/update-users', { users: cleanUsers });
+      await axios.post('${API_URL}/api/update-users', { users: cleanUsers });
       console.log('Backend saved!');
       
       await new Promise(resolve => setTimeout(resolve, 800));
