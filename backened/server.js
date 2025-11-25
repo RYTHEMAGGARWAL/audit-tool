@@ -14,7 +14,7 @@ const PORT = 3001;
 const otpStore = new Map(); // Format: { email: { otp, expiresAt, username } }
 
 // Middleware
-app.use(cors({ origin: ['http://localhost:5173','https://audit-murex.vercel.app'], credentials: true }));
+app.use(cors({ origin: ['http://localhost:5173','https://audit-murex.vercel.app','https://audit-gb4uarzdu-rythem-aggarwals-projects.vercel.app'], credentials: true }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.raw({ type: 'application/octet-stream', limit: '50mb' })); // ✅ ADDED FOR EXCEL BUFFER
 app.use('/public', express.static('public'));
