@@ -14,7 +14,7 @@ const PORT = 3001;
 const otpStore = new Map(); // Format: { email: { otp, expiresAt, username } }
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: ['http://localhost:5173','https://audit-murex.vercel.app'], credentials: true }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.raw({ type: 'application/octet-stream', limit: '50mb' })); // ✅ ADDED FOR EXCEL BUFFER
 app.use('/public', express.static('public'));
@@ -942,4 +942,4 @@ app.listen(PORT, () => {
   console.log(`      POST /api/save-audit-report`);
   console.log(`      POST /api/save-audit-reports ⭐ NEW!`);
   console.log(`\n========================================\n`);
-});
+}); 
