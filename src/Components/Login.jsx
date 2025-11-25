@@ -213,7 +213,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('📧 Sending OTP to:', forgotEmail);
 
-      const response = await axios.post('${API_URL}/api/forgot-password/send-otp', {
+      const response = await axios.post(`${API_URL}/api/forgot-password/send-otp`, {
         email: forgotEmail
       });
 
@@ -256,7 +256,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('🔍 Verifying OTP:', otp);
 
-      const response = await axios.post('${API_URL}/api/forgot-password/verify-otp', {
+      const response = await axios.post(`${API_URL}/api/forgot-password/verify-otp`, {
         email: forgotEmail,
         otp: otp
       });
@@ -299,7 +299,7 @@ const Login = () => {
       setForgotLoading(true);
       console.log('🔄 Resetting password...');
 
-      const response = await axios.post('${API_URL}/api/forgot-password/reset-password', {
+      const response = await axios.post(`${API_URL}/api/forgot-password/reset-password`, {
         email: forgotEmail,
         otp: otp,
         newPassword: newPassword

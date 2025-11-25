@@ -149,7 +149,7 @@ const UserManagement = () => {
         Role: String(user.Role || 'User')
       }));
 
-      await axios.post('${API_URL}/api/update-users', { users: cleanUsers });
+      await axios.post(`${API_URL}/api/update-users`, { users: cleanUsers });
       console.log('Backend saved!');
       
       await new Promise(resolve => setTimeout(resolve, 800));

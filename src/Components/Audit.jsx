@@ -394,7 +394,7 @@ const AuditManagement = () => {
 
       const updatedBuffer = await workbook.xlsx.writeBuffer();
       
-      await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
+      await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
         headers: { 'Content-Type': 'application/octet-stream' }
       });
 
@@ -437,7 +437,7 @@ const AuditManagement = () => {
 
       if (updated) {
         const updatedBuffer = await workbook.xlsx.writeBuffer();
-        await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
+        await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
           headers: { 'Content-Type': 'application/octet-stream' }
         });
 
@@ -483,7 +483,7 @@ const AuditManagement = () => {
 
         if (updated) {
           const updatedBuffer = await workbook.xlsx.writeBuffer();
-          await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
+          await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
             headers: { 'Content-Type': 'application/octet-stream' }
           });
 
@@ -578,7 +578,7 @@ ${loggedUser.firstname || 'Audit Team'}`
       setSendingEmail(true);
       
       // Send email via backend API
-      const response = await axios.post('${API_URL}/api/send-audit-email', {
+      const response = await axios.post(`${API_URL}/api/send-audit-email`, {
         to: emailData.to,
         cc: emailData.cc,
         subject: emailData.subject,

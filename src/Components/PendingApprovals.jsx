@@ -166,7 +166,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
         if (updated) {
           const updatedBuffer = await workbook.xlsx.writeBuffer();
-          await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
+          await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
             headers: { 'Content-Type': 'application/octet-stream' }
           });
 
@@ -213,7 +213,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
           if (updated) {
             const updatedBuffer = await workbook.xlsx.writeBuffer();
-            await axios.post('${API_URL}/api/save-audit-reports', updatedBuffer, {
+            await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
               headers: { 'Content-Type': 'application/octet-stream' }
             });
 
