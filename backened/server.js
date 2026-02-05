@@ -20,24 +20,22 @@ const PORT = process.env.PORT || 3001;
 // NODEMAILER EMAIL CONFIGURATION
 // ========================================
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || 'smtp.sendgrid.net',
   port: parseInt(process.env.SMTP_PORT) || 587,
   secure: process.env.SMTP_SECURE === 'true',
   auth: {
-    user: process.env.SMTP_USER || process.env.EMAIL_USER,
+    user: process.env.SMTP_USER || 'apikey',
     pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
-// Verify email connection on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.log('⚠️ Email Configuration Error:', error.message);
-    console.log('⚠️ Email sending may not work. Check SMTP credentials in .env');
-  } else {
-    console.log('✅ Email Server Ready - Nodemailer Connected!');
-  }
-});
+// Skip verification - causes timeout
+console.log('📧 Email configured with SendGrid');
+console.log('📧 Host:', process.env.SMTP_HOST);
+console.log('📧 Port:', process.env.SMTP_PORT);
 
 // ========================================
 // PDF GENERATION FUNCTION (Using Puppeteer)
@@ -1103,63 +1101,60 @@ app.get('/api/audit-reports/edit-requests/pending', async (req, res) => {
 
 // ========================================
 // EMAIL ROUTE (With PDF Attachment)
+
+
+
+async function sendEmailInBackground(to, cc, subject, message, reportData) {
+  try {
+    console.log('📧 Background email started...');
+    
+    const pdfBuffer = await generatePDF(reportData);
+    console.log('✅ PDF generated');
+    
+    const mailOptions = {
+      from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+      to: to,
+      cc: cc || undefined,
+      subject: subject,
+      html: message,
+      attachments: [{
+        filename: `Audit_${reportData.centerCode}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
+    };
+    
+    console.log('📧 Sending email...');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent!', info.messageId);
+    
+    if (reportData._id) {
+      await AuditReport.findByIdAndUpdate(reportData._id, {
+        emailSent: true,
+        emailSentDate: new Date().toLocaleString('en-IN'),
+        emailSentTo: to
+      });
+    }
+    
+  } catch (err) {
+    console.error('❌ Email error:', err.message);
+  }
+}
 // ========================================
 app.post('/api/send-audit-email', async (req, res) => {
   try {
     const { to, cc, subject, message, reportData } = req.body;
-    console.log(`\n📧 ========== SENDING AUDIT EMAIL (NODEMAILER + PDF) ==========`);
-    console.log(`📧 To: ${to}`);
-    console.log(`📧 CC: ${cc || 'None'}`);
-    console.log(`📧 Report: ${reportData?.centerName}`);
-
-    // Generate HTML email content
-    const emailHTML = generateEmailHTML(reportData, message);
-
-    // Generate PDF
-    console.log('📄 Generating PDF attachment...');
-    const pdfBuffer = await generatePDF(reportData);
     
-    // Create PDF filename
-    const pdfFilename = `Audit_Report_${reportData.centerCode}_${new Date().toISOString().split('T')[0]}.pdf`;
-
-    // Email options with PDF attachment
-    const mailOptions = {
-      from: process.env.SMTP_FROM || `"NIIT Audit System" <${process.env.SMTP_USER}>`,
-      to: to,
-      cc: cc || undefined,
-      subject: subject || generateEmailSubject(reportData),
-      html: emailHTML,
-      attachments: [
-        {
-          filename: pdfFilename,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ]
-    };
-
-    // Send email using Nodemailer
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log('✅ Email sent successfully with PDF attachment!');
-    console.log('✅ Message ID:', info.messageId);
-    console.log('✅ PDF Filename:', pdfFilename);
+    console.log('\n📧 EMAIL REQUEST:', reportData.centerName);
     
-    // Update report to mark email as sent
-    if (reportData?._id) {
-      await AuditReport.findByIdAndUpdate(reportData._id, {
-        emailSent: true,
-        emailSentDate: new Date().toLocaleString('en-GB'),
-        emailSentTo: to
-      });
-      console.log(`✅ Email sent flag updated for report: ${reportData._id}`);
-    }
+    // Respond immediately
+    res.json({ success: true, message: 'Email is being sent...' });
     
-    console.log('📧 ==========================================\n');
-    res.json({ success: true, message: 'Email sent successfully with PDF attachment!', messageId: info.messageId });
+    // Send in background
+    sendEmailInBackground(to, cc, subject, message, reportData);
+    
   } catch (err) {
-    console.error('❌ Email error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
