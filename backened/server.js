@@ -30,12 +30,14 @@ const transporter = nodemailer.createTransport({
 });
 
 // Verify email connection on startup
-// Skip verification - will check when sending email
-console.log('📧 Email configured with SendGrid');
-console.log('📧 Host:', process.env.SMTP_HOST);
-console.log('📧 Port:', process.env.SMTP_PORT);
-console.log('📧 Secure:', process.env.SMTP_SECURE);
-console.log('📧 User:', process.env.SMTP_USER);
+transporter.verify((error, success) => {
+  if (error) {
+    console.log('⚠️ Email Configuration Error:', error.message);
+    console.log('⚠️ Email sending may not work. Check SMTP credentials in .env');
+  } else {
+    console.log('✅ Email Server Ready - Nodemailer Connected!');
+  }
+});
 
 // ========================================
 // PDF GENERATION FUNCTION (Using Puppeteer)
