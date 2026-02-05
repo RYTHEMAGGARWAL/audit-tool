@@ -283,9 +283,10 @@ const CenterDashboard = () => {
                     const isLocked = editRequestStatus[report._id]?.locked;
                     const isRequestPending = editRequestStatus[report._id]?.requestPending;
                     
-                    const statusData = report.grandTotal >= 75 ? { text: 'Compliant', color: '#22c55e', bg: '#dcfce7' } :
-                                      report.grandTotal >= 50 ? { text: 'Moderate', color: '#f59e0b', bg: '#fef3c7' } :
-                                      { text: 'Non-Compliant', color: '#ef4444', bg: '#fee2e2' };
+                    // STATUS calculation - matching AuditManagement.jsx
+                    const statusData = report.grandTotal >= 80 ? { text: 'Compliant', color: '#28a745', bg: '#d4edda' } :
+                                      report.grandTotal >= 65 ? { text: 'Amber', color: '#ffc107', bg: '#fff3cd' } :
+                                      { text: 'Non-Compliant', color: '#dc3545', bg: '#f8d7da' };
 
                     // Helper function to get area score status and color (matching AuditManagement.jsx)
                     const getAreaScoreInfo = (score, maxScore) => {
