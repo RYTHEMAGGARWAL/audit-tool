@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useUsers } from '../contexts/UsersContext';
 import UserManagement from './UserManagement';
 import Audit from './Audit';
+import CenterManagement from './CenterManagement';
 import PendingApprovals from './PendingApprovals';
+import EditRequestsApproval from './EditRequestsApproval';
 import { API_URL } from '../config';
 import './Admin.css';
 
@@ -18,48 +20,45 @@ const Admin = () => {
   );
 
   const [pendingCount, setPendingCount] = useState(0);
+  const [editRequestCount, setEditRequestCount] = useState(0);
 
   // Load pending count for Admin
   useEffect(() => {
     if (loggedUser.Role === 'Admin') {
       loadPendingCount();
+      loadEditRequestCount();
     }
   }, [loggedUser.Role]);
 
+  // ========================================
+  // LOAD PENDING COUNT FROM MONGODB
+  // ========================================
+  
+  // Load edit request count
+  const loadEditRequestCount = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/audit-reports/edit-requests/pending`);
+      if (response.ok) {
+        const data = await response.json();
+        setEditRequestCount(data.length || 0);
+      }
+    } catch (err) {
+      console.error('Error loading edit request count:', err);
+    }
+  };
+
   const loadPendingCount = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
-      if (!response.ok) return;
-
-      const ExcelJS = (await import('exceljs')).default;
-      const buffer = await response.arrayBuffer();
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
-      const worksheet = workbook.worksheets[0];
+      const response = await fetch(`${API_URL}/api/audit-reports/pending/count`);
       
-      let count = 0;
-      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        if (rowNumber > 1) {
-          const getCellValue = (cell) => {
-            if (!cell || cell.value === null || cell.value === undefined) return '';
-            if (typeof cell.value === 'object') {
-              if (cell.value.text) return cell.value.text.toString().trim();
-              if (cell.value.richText) return cell.value.richText.map(rt => rt.text).join('').trim();
-              return '';
-            }
-            return cell.value.toString().trim();
-          };
-          
-          const status = getCellValue(row.getCell(15)); // Current Status
-          if (status === 'Pending with Supervisor') {
-            count++;
-          }
-        }
-      });
-
-      setPendingCount(count);
+      if (response.ok) {
+        const data = await response.json();
+        setPendingCount(data.count || 0);
+        console.log('📋 Pending count:', data.count);
+      }
     } catch (err) {
       console.error('Error loading pending count:', err);
+      setPendingCount(0);
     }
   };
 
@@ -103,6 +102,12 @@ const Admin = () => {
               👥 User Management
             </button>
             <button 
+              className={activeTab === 'Center Management' ? 'active' : ''} 
+              onClick={() => setActiveTab('Center Management')}
+            >
+              🏢 Center Management
+            </button>
+            <button 
               className={activeTab === 'Audit' ? 'active' : ''} 
               onClick={() => setActiveTab('Audit')}
             >
@@ -112,7 +117,8 @@ const Admin = () => {
               className={activeTab === 'Pending Approvals' ? 'active' : ''} 
               onClick={() => {
                 setActiveTab('Pending Approvals');
-                loadPendingCount(); // Refresh count when tab clicked
+                loadPendingCount();
+      loadEditRequestCount(); // Refresh count when tab clicked
               }}
               style={{
                 position: 'relative',
@@ -142,6 +148,40 @@ const Admin = () => {
                 </span>
               )}
             </button>
+            <button 
+              className={activeTab === 'Edit Requests' ? 'active' : ''} 
+              onClick={() => {
+                setActiveTab('Edit Requests');
+                loadEditRequestCount();
+              }}
+              style={{
+                position: 'relative',
+                paddingRight: editRequestCount > 0 ? '45px' : '20px'
+              }}
+            >
+              🔓 Edit Requests
+              {editRequestCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: '10px',
+                  transform: 'translateY(-50%)',
+                  background: '#ff9800',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 8px rgba(255, 152, 0, 0.4)'
+                }}>
+                  {editRequestCount}
+                </span>
+              )}
+            </button>
           </>
         )}
 
@@ -158,8 +198,10 @@ const Admin = () => {
         {loggedUser.Role === 'Admin' && (
           <>
             {activeTab === 'User Management' && <UserManagement />}
+            {activeTab === 'Center Management' && <CenterManagement />}
             {activeTab === 'Audit' && <Audit />}
             {activeTab === 'Pending Approvals' && <PendingApprovals onApprovalUpdate={loadPendingCount} />}
+            {activeTab === 'Edit Requests' && <EditRequestsApproval onApprovalUpdate={loadEditRequestCount} />}
           </>
         )}
 

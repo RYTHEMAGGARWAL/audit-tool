@@ -72,50 +72,37 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
     }
   ];
 
-  // Load pending reports
+  // Load pending reports from MongoDB
   const loadPendingReports = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const buffer = await response.arrayBuffer();
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
-      const worksheet = workbook.worksheets[0];
+      console.log('📋 Loading pending reports from MongoDB...');
       
-      const reports = [];
-      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        if (rowNumber > 1) {
-          const report = {
-            centerCode: getCellValue(row.getCell(1)),
-            centerName: getCellValue(row.getCell(2)),
-            chName: getCellValue(row.getCell(3)),
-            geolocation: getCellValue(row.getCell(4)),
-            centerHeadName: getCellValue(row.getCell(5)),
-            zonalHeadName: getCellValue(row.getCell(6)),
-            frontOfficeScore: getCellValue(row.getCell(7)),
-            deliveryProcessScore: getCellValue(row.getCell(8)),
-            placementScore: getCellValue(row.getCell(9)),
-            managementScore: getCellValue(row.getCell(10)),
-            grandTotal: getCellValue(row.getCell(11)),
-            auditDate: getCellValue(row.getCell(12)),
-            auditDataJson: getCellValue(row.getCell(13)),
-            submissionStatus: getCellValue(row.getCell(14)) || 'Not Submitted',
-            currentStatus: getCellValue(row.getCell(15)) || 'Not Submitted',
-            approvedBy: getCellValue(row.getCell(16)) || '',
-            submittedDate: getCellValue(row.getCell(17)) || '',
-            remarksText: getCellValue(row.getCell(18)) || '' // Custom remarks from View Reports
-          };
-          
-          // Only include pending reports
-          if (report.centerCode && report.currentStatus === 'Pending with Supervisor') {
-            reports.push(report);
-          }
-        }
-      });
+      const response = await fetch(`${API_URL}/api/audit-reports/pending`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const reports = await response.json();
+      console.log('✅ Pending reports loaded:', reports.length);
+      
+      // Transform data to match expected format
+      const formattedReports = reports.map(r => ({
+        ...r,
+        _id: r._id,
+        frontOfficeScore: r.frontOfficeScore?.toString() || '0',
+        deliveryProcessScore: r.deliveryProcessScore?.toString() || '0',
+        placementScore: r.placementScore?.toString() || '0',
+        managementScore: r.managementScore?.toString() || '0',
+        grandTotal: r.grandTotal?.toString() || '0',
+        auditDate: r.auditDateString || r.auditDate || '',
+        placementApplicable: r.placementApplicable || 'yes',
+        submissionStatus: r.submissionStatus || 'Not Submitted',
+        currentStatus: r.currentStatus || 'Not Submitted',
+        approvedBy: r.approvedBy || '',
+        submittedDate: r.submittedDate || '',
+        remarksText: r.remarksText || ''
+      }));
 
-      setPendingReports(reports);
+      setPendingReports(formattedReports);
     } catch (err) {
       console.error('❌ Error loading pending reports:', err);
       setPendingReports([]);
@@ -124,15 +111,23 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
     }
   };
 
-  // View remarks
+  // View remarks - MongoDB version
   const handleViewRemarks = (report) => {
     try {
-      const parsedData = JSON.parse(report.auditDataJson);
+      // For MongoDB, checkpoint data is directly in report object
+      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5'];
+      const data = {};
+      checkpointIds.forEach(id => {
+        if (report[id]) {
+          data[id] = report[id];
+        }
+      });
       setSelectedRemarks({ 
         centerName: report.centerName, 
         centerCode: report.centerCode,
-        data: parsedData,
-        customRemarks: report.remarksText || '' // Add custom remarks from Column 18
+        data: data,
+        customRemarks: report.remarksText || '',
+        overallRemarks: report.remarksText || ''   // Optional: alag name se bhi rakh sakte ho
       });
       setShowRemarksModal(true);
     } catch (e) {
@@ -140,39 +135,33 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
     }
   };
 
-  // Approve Report
+  // Approve Report - MongoDB version
   const handleApproveReport = async (centerCode) => {
     if (window.confirm('✅ Approve this report?')) {
       try {
         setLoading(true);
+        
+        // Find report ID
+        const report = pendingReports.find(r => r.centerCode === centerCode);
+        if (!report || !report._id) {
+          throw new Error('Report not found');
+        }
 
-        const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
-        const buffer = await response.arrayBuffer();
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
-        const worksheet = workbook.worksheets[0];
-
-        let updated = false;
-        worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-          if (rowNumber > 1) {
-            const code = getCellValue(row.getCell(1));
-            if (code === centerCode) {
-              row.getCell(15).value = 'Approved'; // Current Status
-              row.getCell(16).value = loggedUser.firstname + ' ' + loggedUser.lastname; // Approved By
-              updated = true;
-            }
-          }
+        const response = await fetch(`${API_URL}/api/audit-reports/${report._id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminName: loggedUser.firstname + ' ' + (loggedUser.lastname || ''),
+            remarks: ''
+          })
         });
 
-        if (updated) {
-          const updatedBuffer = await workbook.xlsx.writeBuffer();
-          await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
-            headers: { 'Content-Type': 'application/octet-stream' }
-          });
-
+        if (response.ok) {
           alert('✅ Report approved successfully!');
           await loadPendingReports();
-          if (onApprovalUpdate) onApprovalUpdate(); // Update parent count
+          if (onApprovalUpdate) onApprovalUpdate();
+        } else {
+          throw new Error('Approve failed');
         }
       } catch (err) {
         console.error('❌ Error:', err);
@@ -183,9 +172,8 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
     }
   };
 
-  // Reject Report with detailed reason
+  // Reject Report with detailed reason - MongoDB version
   const handleRejectReport = async (centerCode, centerName) => {
-    // Create a modal for rejection with detailed feedback
     const rejectionReason = prompt(`❌ Enter detailed rejection reason for ${centerName}:\n\nBe specific about what needs to be improved:`);
     
     if (rejectionReason && rejectionReason.trim()) {
@@ -193,33 +181,27 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         try {
           setLoading(true);
 
-          const response = await fetch(`${API_URL}/api/audit-reports.xlsx?t=${Date.now()}`);
-          const buffer = await response.arrayBuffer();
-          const workbook = new ExcelJS.Workbook();
-          await workbook.xlsx.load(buffer);
-          const worksheet = workbook.worksheets[0];
+          // Find report ID
+          const report = pendingReports.find(r => r.centerCode === centerCode);
+          if (!report || !report._id) {
+            throw new Error('Report not found');
+          }
 
-          let updated = false;
-          worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-            if (rowNumber > 1) {
-              const code = getCellValue(row.getCell(1));
-              if (code === centerCode) {
-                row.getCell(15).value = `Rejected: ${rejectionReason}`; // Current Status with reason
-                row.getCell(16).value = loggedUser.firstname + ' ' + loggedUser.lastname; // Rejected By
-                updated = true;
-              }
-            }
+          const response = await fetch(`${API_URL}/api/audit-reports/${report._id}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              adminName: loggedUser.firstname + ' ' + (loggedUser.lastname || ''),
+              remarks: rejectionReason
+            })
           });
 
-          if (updated) {
-            const updatedBuffer = await workbook.xlsx.writeBuffer();
-            await axios.post(`${API_URL}/api/save-audit-reports`, updatedBuffer, {
-              headers: { 'Content-Type': 'application/octet-stream' }
-            });
-
+          if (response.ok) {
             alert('❌ Report rejected! User will be notified.');
             await loadPendingReports();
-            if (onApprovalUpdate) onApprovalUpdate(); // Update parent count
+            if (onApprovalUpdate) onApprovalUpdate();
+          } else {
+            throw new Error('Reject failed');
           }
         } catch (err) {
           console.error('❌ Error:', err);
@@ -467,6 +449,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
       </div>
 
       {/* Remarks Modal */}
+      {/* CENTER HEAD REMARKS MODAL - FULL DETAILED REPORT */}
       {showRemarksModal && selectedRemarks && (
         <div style={{
           position: 'fixed',
@@ -474,188 +457,279 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
+          background: 'rgba(0,0,0,0.6)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          zIndex: 1000,
-          padding: '20px'
+          zIndex: 10000
         }}>
           <div style={{
             background: 'white',
-            borderRadius: '16px',
-            padding: '30px',
-            maxWidth: '900px',
-            width: '100%',
-            maxHeight: '85vh',
-            overflow: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.3)'
+            borderRadius: '15px',
+            width: '95%',
+            maxWidth: '1400px',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px',
-              borderBottom: '2px solid #667eea',
-              paddingBottom: '15px'
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+              padding: '20px 25px',
+              color: 'white',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
-              <h3 style={{ color: '#667eea', margin: 0 }}>
-                📝 Audit Remarks - {selectedRemarks.centerName}
-              </h3>
-              <span style={{ 
-                background: '#f0f0f0', 
-                padding: '5px 15px', 
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: 'bold',
-                color: '#666'
-              }}>
-                Code: {selectedRemarks.centerCode}
-              </span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '20px' }}>📊 Complete Audit Report - Detailed View</h3>
+                <p style={{ margin: '5px 0 0', fontSize: '14px', opacity: 0.9 }}>
+                  {selectedRemarks.centerName} ({selectedRemarks.centerCode})
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowRemarksModal(false);
+                  setSelectedRemarks(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: 'white',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
             </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              {/* Custom Remarks from View Reports */}
-              {selectedRemarks.customRemarks && (
-                <div style={{ 
-                  marginBottom: '25px',
-                  padding: '15px',
-                  background: 'linear-gradient(135deg, #fff9e6 0%, #ffe9b3 100%)',
-                  borderRadius: '12px',
-                  border: '2px solid #ffc107',
-                  boxShadow: '0 4px 12px rgba(255, 193, 7, 0.2)'
+
+            {/* Modal Body - FULL DETAILED AUDIT TABLE */}
+            <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', overflowX: 'auto' }}>
+              {/* Overall User Remarks */}
+              {selectedRemarks.overallRemarks && (
+                <div style={{
+                  background: '#fff9e6',
+                  padding: '15px 20px',
+                  borderRadius: '8px',
+                  marginBottom: '20px',
+                  border: '2px solid #ffc107'
                 }}>
-                  <h4 style={{ 
-                    color: '#ff9800',
-                    marginBottom: '10px',
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#e65100', fontSize: '16px' }}>
                     ⭐ Overall Remarks (From User):
                   </h4>
-                  <p style={{ 
-                    color: '#333',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    marginBottom: 0,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word'
-                  }}>
-                    {selectedRemarks.customRemarks}
+                  <p style={{ margin: 0, fontSize: '14px', color: '#333', lineHeight: '1.6' }}>
+                    {selectedRemarks.overallRemarks}
                   </p>
                 </div>
               )}
-              
-              {/* Checkpoint-wise Remarks */}
-              {auditAreas.map((area) => {
-                // Check if any checkpoint in this area has remarks
-                const hasRemarks = area.checkpoints.some(cp => selectedRemarks.data[cp.id]?.remarks);
-                
-                if (!hasRemarks) return null;
-
-                return (
-                  <div key={area.areaNumber} style={{ marginBottom: '25px' }}>
-                    <h4 style={{ 
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      color: 'white',
-                      padding: '12px 15px', 
-                      borderRadius: '8px',
-                      marginBottom: '12px',
-                      fontSize: '15px'
-                    }}>
-                      {area.areaName}
-                    </h4>
-                    {area.checkpoints.map((cp) => {
-                      const remark = selectedRemarks.data[cp.id]?.remarks;
-                      if (remark) {
-                        return (
-                          <div key={cp.id} style={{ 
-                            marginLeft: '15px', 
-                            marginBottom: '12px',
-                            padding: '12px 15px',
-                            background: '#f9f9f9',
-                            borderRadius: '8px',
-                            borderLeft: '4px solid #667eea'
-                          }}>
-                            <div style={{ 
-                              fontWeight: 'bold', 
-                              color: '#333',
-                              marginBottom: '6px',
-                              fontSize: '14px'
-                            }}>
-                              {cp.checkPoint}
-                            </div>
-                            <p style={{ 
-                              marginTop: '5px', 
-                              color: '#555',
-                              fontSize: '13px',
-                              lineHeight: '1.5',
-                              marginBottom: 0
-                            }}>
-                              {remark}
-                            </p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
-                );
-              })}
-              
-              {/* If no remarks at all */}
-              {!auditAreas.some(area => 
-                area.checkpoints.some(cp => selectedRemarks.data[cp.id]?.remarks)
-              ) && (
+              {/* Info Bar */}
+              {selectedRemarks.centerRemarksBy && (
                 <div style={{
-                  textAlign: 'center',
-                  padding: '40px',
-                  color: '#999',
-                  fontSize: '14px'
+                  background: '#e3f2fd',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '20px',
+                  fontSize: '14px',
+                  color: '#1565c0'
                 }}>
-                  📭 No remarks added for this audit report.
+                  <strong>📝 Remarks by:</strong> {selectedRemarks.centerRemarksBy} | 
+                  <strong> Date:</strong> {selectedRemarks.centerRemarksDate || '-'}
                 </div>
               )}
+
+              {/* COMPLETE DETAILED AUDIT TABLE */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+                <thead>
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>S.NO</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '220px' }}>CHECKPOINT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>WEIGHTAGE<br/>(%)</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>MAX<br/>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>TOTAL<br/>SAMPLES</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SAMPLES<br/>COMPLIANT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>COMPLIANT<br/>%</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>REMARKS<br/>(आप अपनी भाषा में लिख सकते हैं)</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px', background: '#4caf50' }}>CENTER HEAD<br/>REMARKS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Area 1: Front Office */}
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
+                      Area 1: Front Office (Total Score: 30)
+                    </td>
+                  </tr>
+                  {[
+                    { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: 9 },
+                    { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: 6 },
+                    { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
+                    { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: 12 },
+                    { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: 3 }
+                  ].map((cp, idx) => {
+                    const cpData = selectedRemarks.data?.[cp.id] || {};
+                    return (
+                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
+                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  {/* Area 2: Delivery Process */}
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
+                      Area 2: Delivery Process (Total Score: 40)
+                    </td>
+                  </tr>
+                  {[
+                    { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: 6 },
+                    { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: 4 },
+                    { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: 6 },
+                    { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: 2 },
+                    { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: 4 },
+                    { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
+                    { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: 4 },
+                    { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: 2 },
+                    { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: 4 },
+                    { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: 4 },
+                    { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: 4 }
+                  ].map((cp, idx) => {
+                    const cpData = selectedRemarks.data?.[cp.id] || {};
+                    return (
+                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
+                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  {/* Area 3: Placement Process */}
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
+                      Area 3: Placement Process (Total Score: 15)
+                    </td>
+                  </tr>
+                  {[
+                    { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
+                    { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
+                    { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
+                    { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
+                  ].map((cp, idx) => {
+                    const cpData = selectedRemarks.data?.[cp.id] || {};
+                    return (
+                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
+                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  
+                  {/* Area 4: Management Process */}
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
+                      Area 4: Management Process (Total Score: 15)
+                    </td>
+                  </tr>
+                  {[
+                    { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: 0.75 },
+                    { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: 3.00 },
+                    { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: 5.25 },
+                    { id: 'MP4', name: 'Physcial asset verification', weightage: 30, maxScore: 4.50 },
+                    { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: 1.50 }
+                  ].map((cp, idx) => {
+                    const cpData = selectedRemarks.data?.[cp.id] || {};
+                    return (
+                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
+                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
+                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'flex-end',
-              paddingTop: '15px',
-              borderTop: '1px solid #e0e0e0'
+            {/* Modal Footer */}
+            <div style={{
+              padding: '15px 25px',
+              borderTop: '1px solid #eee',
+              display: 'flex',
+              justifyContent: 'flex-end'
             }}>
               <button
-                onClick={() => setShowRemarksModal(false)}
+                onClick={() => {
+                  setShowRemarksModal(false);
+                  setSelectedRemarks(null);
+                }}
                 style={{
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   color: 'white',
                   border: 'none',
-                  padding: '10px 30px',
+                  padding: '12px 30px',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.transform = 'translateY(-2px)';
-                  e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.4)';
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                  fontWeight: 'bold'
                 }}
               >
-                Close
+                ✓ Close
               </button>
             </div>
           </div>
         </div>
       )}
+
+
+      {/* HISTORY TAB - Year Wise Reports */}
+
     </div>
   );
 };

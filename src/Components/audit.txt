@@ -1343,8 +1343,7 @@ ${loggedUser.firstname || 'Audit Team'}`
                 <thead>
                   <tr>
                     <th>CENTER<br/>NAME</th>
-    <th>CENTER<br/>CODE</th>
-    <th>CH<br/>NAME</th>
+                    <th>CH<br/>NAME</th>
                     <th>FINANCIAL<br/>YEAR</th>
                     <th>AUDIT<br/>DATE</th>
                     <th>FRONT<br/>OFFICE</th>
@@ -1414,15 +1413,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                     return (
                       <tr key={index}>
                         <td>{report.centerName}</td>
-                        <td style={{ 
-  textAlign: 'center',
-  fontWeight: 'bold', 
-  fontSize: '14px',
-  color: '#2196f3',
-  background: '#e3f2fd'
-}}>
-  {report.centerCode}
-</td>
                         <td>{report.chName || '-'}</td>
                         <td style={{ textAlign: "center", fontWeight: "bold", fontSize: "14px", color: "#667eea" }}>{report.financialYear || "FY26"}</td>
                         <td>{report.auditDate}</td>

@@ -108,7 +108,6 @@ const userSchema = new mongoose.Schema({
   lastname: { type: String, trim: true, default: '' },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   mobile: { type: String, trim: true, default: '' },
-  centerCode: { type: String, trim: true, default: '' },
   role: { type: String, enum: ['Admin', 'Audit User', 'Center User'], default: 'Audit User' },
   isActive: { type: Boolean, default: true },
   resetOTP: { type: String, default: null },
@@ -258,8 +257,7 @@ app.post('/api/login', async (req, res) => {
         lastname: user.lastname,
         email: user.email,
         mobile: user.mobile,
-        Role: user.role, // Frontend expects 'Role'
-        centerCode: user.centerCode || '',
+        Role: user.role  // Frontend expects 'Role'
       }
     });
   } catch (err) {
@@ -363,7 +361,6 @@ app.get('/api/users', async (req, res) => {
       lastname: u.lastname,
       email: u.email,
       mobile: u.mobile || '',
-      centerCode: u.centerCode || '',  // ← ADD THIS!
       Role: u.role
     }));
     res.json(formatted);
@@ -375,44 +372,19 @@ app.get('/api/users', async (req, res) => {
 // Create user
 app.post('/api/users', async (req, res) => {
   try {
-    console.log('\n🔵 ========== CREATE USER REQUEST ==========');
-    console.log('📥 Received body:', {
-      username: req.body.username,
-      Role: req.body.Role,
-      centerCode: req.body.centerCode
-    });
-    
-    const { username, password, firstname, lastname, email, mobile, centerCode, Role } = req.body;
-    
-    console.log('🔍 Extracted centerCode:', `"${centerCode}"`);
-    
-    const userData = {
+    const { username, password, firstname, lastname, email, mobile, Role } = req.body;
+    const user = new User({
       username: username.toLowerCase(),
       password,
       firstname,
       lastname,
       email: email.toLowerCase(),
       mobile,
-      centerCode: centerCode || '',
       role: Role || 'User'
-    };
-    
-    console.log('📦 Creating user with data:', {
-      username: userData.username,
-      role: userData.role,
-      centerCode: userData.centerCode
     });
-    
-    const user = new User(userData);
     await user.save();
-    
-    console.log('✅ User saved to database!');
-    console.log('💾 Saved user centerCode:', `"${user.centerCode}"`);
-    console.log('========================================\n');
-    
     res.status(201).json({ success: true, user });
   } catch (err) {
-    console.error('❌ Error creating user:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -420,23 +392,15 @@ app.post('/api/users', async (req, res) => {
 // Update user
 app.put('/api/users/:id', async (req, res) => {
   try {
-    const updateData = {
+    const user = await User.findByIdAndUpdate(req.params.id, {
       ...req.body,
       role: req.body.Role
-    };
-    
-    // Include centerCode if provided
-    if (req.body.centerCode !== undefined) {
-      updateData.centerCode = req.body.centerCode || '';
-    }
-    
-    const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    }, { new: true });
     res.json({ success: true, user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // Delete user
 app.delete('/api/users/:id', async (req, res) => {
@@ -1274,66 +1238,6 @@ app.get('/fix-fy', async (req, res) => {
       }))
     });
     
-  } catch (err) {
-    console.error('❌ Error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-// Fix missing centerCodes
-// Better fix - logs everything
-app.post('/api/fix-center-codes', async (req, res) => {
-  try {
-    console.log('🔧 Starting centerCode fix...');
-    
-    const reports = await AuditReport.find({});
-    console.log(`📊 Total reports: ${reports.length}`);
-    
-    let fixed = 0;
-    for (const report of reports) {
-      console.log(`\n📋 Checking: "${report.centerName}"`);
-      console.log(`   Current centerCode: "${report.centerCode || 'EMPTY'}"`);
-      
-      // If centerCode is missing or empty
-      if (!report.centerCode || report.centerCode === '') {
-        // Try to get from centerName if it has format "CC007 - Name"
-        let newCode = null;
-        
-        // Check if centerName already has code
-        if (report.centerName.includes('CC')) {
-          const match = report.centerName.match(/CC\d+/);
-          if (match) {
-            newCode = match[0];
-          }
-        }
-        
-        // Manual mapping for centers without CC in name
-        const mapping = {
-          'khn': 'CC001',
-          'tigri': 'CC002',
-          'lkhanpur': 'CC003',
-          'NIIT Bangalore': 'CC003',
-          'NIIT Mumbai': 'CC002'
-        };
-        
-        if (!newCode && mapping[report.centerName]) {
-          newCode = mapping[report.centerName];
-        }
-        
-        if (newCode) {
-          report.centerCode = newCode;
-          await report.save();
-          console.log(`   ✅ UPDATED to: ${newCode}`);
-          fixed++;
-        } else {
-          console.log(`   ⚠️ NO MAPPING FOUND`);
-        }
-      } else {
-        console.log(`   ℹ️ Already has centerCode`);
-      }
-    }
-    
-    console.log(`\n✅ Fixed ${fixed} reports`);
-    res.json({ success: true, fixed, total: reports.length });
   } catch (err) {
     console.error('❌ Error:', err);
     res.status(500).json({ error: err.message });
