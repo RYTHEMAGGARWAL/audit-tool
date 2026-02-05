@@ -287,10 +287,21 @@ const CenterDashboard = () => {
                                       report.grandTotal >= 50 ? { text: 'Moderate', color: '#f59e0b', bg: '#fef3c7' } :
                                       { text: 'Non-Compliant', color: '#ef4444', bg: '#fee2e2' };
 
-                    const foData = { score: report.frontOfficeScore || 0, color: report.frontOfficeScore >= 22.5 ? '#22c55e' : report.frontOfficeScore >= 15 ? '#f59e0b' : '#ef4444' };
-                    const dpData = { score: report.deliveryProcessScore || 0, color: report.deliveryProcessScore >= 30 ? '#22c55e' : report.deliveryProcessScore >= 20 ? '#f59e0b' : '#ef4444' };
-                    const ppData = { score: report.placementScore || 0, color: report.placementScore >= 11.25 ? '#22c55e' : report.placementScore >= 7.5 ? '#f59e0b' : '#ef4444' };
-                    const mpData = { score: report.managementScore || 0, color: report.managementScore >= 11.25 ? '#22c55e' : report.managementScore >= 7.5 ? '#f59e0b' : '#ef4444' };
+                    // Helper function to get area score status and color (matching AuditManagement.jsx)
+                    const getAreaScoreInfo = (score, maxScore) => {
+                      if (score === 'NA') return { status: 'NA', color: '#999' };
+                      const numScore = parseFloat(score || 0);
+                      const percent = (numScore / maxScore) * 100;
+                      
+                      if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+                      if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+                      return { status: 'Non-Compliant', color: '#dc3545' };
+                    };
+
+                    const foData = getAreaScoreInfo(report.frontOfficeScore, 30);
+                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, 40);
+                    const ppData = report.placementApplicable === 'no' ? { status: 'NA', color: '#999' } : getAreaScoreInfo(report.placementScore, 15);
+                    const mpData = getAreaScoreInfo(report.managementScore, 15);
 
                     return (
                       <tr key={report._id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
@@ -298,20 +309,26 @@ const CenterDashboard = () => {
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#6366f1', background: '#e0e7ff' }}>{report.centerCode}</td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontSize: '13px', color: '#6b7280' }}>{report.auditDateString || '-'}</td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontWeight: '700', fontSize: '16px', color: foData.color }}>{foData.score.toFixed(2)}</div>
-                          <div style={{ fontSize: '11px', color: '#6b7280' }}>({foData.score.toFixed(2)})</div>
+                          <div style={{ fontWeight: '700', fontSize: '13px', color: foData.color }}>{foData.status}</div>
+                          <div style={{ fontSize: '14px', color: foData.color, fontWeight: 'bold' }}>({parseFloat(report.frontOfficeScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontWeight: '700', fontSize: '16px', color: dpData.color }}>{dpData.score.toFixed(2)}</div>
-                          <div style={{ fontSize: '11px', color: '#6b7280' }}>({dpData.score.toFixed(2)})</div>
+                          <div style={{ fontWeight: '700', fontSize: '13px', color: dpData.color }}>{dpData.status}</div>
+                          <div style={{ fontSize: '14px', color: dpData.color, fontWeight: 'bold' }}>({parseFloat(report.deliveryProcessScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontWeight: '700', fontSize: '16px', color: ppData.color }}>{ppData.score.toFixed(2)}</div>
-                          <div style={{ fontSize: '11px', color: '#6b7280' }}>({ppData.score.toFixed(2)})</div>
+                          {report.placementApplicable === 'no' ? (
+                            <span style={{ color: '#999', fontWeight: 'bold', fontSize: '15px' }}>NA</span>
+                          ) : (
+                            <>
+                              <div style={{ fontWeight: '700', fontSize: '13px', color: ppData.color }}>{ppData.status}</div>
+                              <div style={{ fontSize: '14px', color: ppData.color, fontWeight: 'bold' }}>({parseFloat(report.placementScore || 0).toFixed(2)})</div>
+                            </>
+                          )}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontWeight: '700', fontSize: '16px', color: mpData.color }}>{mpData.score.toFixed(2)}</div>
-                          <div style={{ fontSize: '11px', color: '#6b7280' }}>({mpData.score.toFixed(2)})</div>
+                          <div style={{ fontWeight: '700', fontSize: '13px', color: mpData.color }}>{mpData.status}</div>
+                          <div style={{ fontSize: '14px', color: mpData.color, fontWeight: 'bold' }}>({parseFloat(report.managementScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           <div style={{ fontSize: '20px', fontWeight: '700', color: '#dc2626' }}>{report.grandTotal.toFixed(2)}</div>
