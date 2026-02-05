@@ -7,10 +7,10 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const puppeteer = require('puppeteer');
+const { generatePDF } = require('./pdfGenerator');
 const path = require('path');
 const fs = require('fs');
-const { generateEmailHTML, generatePDFHTML, generateEmailSubject } = require('./emailTemplate');
+const { generateEmailHTML, generateEmailSubject } = require('./emailTemplate');
 require('dotenv').config();
 
 const app = express();
@@ -42,42 +42,7 @@ transporter.verify((error, success) => {
 // ========================================
 // PDF GENERATION FUNCTION (Using Puppeteer)
 // ========================================
-async function generatePDF(reportData) {
-  let browser = null;
-  try {
-    console.log('📄 Starting PDF generation...');
-    
-    // Generate HTML content for PDF
-    const pdfHTML = generatePDFHTML(reportData);
-    
-    // Launch puppeteer
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
-    
-    const page = await browser.newPage();
-    await page.setContent(pdfHTML, { waitUntil: 'networkidle0' });
-    
-    // Generate PDF buffer
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
-    });
-    
-    console.log('✅ PDF generated successfully! Size:', (pdfBuffer.length / 1024).toFixed(2), 'KB');
-    return pdfBuffer;
-    
-  } catch (err) {
-    console.error('❌ PDF generation error:', err.message);
-    throw err;
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
+
 
 // ========================================
 // MONGODB CONNECTION
