@@ -7,10 +7,10 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const puppeteer = require('puppeteer');
+const { generatePDF } = require('./pdfGenerator');
 const path = require('path');
 const fs = require('fs');
-const { generateEmailHTML, generatePDFHTML, generateEmailSubject } = require('./emailTemplate');
+const { generateEmailHTML, generateEmailSubject } = require('./emailTemplate');
 require('dotenv').config();
 
 const app = express();
@@ -30,54 +30,17 @@ const transporter = nodemailer.createTransport({
 });
 
 // Verify email connection on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.log('⚠️ Email Configuration Error:', error.message);
-    console.log('⚠️ Email sending may not work. Check SMTP credentials in .env');
-  } else {
-    console.log('✅ Email Server Ready - Nodemailer Connected!');
-  }
-});
+// Skip verification - will check when sending email
+console.log('📧 Email configured with SendGrid');
+console.log('📧 Host:', process.env.SMTP_HOST);
+console.log('📧 Port:', process.env.SMTP_PORT);
+console.log('📧 Secure:', process.env.SMTP_SECURE);
+console.log('📧 User:', process.env.SMTP_USER);
 
 // ========================================
 // PDF GENERATION FUNCTION (Using Puppeteer)
 // ========================================
-async function generatePDF(reportData) {
-  let browser = null;
-  try {
-    console.log('📄 Starting PDF generation...');
-    
-    // Generate HTML content for PDF
-    const pdfHTML = generatePDFHTML(reportData);
-    
-    // Launch puppeteer
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
-    
-    const page = await browser.newPage();
-    await page.setContent(pdfHTML, { waitUntil: 'networkidle0' });
-    
-    // Generate PDF buffer
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
-    });
-    
-    console.log('✅ PDF generated successfully! Size:', (pdfBuffer.length / 1024).toFixed(2), 'KB');
-    return pdfBuffer;
-    
-  } catch (err) {
-    console.error('❌ PDF generation error:', err.message);
-    throw err;
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
+
 
 // ========================================
 // MONGODB CONNECTION
@@ -108,6 +71,7 @@ const userSchema = new mongoose.Schema({
   lastname: { type: String, trim: true, default: '' },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   mobile: { type: String, trim: true, default: '' },
+  centerCode: { type: String, trim: true, default: '' },
   role: { type: String, enum: ['Admin', 'Audit User', 'Center User'], default: 'Audit User' },
   isActive: { type: Boolean, default: true },
   resetOTP: { type: String, default: null },
@@ -210,11 +174,12 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:3000',
-    'https://audit-seven-psi.vercel.app',
-    'https://audit-git-main-rythem-aggarwals-projects.vercel.app',
-    'https://audit-fh6x61p71-rythem-aggarwals-projects.vercel.app'
-  ],
-  credentials: true
+    'https://audit-tool-liard.vercel.app',  // ✅ ADD THIS!
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
@@ -257,7 +222,8 @@ app.post('/api/login', async (req, res) => {
         lastname: user.lastname,
         email: user.email,
         mobile: user.mobile,
-        Role: user.role  // Frontend expects 'Role'
+        Role: user.role, // Frontend expects 'Role'
+        centerCode: user.centerCode || '',
       }
     });
   } catch (err) {
@@ -361,6 +327,7 @@ app.get('/api/users', async (req, res) => {
       lastname: u.lastname,
       email: u.email,
       mobile: u.mobile || '',
+      centerCode: u.centerCode || '',  // ← ADD THIS!
       Role: u.role
     }));
     res.json(formatted);
@@ -372,19 +339,44 @@ app.get('/api/users', async (req, res) => {
 // Create user
 app.post('/api/users', async (req, res) => {
   try {
-    const { username, password, firstname, lastname, email, mobile, Role } = req.body;
-    const user = new User({
+    console.log('\n🔵 ========== CREATE USER REQUEST ==========');
+    console.log('📥 Received body:', {
+      username: req.body.username,
+      Role: req.body.Role,
+      centerCode: req.body.centerCode
+    });
+    
+    const { username, password, firstname, lastname, email, mobile, centerCode, Role } = req.body;
+    
+    console.log('🔍 Extracted centerCode:', `"${centerCode}"`);
+    
+    const userData = {
       username: username.toLowerCase(),
       password,
       firstname,
       lastname,
       email: email.toLowerCase(),
       mobile,
+      centerCode: centerCode || '',
       role: Role || 'User'
+    };
+    
+    console.log('📦 Creating user with data:', {
+      username: userData.username,
+      role: userData.role,
+      centerCode: userData.centerCode
     });
+    
+    const user = new User(userData);
     await user.save();
+    
+    console.log('✅ User saved to database!');
+    console.log('💾 Saved user centerCode:', `"${user.centerCode}"`);
+    console.log('========================================\n');
+    
     res.status(201).json({ success: true, user });
   } catch (err) {
+    console.error('❌ Error creating user:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -392,15 +384,23 @@ app.post('/api/users', async (req, res) => {
 // Update user
 app.put('/api/users/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, {
+    const updateData = {
       ...req.body,
       role: req.body.Role
-    }, { new: true });
+    };
+    
+    // Include centerCode if provided
+    if (req.body.centerCode !== undefined) {
+      updateData.centerCode = req.body.centerCode || '';
+    }
+    
+    const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json({ success: true, user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // Delete user
 app.delete('/api/users/:id', async (req, res) => {
@@ -1238,6 +1238,66 @@ app.get('/fix-fy', async (req, res) => {
       }))
     });
     
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// Fix missing centerCodes
+// Better fix - logs everything
+app.post('/api/fix-center-codes', async (req, res) => {
+  try {
+    console.log('🔧 Starting centerCode fix...');
+    
+    const reports = await AuditReport.find({});
+    console.log(`📊 Total reports: ${reports.length}`);
+    
+    let fixed = 0;
+    for (const report of reports) {
+      console.log(`\n📋 Checking: "${report.centerName}"`);
+      console.log(`   Current centerCode: "${report.centerCode || 'EMPTY'}"`);
+      
+      // If centerCode is missing or empty
+      if (!report.centerCode || report.centerCode === '') {
+        // Try to get from centerName if it has format "CC007 - Name"
+        let newCode = null;
+        
+        // Check if centerName already has code
+        if (report.centerName.includes('CC')) {
+          const match = report.centerName.match(/CC\d+/);
+          if (match) {
+            newCode = match[0];
+          }
+        }
+        
+        // Manual mapping for centers without CC in name
+        const mapping = {
+          'khn': 'CC001',
+          'tigri': 'CC002',
+          'lkhanpur': 'CC003',
+          'NIIT Bangalore': 'CC003',
+          'NIIT Mumbai': 'CC002'
+        };
+        
+        if (!newCode && mapping[report.centerName]) {
+          newCode = mapping[report.centerName];
+        }
+        
+        if (newCode) {
+          report.centerCode = newCode;
+          await report.save();
+          console.log(`   ✅ UPDATED to: ${newCode}`);
+          fixed++;
+        } else {
+          console.log(`   ⚠️ NO MAPPING FOUND`);
+        }
+      } else {
+        console.log(`   ℹ️ Already has centerCode`);
+      }
+    }
+    
+    console.log(`\n✅ Fixed ${fixed} reports`);
+    res.json({ success: true, fixed, total: reports.length });
   } catch (err) {
     console.error('❌ Error:', err);
     res.status(500).json({ error: err.message });
