@@ -211,11 +211,12 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:3000',
-    'https://audit-seven-psi.vercel.app',
-    'https://audit-git-main-rythem-aggarwals-projects.vercel.app',
-    'https://audit-fh6x61p71-rythem-aggarwals-projects.vercel.app'
-  ],
-  credentials: true
+    'https://audit-tool-liard.vercel.app',  // ✅ ADD THIS!
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
