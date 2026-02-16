@@ -15,40 +15,45 @@ const CenterDashboard = () => {
   const [saving, setSaving] = useState(false);
   const [editRequestStatus, setEditRequestStatus] = useState({});
 
-  const checkpointData = {
-    'Front Office': [
-      { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: 9 },
-      { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: 6 },
-      { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-      { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: 12 },
-      { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: 3 }
-    ],
-    'Delivery Process': [
-      { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: 6 },
-      { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: 4 },
-      { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: 6 },
-      { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: 2 },
-      { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: 4 },
-      { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-      { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: 4 },
-      { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: 2 },
-      { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: 4 },
-      { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: 4 },
-      { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: 4 }
-    ],
-    'Placement Process': [
-      { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-      { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
-      { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-      { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-    ],
-    'Management Process': [
-      { id: 'MP1', name: 'Courseware issue to students/LMS Usage', weightage: 5, maxScore: 0.75 },
-      { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: 3.00 },
-      { id: 'MP3', name: 'Monthly Centre Review Meeting conducted', weightage: 35, maxScore: 5.25 },
-      { id: 'MP4', name: 'Physical asset verification', weightage: 30, maxScore: 4.50 },
-      { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: 1.50 }
-    ]
+  // Dynamic checkpoint data based on placement applicable
+  const getCheckpointData = (placementApplicable) => {
+    const isPlacementNA = placementApplicable === 'no';
+    
+    return {
+      'Front Office': [
+        { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isPlacementNA ? 10.5 : 9 },
+        { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isPlacementNA ? 7 : 6 },
+        { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
+        { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isPlacementNA ? 14 : 12 },
+        { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isPlacementNA ? 3.5 : 3 }
+      ],
+      'Delivery Process': [
+        { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
+        { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
+        { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
+        { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
+        { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
+        { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
+        { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
+        { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
+        { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
+        { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
+        { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 }
+      ],
+      'Placement Process': isPlacementNA ? [] : [
+        { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
+        { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
+        { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
+        { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
+      ],
+      'Management Process': [
+        { id: 'MP1', name: 'Courseware issue to students/LMS Usage', weightage: 5, maxScore: isPlacementNA ? 1 : 0.75 },
+        { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: isPlacementNA ? 4 : 3.00 },
+        { id: 'MP3', name: 'Monthly Centre Review Meeting conducted', weightage: 35, maxScore: isPlacementNA ? 7 : 5.25 },
+        { id: 'MP4', name: 'Physical asset verification', weightage: 30, maxScore: isPlacementNA ? 6 : 4.50 },
+        { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: isPlacementNA ? 2 : 1.50 }
+      ]
+    };
   };
 
   useEffect(() => {
@@ -299,10 +304,10 @@ const CenterDashboard = () => {
                       return { status: 'Non-Compliant', color: '#dc3545' };
                     };
 
-                    const foData = getAreaScoreInfo(report.frontOfficeScore, 30);
-                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, 40);
+                    const foData = getAreaScoreInfo(report.frontOfficeScore, report.placementApplicable === 'no' ? 35 : 30);
+                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, report.placementApplicable === 'no' ? 45 : 40);
                     const ppData = report.placementApplicable === 'no' ? { status: 'NA', color: '#999' } : getAreaScoreInfo(report.placementScore, 15);
-                    const mpData = getAreaScoreInfo(report.managementScore, 15);
+                    const mpData = getAreaScoreInfo(report.managementScore, report.placementApplicable === 'no' ? 20 : 15);
 
                     return (
                       <tr key={report._id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
@@ -396,11 +401,15 @@ const CenterDashboard = () => {
                 </thead>
 
                 <tbody>
-                  {Object.entries(checkpointData).map(([areaName, checkpoints], areaIdx) => (
+                  {Object.entries(getCheckpointData(selectedReport.placementApplicable)).map(([areaName, checkpoints], areaIdx) => {
+                    // Skip Placement Process area if it's empty (when placement is NA)
+                    if (checkpoints.length === 0) return null;
+                    
+                    return (
                     <React.Fragment key={areaIdx}>
                       <tr>
-                        <td colSpan="10" style={{ padding: '14px 20px', background: '#6366f1', color: 'white', fontWeight: '700', fontSize: '15px', border: '1px solid #4f46e5' }}>
-                          Area {areaIdx + 1}: {areaName}
+                        <td colSpan="10" style={{ padding: '14px 20px', background: areaName === 'Placement Process' && selectedReport.placementApplicable === 'no' ? '#999' : '#6366f1', color: 'white', fontWeight: '700', fontSize: '15px', border: '1px solid #4f46e5' }}>
+                          Area {areaIdx + 1}: {areaName} {areaName === 'Placement Process' && selectedReport.placementApplicable === 'no' ? '(N/A)' : ''}
                         </td>
                       </tr>
 
@@ -433,7 +442,7 @@ const CenterDashboard = () => {
                         );
                       })}
                     </React.Fragment>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>

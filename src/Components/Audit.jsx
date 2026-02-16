@@ -132,14 +132,72 @@ const AuditManagement = () => {
       areaName: "Management Process",
       totalScore: isPlacementNA ? 20 : 15, // 15 + 5 = 20
       checkpoints: [
-        { id: "MP1", checkPoint: "Courseware issue to students done on time/Usage of LMS", weightage: 5, maxScore: 0.75 },
-        { id: "MP2", checkPoint: "TIRM details register", weightage: 20, maxScore: 3.00 },
-        { id: "MP3", checkPoint: "Monthly Centre Review Meeting is conducted", weightage: 35, maxScore: 5.25 },
-        { id: "MP4", checkPoint: "Physcial asset verification", weightage: 30, maxScore: 4.50 },
-        { id: "MP5", checkPoint: "Verification of bill authenticity", weightage: 10, maxScore: 1.50 }
+        { id: "MP1", checkPoint: "Courseware issue to students done on time/Usage of LMS", weightage: 5, maxScore: isPlacementNA ? 1 : 0.75 },
+        { id: "MP2", checkPoint: "TIRM details register", weightage: 20, maxScore: isPlacementNA ? 4 : 3.00 },
+        { id: "MP3", checkPoint: "Monthly Centre Review Meeting is conducted", weightage: 35, maxScore: isPlacementNA ? 7 : 5.25 },
+        { id: "MP4", checkPoint: "Physcial asset verification", weightage: 30, maxScore: isPlacementNA ? 6 : 4.50 },
+        { id: "MP5", checkPoint: "Verification of bill authenticity", weightage: 10, maxScore: isPlacementNA ? 2 : 1.50 }
       ]
     }
   ];
+
+  // Helper function to get dynamic checkpoints based on placementApplicable
+  const getCheckpointsByArea = (placementApplicable) => {
+    const isNA = placementApplicable === 'no';
+    
+    return {
+      frontOffice: {
+        areaName: 'Front Office',
+        totalScore: isNA ? 35 : 30,
+        checkpoints: [
+          { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isNA ? 10.5 : 9 },
+          { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isNA ? 7 : 6 },
+          { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
+          { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isNA ? 14 : 12 },
+          { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isNA ? 3.5 : 3 }
+        ]
+      },
+      deliveryProcess: {
+        areaName: 'Delivery Process',
+        totalScore: isNA ? 45 : 40,
+        checkpoints: [
+          { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isNA ? 6.75 : 6 },
+          { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: isNA ? 4.5 : 4 },
+          { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isNA ? 6.75 : 6 },
+          { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: isNA ? 2.25 : 2 },
+          { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
+          { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
+          { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
+          { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: isNA ? 2.25 : 2 },
+          { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isNA ? 4.5 : 4 },
+          { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isNA ? 4.5 : 4 },
+          { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: isNA ? 4.5 : 4 }
+        ]
+      },
+      placementProcess: {
+        areaName: 'Placement Process',
+        totalScore: isNA ? 0 : 15,
+        isNA: isNA,
+        checkpoints: isNA ? [] : [
+          { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
+          { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
+          { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
+          { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
+        ]
+      },
+      managementProcess: {
+        areaName: 'Management Process',
+        totalScore: isNA ? 20 : 15,
+        checkpoints: [
+          { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isNA ? 1 : 0.75 },
+          { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: isNA ? 4 : 3.00 },
+          { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: isNA ? 7 : 5.25 },
+          { id: 'MP4', name: 'Physcial asset verification', weightage: 30, maxScore: isNA ? 6 : 4.50 },
+          { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: isNA ? 2 : 1.50 }
+        ]
+      }
+    };
+  };
 
   const [auditData, setAuditData] = useState({});
 
@@ -2055,138 +2113,48 @@ ${loggedUser.firstname || 'Audit Team'}`
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Area 1: Front Office */}
-                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                      Area 1: Front Office (Total Score: 30)
-                    </td>
-                  </tr>
-                  {[
-                    { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: 9 },
-                    { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: 6 },
-                    { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-                    { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: 12 },
-                    { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: 3 }
-                  ].map((cp, idx) => {
-                    const cpData = selectedReportForRemarks[cp.id] || {};
-                    return (
-                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
-                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  
-                  {/* Area 2: Delivery Process */}
-                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                      Area 2: Delivery Process (Total Score: 40)
-                    </td>
-                  </tr>
-                  {[
-                    { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: 6 },
-                    { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: 4 },
-                    { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: 6 },
-                    { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: 2 },
-                    { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: 4 },
-                    { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-                    { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: 4 },
-                    { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: 2 },
-                    { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: 4 },
-                    { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: 4 },
-                    { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: 4 }
-                  ].map((cp, idx) => {
-                    const cpData = selectedReportForRemarks[cp.id] || {};
-                    return (
-                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
-                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  
-                  {/* Area 3: Placement Process */}
-                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                      Area 3: Placement Process (Total Score: 15)
-                    </td>
-                  </tr>
-                  {[
-                    { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-                    { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
-                    { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-                    { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-                  ].map((cp, idx) => {
-                    const cpData = selectedReportForRemarks[cp.id] || {};
-                    return (
-                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
-                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  
-                  {/* Area 4: Management Process */}
-                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-                    <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                      Area 4: Management Process (Total Score: 15)
-                    </td>
-                  </tr>
-                  {[
-                    { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: 0.75 },
-                    { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: 3.00 },
-                    { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: 5.25 },
-                    { id: 'MP4', name: 'Physcial asset verification', weightage: 30, maxScore: 4.50 },
-                    { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: 1.50 }
-                  ].map((cp, idx) => {
-                    const cpData = selectedReportForRemarks[cp.id] || {};
-                    return (
-                      <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
-                        <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
-                          {cpData.centerHeadRemarks || 'No remarks from Center Head'}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {(() => {
+                    const areas = getCheckpointsByArea(selectedReportForRemarks.placementApplicable || 'yes');
+                    const areasArray = [
+                      { key: 'frontOffice', number: 1 },
+                      { key: 'deliveryProcess', number: 2 },
+                      { key: 'placementProcess', number: 3 },
+                      { key: 'managementProcess', number: 4 }
+                    ];
+
+                    return areasArray.map(({ key, number }) => {
+                      const area = areas[key];
+                      
+                      return (
+                        <React.Fragment key={key}>
+                          <tr style={{ background: area.isNA ? '#999' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                            <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
+                              Area {number}: {area.areaName} {area.isNA ? '(N/A - Not Applicable)' : `(Total Score: ${area.totalScore})`}
+                            </td>
+                          </tr>
+                          {area.checkpoints.map((cp, idx) => {
+                            const cpData = selectedReportForRemarks[cp.id] || {};
+                            return (
+                              <tr key={cp.id} style={{ borderBottom: '1px solid #e0e0e0', background: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{idx + 1}</td>
+                                <td style={{ padding: '10px 8px', fontSize: '13px' }}>{cp.name}</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cp.weightage}%</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{cp.maxScore}</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.totalSamples || '-'}</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px' }}>{cpData.samplesCompliant || '-'}</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', color: '#1976d2' }}>{cpData.compliantPercent || 0}%</td>
+                                <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#11998e' }}>{cpData.score || 0}</td>
+                                <td style={{ padding: '10px 8px', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
+                                <td style={{ padding: '10px 8px', fontSize: '12px', background: '#e8f5e9', color: cpData.centerHeadRemarks ? '#2e7d32' : '#999', fontStyle: cpData.centerHeadRemarks ? 'normal' : 'italic' }}>
+                                  {cpData.centerHeadRemarks || 'No remarks from Center Head'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -2473,4 +2441,4 @@ ${loggedUser.firstname || 'Audit Team'}`
   );
 };
 
-export default AuditManagement;                    
+export default AuditManagement;
