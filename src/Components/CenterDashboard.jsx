@@ -271,16 +271,16 @@ const CenterDashboard = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -388,15 +388,15 @@ const CenterDashboard = () => {
                 <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
                   <tr style={{ background: '#e5e7eb' }}>
                     <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '3%' }}>S.NO</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '22%' }}>CHECKPOINT</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>WEIGHTAGE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>MAX SCORE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>TOTAL</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '8%' }}>COMPLIANT</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '8%' }}>%</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '20%' }}>CHECKPOINT</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>WEIGHTAGE</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>MAX SCORE</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>TOTAL</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>COMPLIANT</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>%</th>
                     <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>SCORE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '14%' }}>REMARKS</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '18%', background: '#86efac' }}>CENTER HEAD REMARKS</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '15%' }}>REMARKS</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '25%', background: '#86efac' }}>CENTER HEAD REMARKS</th>
                   </tr>
                 </thead>
 
@@ -428,14 +428,24 @@ const CenterDashboard = () => {
                             <td style={{ padding: '10px', border: '1px solid #d1d5db', textAlign: 'center', color: '#2563eb', fontWeight: '600' }}>{cpData.compliantPercent || '0'}%</td>
                             <td style={{ padding: '10px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '700', color: '#16a34a', fontSize: '15px' }}>{(cpData.score || 0).toFixed(2)}</td>
                             <td style={{ padding: '10px', border: '1px solid #d1d5db', fontSize: '12px' }}>{cpData.remarks || '-'}</td>
-                            <td style={{ padding: '8px', border: '1px solid #d1d5db', background: '#f0fdf4' }}>
-                              <input
-                                type="text"
+                            <td style={{ padding: '8px', border: '1px solid #d1d5db', background: '#f0fdf4', verticalAlign: 'top' }}>
+                              <textarea
                                 value={checkpointRemarks[cp.id] || ''}
                                 onChange={(e) => handleCheckpointRemarkChange(cp.id, e.target.value)}
                                 disabled={isLocked}
-                                placeholder={isLocked ? 'Locked' : 'Enter remarks...'}
-                                style={{ width: '100%', padding: '8px', border: isLocked ? '1px solid #d1d5db' : '2px solid #86efac', borderRadius: '6px', fontSize: '12px', background: isLocked ? '#f3f4f6' : 'white' }}
+                                placeholder={isLocked ? 'Locked' : 'Enter your remarks here...'}
+                                rows={3}
+                                style={{ 
+                                  width: '100%', 
+                                  padding: '8px', 
+                                  border: isLocked ? '1px solid #d1d5db' : '2px solid #86efac', 
+                                  borderRadius: '6px', 
+                                  fontSize: '13px', 
+                                  background: isLocked ? '#f3f4f6' : 'white',
+                                  resize: 'vertical',
+                                  minHeight: '60px',
+                                  fontFamily: 'inherit'
+                                }}
                               />
                             </td>
                           </tr>
