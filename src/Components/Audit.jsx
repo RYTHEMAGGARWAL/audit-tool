@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import axios from 'axios';
 import { API_URL } from '../config';
+import { getCheckpointsByArea } from './checkpointConfig';
+
 import './Audit.css';
 
 const AuditManagement = () => {
   const [activeOption, setActiveOption] = useState('');
   const [centers, setCenters] = useState([]);
   const [selectedCenter, setSelectedCenter] = useState(null);
+  const [auditType, setAuditType] = useState('Skills-CDC');
+  const [showAuditTypeSelection, setShowAuditTypeSelection] = useState(false);
   const [showAuditTable, setShowAuditTable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savedReports, setSavedReports] = useState([]);
@@ -74,130 +78,77 @@ const AuditManagement = () => {
   };
   
   const financialYears = generateFinancialYears();
- // null = not selected, 'yes' or 'no'
 
   // Get logged user info
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
   const isAdmin = loggedUser.Role === 'Admin';
 
-  // Audit Areas Data - 4 AREAS (Dynamic based on placementApplicable)
-  // When Placement is NOT applicable, redistribute 15 points: +5 to each other area
-  const isPlacementNA = placementApplicable === 'no';
-  
-  const auditAreas = [
-    {
-      areaNumber: 1,
-      areaName: "Front Office",
-      totalScore: isPlacementNA ? 35 : 30, // 30 + 5 = 35
-      checkpoints: [
-        { id: "FO1", checkPoint: "Enquires Entered in Pulse(Y/N)", weightage: 30, maxScore: isPlacementNA ? 10.5 : 9 },
-        { id: "FO2", checkPoint: "Enrolment form available in Pulse(Y/N)", weightage: 20, maxScore: isPlacementNA ? 7 : 6 },
-        { id: "FO3", checkPoint: "Pre assessment Available(Y/N)", weightage: 0, maxScore: 0 },
-        { id: "FO4", checkPoint: "Documents uploaded in Pulse(Y/N)", weightage: 40, maxScore: isPlacementNA ? 14 : 12 },
-        { id: "FO5", checkPoint: "Availability of Marketing Material(Y/N)", weightage: 10, maxScore: isPlacementNA ? 3.5 : 3 }
-      ]
-    },
-    {
-      areaNumber: 2,
-      areaName: "Delivery Process",
-      totalScore: isPlacementNA ? 45 : 40, // 40 + 5 = 45
-      checkpoints: [
-        { id: "DP1", checkPoint: "Batch file maintained for all running batches", weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
-        { id: "DP2", checkPoint: "Batch Heath Card available for all batches where batch duration is >= 30 days", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: "DP3", checkPoint: "Attendance marked in EDL sheets correctly", weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
-        { id: "DP4", checkPoint: "BMS maintained with observations >= 30 days", weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
-        { id: "DP5", checkPoint: "FACT Certificate available at Center (Y/N)", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: "DP6", checkPoint: "Post Assessment if applicable", weightage: 0, maxScore: 0 },
-        { id: "DP7", checkPoint: "Appraisal sheet is maintained (Y/N)", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: "DP8", checkPoint: "Appraisal status updated in Pulse(Y/N)", weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
-        { id: "DP9", checkPoint: "Certification Status of eligible students", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: "DP10", checkPoint: "Student signature obtained while issuing certificates", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: "DP11", checkPoint: "Verification between System issue date Vs actual certificate issue date", weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 }
-      ]
-    },
-    {
-      areaNumber: 3,
-      areaName: "Placement Process",
-      totalScore: isPlacementNA ? 0 : 15, // NA = 0
-      isNA: isPlacementNA, // Flag to show NA
-      checkpoints: [
-        { id: "PP1", checkPoint: "Student Placement Response", weightage: 15, maxScore: isPlacementNA ? 0 : 2.25 },
-        { id: "PP2", checkPoint: "CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation", weightage: 10, maxScore: isPlacementNA ? 0 : 1.50 },
-        { id: "PP3", checkPoint: "Placement Bank & Aging", weightage: 15, maxScore: isPlacementNA ? 0 : 2.25 },
-        { id: "PP4", checkPoint: "Placement Proof Upload", weightage: 60, maxScore: isPlacementNA ? 0 : 9.00 }
-      ]
-    },
-    {
-      areaNumber: 4,
-      areaName: "Management Process",
-      totalScore: isPlacementNA ? 20 : 15, // 15 + 5 = 20
-      checkpoints: [
-        { id: "MP1", checkPoint: "Courseware issue to students done on time/Usage of LMS", weightage: 5, maxScore: isPlacementNA ? 1 : 0.75 },
-        { id: "MP2", checkPoint: "TIRM details register", weightage: 20, maxScore: isPlacementNA ? 4 : 3.00 },
-        { id: "MP3", checkPoint: "Monthly Centre Review Meeting is conducted", weightage: 35, maxScore: isPlacementNA ? 7 : 5.25 },
-        { id: "MP4", checkPoint: "Physcial asset verification", weightage: 30, maxScore: isPlacementNA ? 6 : 4.50 },
-        { id: "MP5", checkPoint: "Verification of bill authenticity", weightage: 10, maxScore: isPlacementNA ? 2 : 1.50 }
-      ]
-    }
-  ];
-
-  // Helper function to get dynamic checkpoints based on placementApplicable
-  const getCheckpointsByArea = (placementApplicable) => {
-    const isNA = placementApplicable === 'no';
+  // ✅ DYNAMIC AUDIT AREAS - Based on centerType and placementApplicable
+  const auditAreas = useMemo(() => {
+    console.log('🔄 Recalculating auditAreas...');
+    console.log('   centerType:', selectedCenter?.centerType);
+    console.log('   placementApplicable:', placementApplicable);
     
-    return {
-      frontOffice: {
-        areaName: 'Front Office',
-        totalScore: isNA ? 35 : 30,
-        checkpoints: [
-          { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isNA ? 10.5 : 9 },
-          { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isNA ? 7 : 6 },
-          { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-          { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isNA ? 14 : 12 },
-          { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isNA ? 3.5 : 3 }
-        ]
+    const config = getCheckpointsByArea(
+      selectedCenter?.centerType || 'CDC',
+      placementApplicable || 'yes'
+    );
+    
+    console.log('✅ Config loaded:', {
+      frontOffice: config.frontOffice.checkpoints.length,
+      delivery: config.deliveryProcess.checkpoints.length,
+      placement: config.placementProcess.checkpoints.length,
+      management: config.managementProcess.checkpoints.length
+    });
+    
+    return [
+      {
+        areaNumber: 1,
+        areaName: config.frontOffice.areaName,
+        totalScore: config.frontOffice.totalScore,
+        checkpoints: config.frontOffice.checkpoints.map(cp => ({
+          id: cp.id,
+          checkPoint: cp.name,
+          weightage: cp.weightage,
+          maxScore: cp.maxScore
+        }))
       },
-      deliveryProcess: {
-        areaName: 'Delivery Process',
-        totalScore: isNA ? 45 : 40,
-        checkpoints: [
-          { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-          { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-          { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-          { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: isNA ? 4.5 : 4 }
-        ]
+      {
+        areaNumber: 2,
+        areaName: config.deliveryProcess.areaName,
+        totalScore: config.deliveryProcess.totalScore,
+        checkpoints: config.deliveryProcess.checkpoints.map(cp => ({
+          id: cp.id,
+          checkPoint: cp.name,
+          weightage: cp.weightage,
+          maxScore: cp.maxScore
+        }))
       },
-      placementProcess: {
-        areaName: 'Placement Process',
-        totalScore: isNA ? 0 : 15,
-        isNA: isNA,
-        checkpoints: isNA ? [] : [
-          { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-          { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
-          { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-          { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-        ]
+      {
+        areaNumber: 3,
+        areaName: config.placementProcess.areaName,
+        totalScore: config.placementProcess.totalScore,
+        isNA: config.placementProcess.isNA,
+        checkpoints: config.placementProcess.checkpoints.map(cp => ({
+          id: cp.id,
+          checkPoint: cp.name,
+          weightage: cp.weightage,
+          maxScore: cp.maxScore
+        }))
       },
-      managementProcess: {
-        areaName: 'Management Process',
-        totalScore: isNA ? 20 : 15,
-        checkpoints: [
-          { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isNA ? 1 : 0.75 },
-          { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: isNA ? 4 : 3.00 },
-          { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: isNA ? 7 : 5.25 },
-          { id: 'MP4', name: 'Physcial asset verification', weightage: 30, maxScore: isNA ? 6 : 4.50 },
-          { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: isNA ? 2 : 1.50 }
-        ]
+      {
+        areaNumber: 4,
+        areaName: config.managementProcess.areaName,
+        totalScore: config.managementProcess.totalScore,
+        checkpoints: config.managementProcess.checkpoints.map(cp => ({
+          id: cp.id,
+          checkPoint: cp.name,
+          weightage: cp.weightage,
+          maxScore: cp.maxScore
+        }))
       }
-    };
-  };
+    ];
+  }, [selectedCenter?.centerType, placementApplicable]);
 
   const [auditData, setAuditData] = useState({});
 
@@ -286,7 +237,7 @@ const AuditManagement = () => {
           samplesCompliant: '',
           compliantPercent: 0,
           score: 0,
-          remarks: '' // Add remarks field
+          remarks: ''
         };
       });
     });
@@ -297,10 +248,10 @@ const AuditManagement = () => {
     setActiveOption(option);
     setSelectedCenter(null);
     setShowAuditTable(false);
-    setEditableRemarks({}); // Clear remarks when switching tabs
+    setEditableRemarks({});
     setPlacementApplicable(null);
     setSelectedFinancialYear('');
-    setSearchQuery(''); // Reset placement selection
+    setSearchQuery('');
     
     if (option === 'create') {
       loadCenters();
@@ -310,19 +261,14 @@ const AuditManagement = () => {
   };
 
   const handleCenterSelect = async (center) => {
-  // ✅ ADD THIS DEBUG
-  console.log('\n🔍 ========== CENTER DATA DEBUG ==========');
-  console.log('Center received:', center);
-  console.log('centerCode:', center?.centerCode);
-  console.log('centerName:', center?.centerName);
-  console.log('chName:', center?.chName);
-  console.log('Type of centerCode:', typeof center?.centerCode);
-  console.log('Length:', center?.centerCode?.length);
-  console.log('Has extra spaces?', center?.centerCode !== center?.centerCode?.trim());
-  console.log('========================================\n');
-  
-  // Check if report already exists
-  let existingReport = null;
+    console.log('\n🔍 ========== CENTER DATA DEBUG ==========');
+    console.log('Center received:', center);
+    console.log('centerCode:', center?.centerCode);
+    console.log('centerName:', center?.centerName);
+    console.log('========================================\n');
+    
+    // Check if report already exists
+    let existingReport = null;
     
     console.log('\n🔍 ========== DUPLICATE CHECK ==========');
     console.log('Selected Center:', center.centerCode, '-', center.centerName);
@@ -335,15 +281,12 @@ const AuditManagement = () => {
         
         console.log('\nTotal reports in DB:', reports.length);
         
-        // Show all reports for this center
         const centerReports = reports.filter(r => r.centerCode === center.centerCode);
         console.log(`\nReports for ${center.centerCode}:`);
         centerReports.forEach(r => {
           console.log(`  - FY: ${r.financialYear || 'UNDEFINED!'}, Status: ${r.currentStatus}`);
         });
         
-        // Check for duplicate: Same center + Same FY
-        // Check for duplicate: Same center + Same FY (with TRIM for accuracy)
         const found = reports.find(r => {
           const dbCode = (r.centerCode || '').trim();
           const selectedCode = (center.centerCode || '').trim();
@@ -370,7 +313,6 @@ const AuditManagement = () => {
       console.error('❌ Error checking existing audit:', err);
     }
 
-    // If report exists, ask user
     if (existingReport) {
       console.log('📢 Showing EDIT dialog...');
       const choice = window.confirm(
@@ -381,48 +323,42 @@ const AuditManagement = () => {
       );
       
       if (!choice) {
-        // User clicked Cancel - reset and go back
         setSelectedCenter(null);
         setSelectedFinancialYear('');
         setShowAuditTable(false);
         return;
       }
       
-      // User clicked OK - edit existing
       try {
-          // Reconstruct auditData from checkpoint fields
-          const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5'];
-          const reconstructedData = {};
-          const centerHeadRemarks = {};
-          
-          checkpointIds.forEach(id => {
-            if (existingReport[id]) {
-              reconstructedData[id] = existingReport[id];
-              // Extract center head remarks
-              if (existingReport[id].centerHeadRemarks) {
-                centerHeadRemarks[id] = existingReport[id].centerHeadRemarks;
-              }
+        const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5'];
+        const reconstructedData = {};
+        const centerHeadRemarks = {};
+        
+        checkpointIds.forEach(id => {
+          if (existingReport[id]) {
+            reconstructedData[id] = existingReport[id];
+            if (existingReport[id].centerHeadRemarks) {
+              centerHeadRemarks[id] = existingReport[id].centerHeadRemarks;
             }
-          });
-          
-          reconstructedData._placementApplicable = existingReport.placementApplicable;
-          setAuditData(reconstructedData);
-          
-          // Set center head remarks data
-          setCenterHeadRemarksData(centerHeadRemarks);
-          setIsEditingExisting(true);
-          
-          if (existingReport.placementApplicable) {
-            setPlacementApplicable(existingReport.placementApplicable);
           }
-        } catch (e) {
-          console.error('Error loading saved audit data:', e);
-          initializeAuditData();
-          setIsEditingExisting(false);
-          setCenterHeadRemarksData({});
+        });
+        
+        reconstructedData._placementApplicable = existingReport.placementApplicable;
+        setAuditData(reconstructedData);
+        
+        setCenterHeadRemarksData(centerHeadRemarks);
+        setIsEditingExisting(true);
+        
+        if (existingReport.placementApplicable) {
+          setPlacementApplicable(existingReport.placementApplicable);
         }
+      } catch (e) {
+        console.error('Error loading saved audit data:', e);
+        initializeAuditData();
+        setIsEditingExisting(false);
+        setCenterHeadRemarksData({});
+      }
     } else {
-      // No existing report, create new
       initializeAuditData();
       setIsEditingExisting(false);
       setCenterHeadRemarksData({});
@@ -447,25 +383,30 @@ const AuditManagement = () => {
     
     if (!checkpoint) return 0;
     
-    // SLAB-BASED SCORING SYSTEM
-    // >= 90% → 100% of Max Score
-    // >= 70% → 75% of Max Score
-    // >= 60% → 50% of Max Score
-    // >= 50% → 25% of Max Score
-    // < 50%  → 0
+    // 🚨 BINARY CHECKPOINTS: Must be 100% compliant, else ZERO
+    // Only DP1, DP3, DP7 (NOT DP2!)
+    const binaryCheckpoints = ['DP1', 'DP3', 'DP7'];
+    if (binaryCheckpoints.includes(cpId)) {
+      // If not 100% compliant, return ZERO
+      if (percent < 100) {
+        return 0;
+      }
+      // If 100% compliant, calculate normally
+    }
     
+    // NORMAL SLAB-BASED SCORING
     let scoreMultiplier = 0;
     
     if (percent >= 90) {
-      scoreMultiplier = 1.00;    // 100%
+      scoreMultiplier = 1.00;
     } else if (percent >= 70) {
-      scoreMultiplier = 0.75;    // 75%
+      scoreMultiplier = 0.75;
     } else if (percent >= 60) {
-      scoreMultiplier = 0.50;    // 50%
+      scoreMultiplier = 0.50;
     } else if (percent >= 50) {
-      scoreMultiplier = 0.25;    // 25%
+      scoreMultiplier = 0.25;
     } else {
-      scoreMultiplier = 0;       // 0%
+      scoreMultiplier = 0;
     }
     
     const score = checkpoint.maxScore * scoreMultiplier;
@@ -482,10 +423,59 @@ const AuditManagement = () => {
       
       if (total > 0) {
         newData.compliantPercent = parseFloat(((compliant / total) * 100).toFixed(2));
-        newData.score = calculateScore(cpId, total, compliant);
+        
+        // 🔗 LINKAGE: Force DP3 and DP7 score to ZERO if DP1 score is ZERO
+        // DP2 is NOT linked!
+        if ((cpId === 'DP3' || cpId === 'DP7')) {
+          const dp1Score = auditData.DP1?.score || 0;
+          if (dp1Score === 0) {
+            console.log(`🚨 DP1 is ZERO! Forcing ${cpId} score to ZERO despite input...`);
+            newData.score = 0; // Force ZERO
+          } else {
+            newData.score = calculateScore(cpId, total, compliant);
+          }
+        } else {
+          newData.score = calculateScore(cpId, total, compliant);
+        }
       } else {
         newData.compliantPercent = 0;
         newData.score = 0;
+      }
+      
+      // 🔗 When DP1 changes, recalculate DP3 and DP7 (NOT DP2!)
+      if (cpId === 'DP1') {
+        const dp1Score = newData.score;
+        
+        setAuditData(prev => {
+          const updated = { ...prev, [cpId]: newData };
+          
+          // Recalculate DP3 score
+          if (prev.DP3) {
+            const dp3Total = parseFloat(prev.DP3.totalSamples) || 0;
+            const dp3Compliant = parseFloat(prev.DP3.samplesCompliant) || 0;
+            if (dp3Total > 0) {
+              updated.DP3 = {
+                ...prev.DP3,
+                score: dp1Score === 0 ? 0 : calculateScore('DP3', dp3Total, dp3Compliant)
+              };
+            }
+          }
+          
+          // Recalculate DP7 score
+          if (prev.DP7) {
+            const dp7Total = parseFloat(prev.DP7.totalSamples) || 0;
+            const dp7Compliant = parseFloat(prev.DP7.samplesCompliant) || 0;
+            if (dp7Total > 0) {
+              updated.DP7 = {
+                ...prev.DP7,
+                score: dp1Score === 0 ? 0 : calculateScore('DP7', dp7Total, dp7Compliant)
+              };
+            }
+          }
+          
+          return updated;
+        });
+        return;
       }
     }
 
@@ -523,11 +513,11 @@ const AuditManagement = () => {
       
       console.log('💾 Saving report - placementApplicable state:', placementApplicable);
 
-      // Prepare report data for MongoDB
       const reportData = {
         centerCode: selectedCenter.centerCode,
         centerName: selectedCenter.centerName,
-      financialYear: selectedFinancialYear,
+        auditType: auditType,
+        financialYear: selectedFinancialYear,
         chName: selectedCenter.chName || '',
         geolocation: selectedCenter.geolocation || '',
         centerHeadName: selectedCenter.centerHeadName || '',
@@ -539,9 +529,7 @@ const AuditManagement = () => {
         grandTotal: grandTotal,
         auditDate: new Date().toLocaleDateString('en-GB'),
         placementApplicable: placementApplicable === 'no' ? 'no' : 'yes',
-        // Include all checkpoint data
         ...auditData,
-        // Reset status
         submissionStatus: 'Not Submitted',
         currentStatus: 'Not Submitted',
         approvedBy: '',
@@ -575,24 +563,20 @@ const AuditManagement = () => {
     }
   };
 
-  // Save remarks - FIXED VERSION - Actually saves to backend!
   const handleSaveRemarks = async (centerCode, showAlert = false) => {
     try {
       setLoading(true);
       
-      // Find the report by centerCode
       const report = savedReports.find(r => r.centerCode === centerCode);
       if (!report || !report._id) {
         console.error('❌ Report not found for centerCode:', centerCode);
         return;
       }
       
-      // Get the remarks text from state
       const remarksText = editableRemarks[centerCode] || '';
       
       console.log(`💾 Saving remarks for ${centerCode}: "${remarksText}"`);
       
-      // Save to backend via API
       const response = await fetch(`${API_URL}/api/audit-reports/${report._id}/remarks`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -604,7 +588,6 @@ const AuditManagement = () => {
         if (showAlert) {
           alert('✅ Remarks saved successfully!');
         }
-        // Reload reports to get updated data
         await loadSavedReports();
       } else {
         const error = await response.json();
@@ -620,13 +603,11 @@ const AuditManagement = () => {
     }
   };
 
-  // Submit report for approval
   const handleSubmitReport = async (centerCode) => {
     if (window.confirm('📤 Submit this report for supervisor approval?')) {
       try {
         setLoading(true);
 
-        // Find report by centerCode and submit
         const report = savedReports.find(r => r.centerCode === centerCode);
         if (report && report._id) {
           const response = await fetch(`${API_URL}/api/audit-reports/${report._id}/submit`, {
@@ -651,10 +632,8 @@ const AuditManagement = () => {
     }
   };
 
-  // View remarks
   const handleViewRemarks = (report) => {
     try {
-      // For MongoDB, checkpoint data is directly in report object
       const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5'];
       const data = {};
       checkpointIds.forEach(id => {
@@ -670,11 +649,9 @@ const AuditManagement = () => {
   };
 
   const handleDownloadExcel = async () => {
-    // Download functionality - can be implemented later
     alert('📥 Download feature coming soon!');
   };
 
-  // Open email form for sending report
   const handleOpenEmailForm = (report) => {
     setSelectedReportForEmail(report);
     setEmailData({
@@ -686,7 +663,10 @@ const AuditManagement = () => {
 Please find the audit report details below:
 
 Center Name: ${report.centerName}
-CH Name: ${report.chName || 'N/A'}
+Center Code: ${report.centerCode}
+Project Name: ${report.projectName || 'N/A'}
+Center Type: ${report.centerType || 'N/A'}
+Location: ${report.location || report.geolocation || 'N/A'}
 Audit Date: ${report.auditDate}
 
 Scores:
@@ -706,28 +686,24 @@ ${loggedUser.firstname || 'Audit Team'}`
     setShowEmailForm(true);
   };
 
-  // Close email form
   const handleCloseEmailForm = () => {
     setShowEmailForm(false);
     setSelectedReportForEmail(null);
     setEmailData({ to: '', cc: '', subject: '', message: '' });
   };
 
-  // Send email
   const handleSendEmail = async () => {
     if (!emailData.to) {
       alert('⚠️ Please enter recipient email address!');
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailData.to)) {
       alert('⚠️ Please enter a valid email address!');
       return;
     }
 
-    // Validate CC if provided
     if (emailData.cc && !emailRegex.test(emailData.cc)) {
       alert('⚠️ Please enter a valid CC email address!');
       return;
@@ -736,13 +712,11 @@ ${loggedUser.firstname || 'Audit Team'}`
     try {
       setSendingEmail(true);
       
-      // Combine CC: user entered CC + audit user's email
       let finalCC = emailData.cc || '';
       if (loggedUser.email) {
         finalCC = finalCC ? `${finalCC}, ${loggedUser.email}` : loggedUser.email;
       }
       
-      // Send email via backend API with timeout
       const response = await axios.post(`${API_URL}/api/send-audit-email`, {
         to: emailData.to,
         cc: finalCC || undefined,
@@ -750,13 +724,12 @@ ${loggedUser.firstname || 'Audit Team'}`
         message: emailData.message,
         reportData: selectedReportForEmail
       }, {
-        timeout: 60000 // 60 second timeout (PDF generation takes time)
+        timeout: 60000
       });
 
       if (response.data.success) {
         alert('✅ Email sent successfully with PDF attachment!');
         handleCloseEmailForm();
-        // Refresh reports to update emailSent status
         loadSavedReports();
       } else {
         alert('❌ Failed to send email: ' + (response.data.error || 'Unknown error'));
@@ -764,14 +737,11 @@ ${loggedUser.firstname || 'Audit Team'}`
     } catch (err) {
       console.error('❌ Error sending email:', err);
       
-      // Show specific error message based on error type
       if (err.code === 'ECONNABORTED') {
         alert('❌ Request timed out! PDF generation might be slow. Please try again.');
       } else if (err.response) {
-        // Server responded with error
         alert('❌ Failed to send email: ' + (err.response.data?.error || err.response.statusText || 'Server error'));
       } else if (err.request) {
-        // Request made but no response
         alert('❌ No response from server! Check if backend is running.');
       } else {
         alert('❌ Error: ' + err.message);
@@ -786,6 +756,66 @@ ${loggedUser.firstname || 'Audit Team'}`
       loadSavedReports();
     }
   }, [activeOption]);
+
+  // ========================================
+  // 🔥 NEW RED FLAG STATUS LOGIC
+  // ========================================
+  
+  const getGrandTotalColor = (report) => {
+    const status = getAuditStatus(report);
+    if (status === 'Compliant') return '#28a745';
+    if (status === 'Amber') return '#ffc107';
+    return '#dc3545';
+  };
+
+  const getAuditStatus = (report) => {
+    // Calculate max scores based on placementApplicable
+    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+    const ppMax = 15;
+    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
+    
+    // Calculate percentage for each area
+    const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+    const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+    const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
+    const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+    
+    // Categorize areas (skip placement if NA)
+    const areas = [
+      { name: 'FO', percent: foPercent },
+      { name: 'DP', percent: dpPercent },
+      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+      { name: 'MP', percent: mpPercent }
+    ].filter(Boolean);
+    
+    const red = areas.filter(a => a.percent < 65).length;
+    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+    const green = areas.filter(a => a.percent >= 80).length;
+    
+    // 🚨 RED FLAG RULES (UPDATED):
+    if (red > 0) return 'Non-Compliant';           // RULE 1: Any red = fail
+    if (amber >= 3) return 'Non-Compliant';        // RULE 2: 3+ amber = fail
+    if (amber === 2) return 'Amber';               // RULE 3: Exactly 2 amber = amber
+    if (green === areas.length) return 'Compliant'; // RULE 4: All green = pass
+    if (amber === 1) return 'Compliant';           // RULE 5: 1 amber acceptable
+    return 'Amber';                                 // Fallback
+  };
+
+  // Helper function to get area score status and color
+  const getAreaScoreInfo = (score, maxScore) => {
+    if (score === 'NA') return { status: 'NA', color: '#999' };
+    const numScore = parseFloat(score || 0);
+    const percent = (numScore / maxScore) * 100;
+    
+    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+    return { status: 'Non-Compliant', color: '#dc3545' };
+  };
+
+  // ========================================
+  // END RED FLAG STATUS LOGIC
+  // ========================================
 
   return (
     <div className="management-section">
@@ -905,11 +935,19 @@ ${loggedUser.firstname || 'Audit Team'}`
               value={selectedCenter?.centerCode || ''}
               onChange={(e) => {
                 const center = centers.find(c => c.centerCode === e.target.value);
+                console.log('🏢 Center Selected:', center);
+                console.log('📋 Center Type:', center?.centerType);
                 setSelectedCenter(center);
                 setShowAuditTable(false);
-                setEditableRemarks({}); // Clear remarks when changing center
-                setPlacementApplicable(null); // Reset placement selection
+                setEditableRemarks({});
+                setPlacementApplicable(null);
+                setSelectedFinancialYear('');
                 if (center) {
+                  const centerType = center.centerType || 'CDC';
+                  console.log('✅ Detected Center Type:', centerType);
+                  const autoAuditType = centerType === 'DTV' ? 'DTV' : `Skills-${centerType}`;
+                  console.log('✅ Auto Audit Type:', autoAuditType);
+                  setAuditType(autoAuditType);
                   initializeAuditData();
                 }
               }}
@@ -935,14 +973,65 @@ ${loggedUser.firstname || 'Audit Team'}`
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px' }}>
                 <div><strong>Center Code:</strong> {selectedCenter.centerCode}</div>
                 <div><strong>Center Name:</strong> {selectedCenter.centerName}</div>
-                <div><strong>CH Name:</strong> {selectedCenter.chName || '-'}</div>
-                <div><strong>Geolocation:</strong> {selectedCenter.geolocation || '-'}</div>
+                <div><strong>Project Name:</strong> {selectedCenter.projectName || '-'}</div>
+                <div><strong>ZM Name:</strong> {selectedCenter.zmName || '-'}</div>
+                <div><strong>Region Head:</strong> {selectedCenter.regionHeadName || '-'}</div>
+                <div><strong>Area/Cluster Manager:</strong> {selectedCenter.areaClusterManager || '-'}</div>
                 <div><strong>Center Head:</strong> {selectedCenter.centerHeadName || '-'}</div>
+                <div><strong>Center Type:</strong> <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  background: selectedCenter.centerType === 'CDC' ? '#e3f2fd' : selectedCenter.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                  color: selectedCenter.centerType === 'CDC' ? '#1976d2' : selectedCenter.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                }}>{selectedCenter.centerType || 'CDC'}</span></div>
+                <div><strong>Location:</strong> {selectedCenter.location || selectedCenter.geolocation || '-'}</div>
                 <div><strong>Zonal Head:</strong> {selectedCenter.zonalHeadName || '-'}</div>
+                <div><strong>Audited By:</strong> {selectedCenter.auditedBy || '-'}</div>
+                <div><strong>Audit Period:</strong> {selectedCenter.auditPeriod || '-'}</div>
               </div>
 
+              {selectedCenter && (() => {
+                const centerType = selectedCenter.centerType || 'CDC';
+                const autoAuditType = centerType === 'DTV' ? 'DTV' : `Skills-${centerType}`;
+                if (auditType !== autoAuditType) {
+                  setAuditType(autoAuditType);
+                }
+                return null;
+              })()}
 
-              {/* FINANCIAL YEAR SELECTION */}
+              {selectedCenter && !selectedFinancialYear && (
+                <div style={{
+                  background: selectedCenter.centerType === 'DTV' 
+                    ? 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)'
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  padding: '15px 20px',
+                  borderRadius: '10px',
+                  marginTop: '20px',
+                  marginBottom: '20px',
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.15)'
+                }}>
+                  <p style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
+                    {selectedCenter.centerType === 'DTV' ? '🚀' : '🎯'} Audit Type: <span style={{ 
+                      background: 'rgba(255,255,255,0.3)',
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      marginLeft: '10px'
+                    }}>
+                      {selectedCenter.centerType === 'DTV' ? 'DTV Audit' : `Skills Audit - ${selectedCenter.centerType || 'CDC'}`}
+                    </span>
+                  </p>
+                  <p style={{ margin: '5px 0 0', fontSize: '13px', opacity: 0.9 }}>
+                    {selectedCenter.centerType === 'DTV' 
+                      ? 'Using DTV checklist (different from Skills)'
+                      : `Using Skills checklist for ${selectedCenter.centerType || 'CDC'} centers`
+                    }
+                  </p>
+                </div>
+              )}
+
               {selectedCenter && (
                 <div style={{ marginTop: '20px', marginBottom: '25px' }}>
                   <label style={{ 
@@ -989,7 +1078,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 </div>
               )}
 
-              {/* NEW: Placement Applicable Selection */}
               <div style={{ 
                 marginTop: '20px', 
                 padding: '20px', 
@@ -1058,31 +1146,30 @@ ${loggedUser.firstname || 'Audit Team'}`
                 )}
               </div>
 
-              {/* Start Audit button - only show when placement is selected */}
               {placementApplicable && (
                 <button 
-  className="btn primary" 
- onClick={() => {
-  console.log('\n🔵 ========== START AUDIT BUTTON CLICKED ==========');
-  console.log('🔵 Button clicked!');
-  console.log('🔵 selectedFinancialYear:', selectedFinancialYear);
-  console.log('🔵 selectedCenter:', selectedCenter);
-  console.log('🔵 ================================================\n');
-  
-  if (!selectedFinancialYear) {
-    console.error('❌ BLOCKED: FY is empty!');
-    alert('⚠️ Please select a Financial Year first!');
-    return;
-  }
-  
-  console.log('✅ FY check passed, calling handleCenterSelect...');
-  handleCenterSelect(selectedCenter);
-  console.log('✅ handleCenterSelect called!');
-}}
-  style={{ marginTop: '20px' }}
->
-  🚀 Start Audit
-</button>
+                  className="btn primary" 
+                  onClick={() => {
+                    console.log('\n🔵 ========== START AUDIT BUTTON CLICKED ==========');
+                    console.log('🔵 Button clicked!');
+                    console.log('🔵 selectedFinancialYear:', selectedFinancialYear);
+                    console.log('🔵 selectedCenter:', selectedCenter);
+                    console.log('🔵 ================================================\n');
+                    
+                    if (!selectedFinancialYear) {
+                      console.error('❌ BLOCKED: FY is empty!');
+                      alert('⚠️ Please select a Financial Year first!');
+                      return;
+                    }
+                    
+                    console.log('✅ FY check passed, calling handleCenterSelect...');
+                    handleCenterSelect(selectedCenter);
+                    console.log('✅ handleCenterSelect called!');
+                  }}
+                  style={{ marginTop: '20px' }}
+                >
+                  🚀 Start Audit
+                </button>
               )}
             </div>
           )}
@@ -1110,7 +1197,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                   <tbody>
                     {auditAreas.map((area, areaIdx) => (
                       <React.Fragment key={areaIdx}>
-                        {/* Area Header - Grey for NA */}
                         <tr style={{ 
                           background: area.isNA 
                             ? 'linear-gradient(135deg, #9e9e9e 0%, #757575 100%)' 
@@ -1126,7 +1212,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                           </td>
                         </tr>
                         
-                        {/* Checkpoint Rows */}
                         {area.checkpoints.map((cp, cpIdx) => (
                           <tr key={cp.id} style={{ 
                             background: area.isNA ? '#f5f5f5' : 'inherit',
@@ -1243,7 +1328,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                           </tr>
                         ))}
                         
-                        {/* Area Total Row */}
                         <tr style={{ background: area.isNA ? '#e0e0e0' : '#e8f5e9', fontWeight: 'bold' }}>
                           <td colSpan="7" style={{ textAlign: 'right', paddingRight: '20px' }}>
                             {area.areaName} - Total Score:
@@ -1287,14 +1371,13 @@ ${loggedUser.firstname || 'Audit Team'}`
         </div>
       )}
 
-      {/* VIEW REPORTS */}
+      {/* VIEW REPORTS - COMPLETE TABLE WITH RED FLAG STATUS */}
       {activeOption === 'view' && (
         <div className="view-user">
           <div className="table-header">
             <h3>📊 All Audit Reports ({savedReports.length})</h3>
           </div>
 
-          {/* SEARCH BAR */}
           <div style={{ 
             marginBottom: '20px',
             padding: '20px',
@@ -1400,9 +1483,11 @@ ${loggedUser.firstname || 'Audit Team'}`
               <table>
                 <thead>
                   <tr>
-                    <th>CENTER<br/>NAME</th>
-    <th>CENTER<br/>CODE</th>
-    <th>CH<br/>NAME</th>
+                    <th style={{ position: 'sticky', left: 0, zIndex: 3, background: '#f5f5f5', minWidth: '150px' }}>CENTER<br/>NAME</th>
+                    <th style={{ position: 'sticky', left: '150px', zIndex: 3, background: '#f5f5f5', minWidth: '120px' }}>CENTER<br/>CODE</th>
+                    <th>PROJECT<br/>NAME</th>
+                    <th>CENTER<br/>TYPE</th>
+                    <th>CENTER<br/>HEAD NAME</th>
                     <th>FINANCIAL<br/>YEAR</th>
                     <th>AUDIT<br/>DATE</th>
                     <th>FRONT<br/>OFFICE</th>
@@ -1434,54 +1519,53 @@ ${loggedUser.firstname || 'Audit Team'}`
                       );
                     })
                     .map((report, index) => {
-                    const getGrandTotalColor = (score) => {
-                      if (score >= 80) return '#28a745';
-                      if (score >= 65) return '#ffc107';
-                      return '#dc3545';
-                    };
-
-                    const getAuditStatus = (score) => {
-                      if (score >= 80) return 'Compliant';
-                      if (score >= 65) return 'Amber';
-                      return 'Non-Compliant';
-                    };
-
                     const canSubmit = report.currentStatus === 'Not Submitted' || 
                                       report.currentStatus.startsWith('Rejected');
                     const isRejected = report.currentStatus.startsWith('Rejected');
                     const isApprovedOrPending = report.currentStatus === 'Pending with Supervisor' || 
                                                 report.currentStatus === 'Approved';
 
-                    // Helper function to get area score status and color
-                    const getAreaScoreInfo = (score, maxScore) => {
-                      if (score === 'NA') return { status: 'NA', color: '#999' };
-                      const numScore = parseFloat(score || 0);
-                      const percent = (numScore / maxScore) * 100;
-                      
-                      if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
-                      if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
-                      return { status: 'Non-Compliant', color: '#dc3545' };
-                    };
+                    // Get info for each area (dynamic max scores)
+                    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+                    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+                    const ppMax = 15;
+                    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
 
-                    // Get info for each area (using original max scores: 30, 40, 15, 15)
-                    const frontOfficeInfo = getAreaScoreInfo(report.frontOfficeScore, 30);
-                    const deliveryInfo = getAreaScoreInfo(report.deliveryProcessScore, 40);
-                    const placementInfo = getAreaScoreInfo(report.placementScore, 15);
-                    const managementInfo = getAreaScoreInfo(report.managementScore, 15);
+                    const frontOfficeInfo = getAreaScoreInfo(report.frontOfficeScore, foMax);
+                    const deliveryInfo = getAreaScoreInfo(report.deliveryProcessScore, dpMax);
+                    const placementInfo = getAreaScoreInfo(report.placementScore, ppMax);
+                    const managementInfo = getAreaScoreInfo(report.managementScore, mpMax);
 
                     return (
                       <tr key={index}>
-                        <td>{report.centerName}</td>
+                        <td style={{ position: 'sticky', left: 0, zIndex: 2, background: 'white', minWidth: '150px' }}>{report.centerName}</td>
                         <td style={{ 
-  textAlign: 'center',
-  fontWeight: 'bold', 
-  fontSize: '14px',
-  color: '#2196f3',
-  background: '#e3f2fd'
-}}>
-  {report.centerCode}
-</td>
-                        <td>{report.chName || '-'}</td>
+                          position: 'sticky',
+                          left: '150px',
+                          zIndex: 2,
+                          textAlign: 'center',
+                          fontWeight: 'bold', 
+                          fontSize: '14px',
+                          color: '#2196f3',
+                          background: '#e3f2fd',
+                          minWidth: '120px'
+                        }}>
+                          {report.centerCode}
+                        </td>
+                        <td>{report.projectName || '-'}</td>
+                        <td>
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            background: report.centerType === 'CDC' ? '#e3f2fd' : report.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                            color: report.centerType === 'CDC' ? '#1976d2' : report.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                          }}>
+                            {report.centerType || 'CDC'}
+                          </span>
+                        </td>
+                        <td>{report.centerHeadName || '-'}</td>
                         <td style={{ textAlign: "center", fontWeight: "bold", fontSize: "14px", color: "#667eea" }}>{report.financialYear || "FY26"}</td>
                         <td>{report.auditDate}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', color: frontOfficeInfo.color }}>
@@ -1522,17 +1606,17 @@ ${loggedUser.firstname || 'Audit Team'}`
                           textAlign: 'center', 
                           fontWeight: 'bold', 
                           fontSize: '17px',
-                          color: getGrandTotalColor(report.grandTotal)
+                          color: getGrandTotalColor(report)
                         }}>
                           {parseFloat(report.grandTotal || 0).toFixed(2)}
                         </td>
                         <td style={{ 
                           textAlign: 'center', 
                           fontWeight: 'bold',
-                          color: getGrandTotalColor(report.grandTotal),
+                          color: getGrandTotalColor(report),
                           fontSize: '13px'
                         }}>
-                          {getAuditStatus(report.grandTotal)}
+                          {getAuditStatus(report)}
                         </td>
                         <td>
                           <textarea
@@ -1544,12 +1628,11 @@ ${loggedUser.firstname || 'Audit Team'}`
                               }));
                             }}
                             onBlur={() => {
-                              // Auto-save on blur (when user clicks outside)
                               if (editableRemarks[report.centerCode] !== report.remarksText) {
                                 handleSaveRemarks(report.centerCode);
                               }
                             }}
-                            disabled={!canSubmit} // Disable if submitted/approved/pending
+                            disabled={!canSubmit}
                             style={{
                               width: '100%',
                               minHeight: '60px',
@@ -1653,7 +1736,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                         <td style={{ textAlign: 'center', padding: '10px' }}>
                           {report.currentStatus === 'Approved' ? (
                             report.emailSent ? (
-                              // Email already sent - show "Sent" with option to resend
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
                                 <span style={{
                                   background: '#e8f5e9',
@@ -1685,7 +1767,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                                 </button>
                               </div>
                             ) : (
-                              // Email not sent yet - show Send button
                               <button
                                 onClick={() => handleOpenEmailForm(report)}
                                 style={{
@@ -1726,7 +1807,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                             </span>
                           )}
                         </td>
-                        {/* CENTER HEAD REMARKS - Show only if email sent AND approved */}
                         <td style={{ textAlign: 'center', padding: '8px', background: '#f1f8e9' }}>
                           {(report.emailSent === true && report.currentStatus === 'Approved') ? (
                             <button
@@ -1789,7 +1869,6 @@ ${loggedUser.firstname || 'Audit Team'}`
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
             animation: 'fadeInUp 0.3s ease'
           }}>
-            {/* Header */}
             <div style={{
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               color: 'white',
@@ -1825,7 +1904,6 @@ ${loggedUser.firstname || 'Audit Team'}`
               </button>
             </div>
 
-            {/* Report Info */}
             <div style={{
               background: '#f8f9fa',
               padding: '15px 25px',
@@ -1838,9 +1916,7 @@ ${loggedUser.firstname || 'Audit Team'}`
               </p>
             </div>
 
-            {/* Form */}
             <div style={{ padding: '25px' }}>
-              {/* To Field */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -1872,7 +1948,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 />
               </div>
 
-              {/* CC Field */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -1904,7 +1979,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 />
               </div>
 
-              {/* Subject Field */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -1933,7 +2007,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 />
               </div>
 
-              {/* Message Field */}
               <div style={{ marginBottom: '25px' }}>
                 <label style={{
                   display: 'block',
@@ -1965,7 +2038,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 />
               </div>
 
-              {/* Buttons */}
               <div style={{
                 display: 'flex',
                 gap: '12px',
@@ -2041,7 +2113,6 @@ ${loggedUser.firstname || 'Audit Team'}`
             overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            {/* Modal Header */}
             <div style={{
               background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
               padding: '20px 25px',
@@ -2079,9 +2150,61 @@ ${loggedUser.firstname || 'Audit Team'}`
               </button>
             </div>
 
-            {/* Modal Body - FULL DETAILED AUDIT TABLE */}
             <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', overflowX: 'auto' }}>
-              {/* Info Bar */}
+              
+              <div style={{
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '20px',
+                border: '2px solid #2196f3'
+              }}>
+                <h4 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '16px', fontWeight: 'bold' }}>
+                  🏢 Center Information
+                </h4>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                  gap: '12px',
+                  fontSize: '13px'
+                }}>
+                  <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReportForRemarks.centerCode}</span></div>
+                  <div><strong>Center Name:</strong> {selectedReportForRemarks.centerName}</div>
+                  <div><strong>Project Name:</strong> {selectedReportForRemarks.projectName || '-'}</div>
+                  <div><strong>ZM Name:</strong> {selectedReportForRemarks.zmName || '-'}</div>
+                  <div><strong>Region Head:</strong> {selectedReportForRemarks.regionHeadName || '-'}</div>
+                  <div><strong>Area/Cluster Mgr:</strong> {selectedReportForRemarks.areaClusterManager || '-'}</div>
+                  <div><strong>Center Head:</strong> {selectedReportForRemarks.centerHeadName || '-'}</div>
+                  <div><strong>Center Type:</strong> <span style={{
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: selectedReportForRemarks.centerType === 'CDC' ? '#e3f2fd' : selectedReportForRemarks.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                    color: selectedReportForRemarks.centerType === 'CDC' ? '#1976d2' : selectedReportForRemarks.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                  }}>{selectedReportForRemarks.centerType || 'CDC'}</span></div>
+                  <div><strong>Location:</strong> {selectedReportForRemarks.location || selectedReportForRemarks.geolocation || '-'}</div>
+                  <div><strong>Zonal Head:</strong> {selectedReportForRemarks.zonalHeadName || '-'}</div>
+                  <div><strong>Audited By:</strong> {selectedReportForRemarks.auditedBy || '-'}</div>
+                  <div><strong>Audit Period:</strong> {selectedReportForRemarks.auditPeriod || '-'}</div>
+                  <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReportForRemarks.financialYear || 'FY26'}</span></div>
+                  <div><strong>Audit Date:</strong> {selectedReportForRemarks.auditDateString || selectedReportForRemarks.auditDate || '-'}</div>
+                  <div><strong>Grand Total:</strong> <span style={{
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    color: parseFloat(selectedReportForRemarks.grandTotal) >= 80 ? '#28a745' : parseFloat(selectedReportForRemarks.grandTotal) >= 65 ? '#ffc107' : '#dc3545'
+                  }}>{parseFloat(selectedReportForRemarks.grandTotal || 0).toFixed(2)}/100</span></div>
+                  <div><strong>Status:</strong> <span style={{
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: getGrandTotalColor(selectedReportForRemarks) === '#28a745' ? '#e8f5e9' : getGrandTotalColor(selectedReportForRemarks) === '#ffc107' ? '#fff3e0' : '#ffebee',
+                    color: getGrandTotalColor(selectedReportForRemarks) === '#28a745' ? '#2e7d32' : getGrandTotalColor(selectedReportForRemarks) === '#ffc107' ? '#e65100' : '#c62828'
+                  }}>{getAuditStatus(selectedReportForRemarks)}</span></div>
+                </div>
+              </div>
+
               {selectedReportForRemarks.centerRemarksBy && (
                 <div style={{
                   background: '#e3f2fd',
@@ -2096,7 +2219,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                 </div>
               )}
 
-              {/* COMPLETE DETAILED AUDIT TABLE */}
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
@@ -2114,7 +2236,10 @@ ${loggedUser.firstname || 'Audit Team'}`
                 </thead>
                 <tbody>
                   {(() => {
-                    const areas = getCheckpointsByArea(selectedReportForRemarks.placementApplicable || 'yes');
+                    const areas = getCheckpointsByArea(
+                      selectedReportForRemarks.centerType || 'CDC',
+                      selectedReportForRemarks.placementApplicable || 'yes'
+                    );
                     const areasArray = [
                       { key: 'frontOffice', number: 1 },
                       { key: 'deliveryProcess', number: 2 },
@@ -2124,6 +2249,12 @@ ${loggedUser.firstname || 'Audit Team'}`
 
                     return areasArray.map(({ key, number }) => {
                       const area = areas[key];
+                      
+                      let areaTotal = 0;
+                      area.checkpoints.forEach(cp => {
+                        const cpData = selectedReportForRemarks[cp.id] || {};
+                        areaTotal += parseFloat(cpData.score || 0);
+                      });
                       
                       return (
                         <React.Fragment key={key}>
@@ -2151,6 +2282,17 @@ ${loggedUser.firstname || 'Audit Team'}`
                               </tr>
                             );
                           })}
+                          {!area.isNA && (
+                            <tr style={{ background: '#f0f4ff', borderTop: '3px solid #667eea', borderBottom: '3px solid #667eea' }}>
+                              <td colSpan="7" style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px', color: '#1e40af' }}>
+                                {area.areaName} Total:
+                              </td>
+                              <td style={{ padding: '12px 8px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#dc2626', background: '#fef3c7' }}>
+                                {areaTotal.toFixed(2)} / {area.totalScore}
+                              </td>
+                              <td colSpan="2" style={{ padding: '12px 8px', background: '#f0f4ff' }}></td>
+                            </tr>
+                          )}
                         </React.Fragment>
                       );
                     });
@@ -2159,7 +2301,6 @@ ${loggedUser.firstname || 'Audit Team'}`
               </table>
             </div>
 
-            {/* Modal Footer */}
             <div style={{
               padding: '15px 25px',
               borderTop: '1px solid #eee',
@@ -2189,7 +2330,6 @@ ${loggedUser.firstname || 'Audit Team'}`
         </div>
       )}
 
-
       {/* HISTORY TAB - Year Wise Reports */}
       {activeOption === 'history' && (() => {
         console.log('📜 HISTORY VIEW RENDERING');
@@ -2207,7 +2347,6 @@ ${loggedUser.firstname || 'Audit Team'}`
             📜 Audit History - Year Wise Reports
           </h3>
           
-          {/* Search bar for History */}
           <div style={{
             marginBottom: '25px',
             padding: '20px',
@@ -2275,7 +2414,6 @@ ${loggedUser.firstname || 'Audit Team'}`
             <div style={{ display: 'grid', gap: '25px' }}>
               {Object.entries(
                 savedReports
-                  // Apply search filter
                   .filter(report => {
                     if (!searchQuery) return true;
                     const search = searchQuery.toLowerCase();
@@ -2396,7 +2534,6 @@ ${loggedUser.firstname || 'Audit Team'}`
                             
                             <button 
                               onClick={() => {
-                                // Open detailed audit report modal
                                 setSelectedReportForRemarks(report);
                                 setShowCenterRemarksModal(true);
                               }}
@@ -2434,8 +2571,6 @@ ${loggedUser.firstname || 'Audit Team'}`
         </div>
         );
       })()}
-
-
 
     </div>
   );

@@ -7,10 +7,16 @@ const CenterManagement = () => {
   const [newCenter, setNewCenter] = useState({
     centerCode: '',
     centerName: '',
-    chName: '',
-    geolocation: '',
+    projectName: '',
+    zmName: '',
+    regionHeadName: '',
+    areaClusterManager: '',
     centerHeadName: '',
-    zonalHeadName: ''
+    centerType: 'CDC',
+    location: '',
+    zonalHeadName: '',
+    auditedBy: '',
+    auditPeriod: ''
   });
   const [editingId, setEditingId] = useState(null);
 
@@ -24,6 +30,8 @@ const CenterManagement = () => {
       const response = await fetch(`${API_URL}/api/centers`);
       if (response.ok) {
         const data = await response.json();
+        console.log('📋 Loaded centers:', data);
+        console.log('🎯 Center Types:', data.map(c => ({ code: c.centerCode, type: c.centerType })));
         setCenters(data);
       } else {
         alert('Failed to load centers');
@@ -57,10 +65,16 @@ const CenterManagement = () => {
         setNewCenter({
           centerCode: '',
           centerName: '',
-          chName: '',
-          geolocation: '',
+          projectName: '',
+          zmName: '',
+          regionHeadName: '',
+          areaClusterManager: '',
           centerHeadName: '',
-          zonalHeadName: ''
+          centerType: 'CDC',
+          location: '',
+          zonalHeadName: '',
+          auditedBy: '',
+          auditPeriod: ''
         });
         loadCenters();
       } else {
@@ -124,6 +138,9 @@ const CenterManagement = () => {
 
   const handleUpdate = async (center) => {
     try {
+      console.log('📝 Updating center:', center);
+      console.log('🎯 Center Type being sent:', center.centerType);
+      
       const response = await fetch(`${API_URL}/api/centers/${center._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -131,6 +148,9 @@ const CenterManagement = () => {
       });
 
       if (response.ok) {
+        const updatedData = await response.json();
+        console.log('✅ Updated center received:', updatedData);
+        console.log('✅ Center Type after update:', updatedData.centerType);
         alert('✅ Center updated successfully!');
         setEditingId(null);
         loadCenters();
@@ -158,7 +178,9 @@ const CenterManagement = () => {
         border: '2px solid #2196f3'
       }}>
         <h3 style={{marginBottom: '15px'}}>➕ Add New Center</h3>
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px'}}>
+        
+        {/* Row 1: Center Code, Center Name, Project Name */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
           <input
             type="text"
             placeholder="Center Code *"
@@ -175,18 +197,40 @@ const CenterManagement = () => {
           />
           <input
             type="text"
-            placeholder="CH Name"
-            value={newCenter.chName}
-            onChange={(e) => setNewCenter({...newCenter, chName: e.target.value})}
+            placeholder="Project Name"
+            value={newCenter.projectName}
+            onChange={(e) => setNewCenter({...newCenter, projectName: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
+          />
+        </div>
+
+        {/* Row 2: ZM Name, Region Head, Area/Cluster Manager */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
+          <input
+            type="text"
+            placeholder="ZM Name"
+            value={newCenter.zmName}
+            onChange={(e) => setNewCenter({...newCenter, zmName: e.target.value})}
             style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
           />
           <input
             type="text"
-            placeholder="Geolocation"
-            value={newCenter.geolocation}
-            onChange={(e) => setNewCenter({...newCenter, geolocation: e.target.value})}
+            placeholder="Region Head Name"
+            value={newCenter.regionHeadName}
+            onChange={(e) => setNewCenter({...newCenter, regionHeadName: e.target.value})}
             style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
           />
+          <input
+            type="text"
+            placeholder="Area/Cluster Manager"
+            value={newCenter.areaClusterManager}
+            onChange={(e) => setNewCenter({...newCenter, areaClusterManager: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
+          />
+        </div>
+
+        {/* Row 3: Center Head, Center Type, Location */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
           <input
             type="text"
             placeholder="Center Head Name"
@@ -194,6 +238,26 @@ const CenterManagement = () => {
             onChange={(e) => setNewCenter({...newCenter, centerHeadName: e.target.value})}
             style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
           />
+          <select
+            value={newCenter.centerType}
+            onChange={(e) => setNewCenter({...newCenter, centerType: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer'}}
+          >
+            <option value="CDC">CDC</option>
+            <option value="SDC">SDC</option>
+            <option value="DTV">DTV</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Location"
+            value={newCenter.location}
+            onChange={(e) => setNewCenter({...newCenter, location: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
+          />
+        </div>
+
+        {/* Row 4: Zonal Head Name, Audited By, Audit Period */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
           <input
             type="text"
             placeholder="Zonal Head Name"
@@ -201,11 +265,26 @@ const CenterManagement = () => {
             onChange={(e) => setNewCenter({...newCenter, zonalHeadName: e.target.value})}
             style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
           />
+          <input
+            type="text"
+            placeholder="Audited By"
+            value={newCenter.auditedBy}
+            onChange={(e) => setNewCenter({...newCenter, auditedBy: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
+          />
+          <input
+            type="text"
+            placeholder="Audit Period"
+            value={newCenter.auditPeriod}
+            onChange={(e) => setNewCenter({...newCenter, auditPeriod: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
+          />
         </div>
+
         <button
           onClick={handleAdd}
           style={{
-            marginTop: '15px',
+            marginTop: '5px',
             padding: '12px 30px',
             background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
             color: 'white',
@@ -233,19 +312,25 @@ const CenterManagement = () => {
             <table style={{width: '100%', borderCollapse: 'collapse'}}>
               <thead>
                 <tr style={{background: '#f5f5f5'}}>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>Code</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>Name</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CH Name</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>Geolocation</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>Center Head</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>Zonal Head</th>
-                  <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd'}}>Actions</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CODE</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>NAME</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>PROJECT</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>ZM NAME</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>REGION HEAD</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AREA/CLUSTER MGR</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER HEAD</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER TYPE</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>LOCATION</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>ZONAL HEAD</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDITED BY</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDIT PERIOD</th>
+                  <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd'}}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
                 {centers.map((center) => (
                   <tr key={center._id} style={{borderBottom: '1px solid #eee'}}>
-                    <td style={{padding: '12px'}}>{center.centerCode}</td>
+                    <td style={{padding: '12px', fontWeight: 'bold', color: '#667eea'}}>{center.centerCode}</td>
                     <td style={{padding: '12px'}}>
                       {editingId === center._id ? (
                         <input
@@ -261,10 +346,170 @@ const CenterManagement = () => {
                         />
                       ) : center.centerName}
                     </td>
-                    <td style={{padding: '12px'}}>{center.chName || '-'}</td>
-                    <td style={{padding: '12px'}}>{center.geolocation || '-'}</td>
-                    <td style={{padding: '12px'}}>{center.centerHeadName || '-'}</td>
-                    <td style={{padding: '12px'}}>{center.zonalHeadName || '-'}</td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.projectName || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, projectName: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.projectName || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.zmName || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, zmName: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.zmName || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.regionHeadName || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, regionHeadName: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.regionHeadName || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.areaClusterManager || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, areaClusterManager: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.areaClusterManager || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.centerHeadName || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, centerHeadName: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.centerHeadName || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <select
+                          value={center.centerType || 'CDC'}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, centerType: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        >
+                          <option value="CDC">CDC</option>
+                          <option value="SDC">SDC</option>
+                          <option value="DTV">DTV</option>
+                        </select>
+                      ) : (
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          background: center.centerType === 'CDC' ? '#e3f2fd' : center.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                          color: center.centerType === 'CDC' ? '#1976d2' : center.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                        }}>
+                          {center.centerType || 'CDC'}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{padding: '12px', fontSize: '12px', color: '#666'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.location || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, location: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.location || center.geolocation || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.zonalHeadName || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, zonalHeadName: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.zonalHeadName || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.auditedBy || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, auditedBy: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.auditedBy || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.auditPeriod || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c => 
+                              c._id === center._id ? {...c, auditPeriod: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.auditPeriod || '-')}
+                    </td>
                     <td style={{padding: '12px', textAlign: 'center'}}>
                       {editingId === center._id ? (
                         <>

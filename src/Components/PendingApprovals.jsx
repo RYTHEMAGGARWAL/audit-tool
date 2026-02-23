@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as ExcelJS from 'exceljs';
 import axios from 'axios';
 import { API_URL } from '../config';
+import { getCheckpointsByArea } from './checkpointConfig';
 import './Audit.css';
 
 const PendingApprovals = ({ onApprovalUpdate }) => {
@@ -12,123 +13,60 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
 
-  // Dynamic checkpoint data based on placementApplicable
-  const getCheckpointsByArea = (placementApplicable) => {
-    const isNA = placementApplicable === 'no';
+  // ========================================
+  // RED FLAG STATUS LOGIC
+  // ========================================
+  
+  const getGrandTotalColor = (report) => {
+    const status = getAuditStatus(report);
+    if (status === 'Compliant') return '#28a745';
+    if (status === 'Amber') return '#ffc107';
+    return '#dc3545';
+  };
+
+  const getAuditStatus = (report) => {
+    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+    const ppMax = 15;
+    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
     
-    return {
-      frontOffice: {
-        areaName: 'Front Office',
-        totalScore: isNA ? 35 : 30,
-        checkpoints: [
-          { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isNA ? 10.5 : 9 },
-          { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isNA ? 7 : 6 },
-          { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-          { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isNA ? 14 : 12 },
-          { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isNA ? 3.5 : 3 }
-        ]
-      },
-      deliveryProcess: {
-        areaName: 'Delivery Process',
-        totalScore: isNA ? 45 : 40,
-        checkpoints: [
-          { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-          { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-          { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-          { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: isNA ? 4.5 : 4 }
-        ]
-      },
-      placementProcess: {
-        areaName: 'Placement Process',
-        totalScore: isNA ? 0 : 15,
-        isNA: isNA,
-        checkpoints: isNA ? [] : [
-          { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-          { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
-          { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-          { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-        ]
-      },
-      managementProcess: {
-        areaName: 'Management Process',
-        totalScore: isNA ? 20 : 15,
-        checkpoints: [
-          { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isNA ? 1 : 0.75 },
-          { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: isNA ? 4 : 3.00 },
-          { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: isNA ? 7 : 5.25 },
-          { id: 'MP4', name: 'Physcial asset verification', weightage: 30, maxScore: isNA ? 6 : 4.50 },
-          { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: isNA ? 2 : 1.50 }
-        ]
-      }
-    };
+    const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+    const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+    const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
+    const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+    
+    const areas = [
+      { name: 'FO', percent: foPercent },
+      { name: 'DP', percent: dpPercent },
+      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+      { name: 'MP', percent: mpPercent }
+    ].filter(Boolean);
+    
+    const red = areas.filter(a => a.percent < 65).length;
+    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+    const green = areas.filter(a => a.percent >= 80).length;
+    
+    if (red > 0) return 'Non-Compliant';
+    if (amber >= 3) return 'Non-Compliant';
+    if (amber === 2) return 'Amber';
+    if (green === areas.length) return 'Compliant';
+    if (amber === 1) return 'Compliant';
+    return 'Amber';
   };
 
-  const getCellValue = (cell) => {
-    if (!cell || cell.value === null || cell.value === undefined) return '';
-    if (typeof cell.value === 'object') {
-      if (cell.value.text) return cell.value.text.toString().trim();
-      if (cell.value.richText) return cell.value.richText.map(rt => rt.text).join('').trim();
-      return '';
-    }
-    return cell.value.toString().trim();
+  const getAreaScoreInfo = (score, maxScore) => {
+    if (score === 'NA') return { status: 'NA', color: '#999' };
+    const numScore = parseFloat(score || 0);
+    const percent = (numScore / maxScore) * 100;
+    
+    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+    return { status: 'Non-Compliant', color: '#dc3545' };
   };
 
-  // Audit Areas Data for remarks view
-  const auditAreas = [
-    {
-      areaNumber: 1,
-      areaName: "Front Office",
-      checkpoints: [
-        { id: "FO1", checkPoint: "Enquires Entered in Pulse(Y/N)" },
-        { id: "FO2", checkPoint: "Enrolment form available in Pulse(Y/N)" },
-        { id: "FO3", checkPoint: "Pre assessment Available(Y/N)" },
-        { id: "FO4", checkPoint: "Documents uploaded in Pulse(Y/N)" },
-        { id: "FO5", checkPoint: "Availability of Marketing Material(Y/N)" }
-      ]
-    },
-    {
-      areaNumber: 2,
-      areaName: "Delivery Process",
-      checkpoints: [
-        { id: "DP1", checkPoint: "Batch file maintained for all running batches" },
-        { id: "DP2", checkPoint: "Batch Heath Card available for all batches where batch duration is >= 30 days" },
-        { id: "DP3", checkPoint: "Attendance marked in EDL sheets correctly" },
-        { id: "DP4", checkPoint: "BMS maintained with observations >= 30 days" },
-        { id: "DP5", checkPoint: "FACT Certificate available at Center (Y/N)" },
-        { id: "DP6", checkPoint: "Appraisal sheet is maintained (Y/N)" },
-        { id: "DP7", checkPoint: "Appraisal status updated in Pulse(Y/N)" },
-        { id: "DP8", checkPoint: "Certification Status of eligible students" },
-        { id: "DP9", checkPoint: "Student signature obtained while issuing certificates" },
-        { id: "DP10", checkPoint: "Verification between System issue date Vs actual certificate issue date" }
-      ]
-    },
-    {
-      areaNumber: 3,
-      areaName: "Placement Process",
-      checkpoints: [
-        { id: "PP1", checkPoint: "Placement forms available in Pulse" },
-        { id: "PP2", checkPoint: "Placement proof uploaded in Pulse" }
-      ]
-    },
-    {
-      areaNumber: 4,
-      areaName: "Management Process",
-      checkpoints: [
-        { id: "MP1", checkPoint: "Courseware issue to students done on time/Usage of LMS" },
-        { id: "MP2", checkPoint: "TIRM details register" },
-        { id: "MP3", checkPoint: "Monthly Centre Review Meeting is conducted" },
-        { id: "MP4", checkPoint: "Physcial asset verification" },
-        { id: "MP5", checkPoint: "Verification of bill authenticity" }
-      ]
-    }
-  ];
+  // ========================================
+  // END RED FLAG STATUS LOGIC
+  // ========================================
 
   // Load pending reports from MongoDB
   const loadPendingReports = async () => {
@@ -172,26 +110,56 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
   // View remarks - MongoDB version
   const handleViewRemarks = (report) => {
     try {
+      console.log('\n📋 ========== VIEW REMARKS CLICKED ==========');
+      console.log('Report data:', {
+        centerCode: report.centerCode,
+        centerName: report.centerName,
+        centerType: report.centerType,
+        grandTotal: report.grandTotal,
+        placementApplicable: report.placementApplicable
+      });
+      
       // For MongoDB, checkpoint data is directly in report object
-      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5'];
+      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
       const data = {};
       checkpointIds.forEach(id => {
         if (report[id]) {
           data[id] = report[id];
         }
       });
-      setSelectedRemarks({ 
+      
+      const remarksData = { 
+        ...report,
         centerName: report.centerName, 
         centerCode: report.centerCode,
+        centerType: report.centerType || 'CDC',
+        projectName: report.projectName || '',
+        zmName: report.zmName || '',
+        regionHeadName: report.regionHeadName || '',
+        areaClusterManager: report.areaClusterManager || '',
+        centerHeadName: report.centerHeadName || '',
+        location: report.location || '',
+        zonalHeadName: report.zonalHeadName || '',
+        auditedBy: report.auditedBy || '',
+        auditPeriod: report.auditPeriod || '',
+        financialYear: report.financialYear || 'FY26',
+        auditDate: report.auditDateString || report.auditDate || '',
+        grandTotal: report.grandTotal || '0',
         data: data,
         customRemarks: report.remarksText || '',
         overallRemarks: report.remarksText || '',
-        placementApplicable: report.placementApplicable || 'yes', // CRITICAL: Pass this!
+        placementApplicable: report.placementApplicable || 'yes',
         centerRemarksBy: report.centerRemarksBy || '',
         centerRemarksDate: report.centerRemarksDate || ''
-      });
+      };
+      
+      console.log('✅ Setting selectedRemarks');
+      console.log('========================================\n');
+      
+      setSelectedRemarks(remarksData);
       setShowRemarksModal(true);
     } catch (e) {
+      console.error('❌ Error in handleViewRemarks:', e);
       alert('❌ Unable to load remarks!');
     }
   };
@@ -202,7 +170,6 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
       try {
         setLoading(true);
         
-        // Find report ID
         const report = pendingReports.find(r => r.centerCode === centerCode);
         if (!report || !report._id) {
           throw new Error('Report not found');
@@ -219,6 +186,8 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
         if (response.ok) {
           alert('✅ Report approved successfully!');
+          setShowRemarksModal(false);
+          setSelectedRemarks(null);
           await loadPendingReports();
           if (onApprovalUpdate) onApprovalUpdate();
         } else {
@@ -242,7 +211,6 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         try {
           setLoading(true);
 
-          // Find report ID
           const report = pendingReports.find(r => r.centerCode === centerCode);
           if (!report || !report._id) {
             throw new Error('Report not found');
@@ -259,6 +227,8 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
 
           if (response.ok) {
             alert('❌ Report rejected! User will be notified.');
+            setShowRemarksModal(false);
+            setSelectedRemarks(null);
             await loadPendingReports();
             if (onApprovalUpdate) onApprovalUpdate();
           } else {
@@ -319,12 +289,14 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
               <thead>
                 <tr>
                   <th>CENTER<br/>NAME</th>
-                  <th>CH<br/>NAME</th>
+                  <th>CENTER<br/>CODE</th>
+                  <th>PROJECT<br/>NAME</th>
+                  <th>CENTER<br/>TYPE</th>
                   <th>AUDIT<br/>DATE</th>
-                  <th>FRONT<br/>OFFICE<br/>(30/35)</th>
-                  <th>DELIVERY<br/>(40/45)</th>
-                  <th>PLACEMENT<br/>(15/NA)</th>
-                  <th>MANAGEMENT<br/>(15/20)</th>
+                  <th>FRONT<br/>OFFICE</th>
+                  <th>DELIVERY</th>
+                  <th>PLACEMENT</th>
+                  <th>MANAGEMENT</th>
                   <th>GRAND<br/>TOTAL<br/>(100)</th>
                   <th>AUDIT<br/>STATUS</th>
                   <th style={{ minWidth: '200px' }}>USER<br/>REMARKS</th>
@@ -334,17 +306,16 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
               </thead>
               <tbody>
                 {pendingReports.map((report, index) => {
-                  const getGrandTotalColor = (score) => {
-                    if (score >= 80) return '#28a745';
-                    if (score >= 65) return '#ffc107';
-                    return '#dc3545';
-                  };
+                  // Calculate dynamic max scores and area info
+                  const foMax = report.placementApplicable === 'no' ? 35 : 30;
+                  const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+                  const ppMax = 15;
+                  const mpMax = report.placementApplicable === 'no' ? 20 : 15;
 
-                  const getAuditStatus = (score) => {
-                    if (score >= 80) return 'Compliant';
-                    if (score >= 65) return 'Amber';
-                    return 'Non-Compliant';
-                  };
+                  const frontOfficeInfo = getAreaScoreInfo(report.frontOfficeScore, foMax);
+                  const deliveryInfo = getAreaScoreInfo(report.deliveryProcessScore, dpMax);
+                  const placementInfo = getAreaScoreInfo(report.placementScore, ppMax);
+                  const managementInfo = getAreaScoreInfo(report.managementScore, mpMax);
 
                   return (
                     <tr key={index} style={{ 
@@ -353,35 +324,48 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                       animationFillMode: 'both'
                     }}>
                       <td style={{ fontWeight: '600' }}>{report.centerName}</td>
-                      <td>{report.chName || '-'}</td>
+                      <td style={{ fontWeight: 'bold', color: '#667eea', background: '#e3f2fd', textAlign: 'center' }}>{report.centerCode}</td>
+                      <td>{report.projectName || '-'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          background: report.centerType === 'CDC' ? '#e3f2fd' : report.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                          color: report.centerType === 'CDC' ? '#1976d2' : report.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                        }}>
+                          {report.centerType || 'CDC'}
+                        </span>
+                      </td>
                       <td>{report.auditDate}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px' }}>
-                        {report.frontOfficeScore}
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: frontOfficeInfo.color }}>
+                        {parseFloat(report.frontOfficeScore || 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px' }}>
-                        {report.deliveryProcessScore}
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: deliveryInfo.color }}>
+                        {parseFloat(report.deliveryProcessScore || 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: report.placementApplicable === 'no' ? '#999' : 'inherit' }}>
-                        {report.placementApplicable === 'no' ? 'N/A' : report.placementScore}
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: report.placementApplicable === 'no' ? '#999' : placementInfo.color }}>
+                        {report.placementApplicable === 'no' ? 'N/A' : parseFloat(report.placementScore || 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px' }}>
-                        {report.managementScore}
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: managementInfo.color }}>
+                        {parseFloat(report.managementScore || 0).toFixed(2)}
                       </td>
                       <td style={{ 
                         textAlign: 'center', 
                         fontWeight: 'bold', 
                         fontSize: '18px',
-                        color: getGrandTotalColor(report.grandTotal)
+                        color: getGrandTotalColor(report)
                       }}>
                         {report.grandTotal}
                       </td>
                       <td style={{ 
                         textAlign: 'center', 
                         fontWeight: 'bold',
-                        color: getGrandTotalColor(report.grandTotal),
+                        color: getGrandTotalColor(report),
                         fontSize: '13px'
                       }}>
-                        {getAuditStatus(report.grandTotal)}
+                        {getAuditStatus(report)}
                       </td>
                       <td style={{ 
                         textAlign: 'left', 
@@ -414,91 +398,31 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                         {report.submittedDate || '-'}
                       </td>
                       <td style={{ textAlign: 'center', padding: '10px' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => handleViewRemarks(report)}
-                            style={{
-                              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-                              color: 'white',
-                              border: 'none',
-                              padding: '8px 16px',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
-                              transition: 'all 0.3s ease'
-                            }}
-                            onMouseOver={(e) => {
-                              e.target.style.transform = 'translateY(-2px)';
-                              e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)';
-                            }}
-                            onMouseOut={(e) => {
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)';
-                            }}
-                          >
-                            📝 View Remarks
-                          </button>
-                          <button
-                            onClick={() => handleApproveReport(report.centerCode)}
-                            disabled={loading}
-                            style={{
-                              background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
-                              color: 'white',
-                              border: 'none',
-                              padding: '8px 16px',
-                              borderRadius: '8px',
-                              cursor: loading ? 'not-allowed' : 'pointer',
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)',
-                              transition: 'all 0.3s ease',
-                              opacity: loading ? 0.6 : 1
-                            }}
-                            onMouseOver={(e) => {
-                              if (!loading) {
-                                e.target.style.transform = 'translateY(-2px)';
-                                e.target.style.boxShadow = '0 6px 20px rgba(76, 175, 80, 0.4)';
-                              }
-                            }}
-                            onMouseOut={(e) => {
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.3)';
-                            }}
-                          >
-                            ✅ Approve
-                          </button>
-                          <button
-                            onClick={() => handleRejectReport(report.centerCode, report.centerName)}
-                            disabled={loading}
-                            style={{
-                              background: 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
-                              color: 'white',
-                              border: 'none',
-                              padding: '8px 16px',
-                              borderRadius: '8px',
-                              cursor: loading ? 'not-allowed' : 'pointer',
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              boxShadow: '0 4px 12px rgba(220, 53, 69, 0.3)',
-                              transition: 'all 0.3s ease',
-                              opacity: loading ? 0.6 : 1
-                            }}
-                            onMouseOver={(e) => {
-                              if (!loading) {
-                                e.target.style.transform = 'translateY(-2px)';
-                                e.target.style.boxShadow = '0 6px 20px rgba(220, 53, 69, 0.4)';
-                              }
-                            }}
-                            onMouseOut={(e) => {
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.3)';
-                            }}
-                          >
-                            ❌ Reject
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleViewRemarks(report)}
+                          style={{
+                            background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                            color: 'white',
+                            border: 'none',
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+                            transition: 'all 0.3s ease'
+                          }}
+                          onMouseOver={(e) => {
+                            e.target.style.transform = 'translateY(-2px)';
+                            e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)';
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.transform = 'translateY(0)';
+                            e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)';
+                          }}
+                        >
+                          📝 View Remarks
+                        </button>
                       </td>
                     </tr>
                   );
@@ -509,8 +433,6 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         )}
       </div>
 
-      {/* Remarks Modal */}
-      {/* CENTER HEAD REMARKS MODAL - FULL DETAILED REPORT */}
       {showRemarksModal && selectedRemarks && (
         <div style={{
           position: 'fixed',
@@ -533,7 +455,6 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
             overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            {/* Modal Header */}
             <div style={{
               background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
               padding: '20px 25px',
@@ -571,9 +492,61 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
               </button>
             </div>
 
-            {/* Modal Body - FULL DETAILED AUDIT TABLE */}
             <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', overflowX: 'auto' }}>
-              {/* Overall User Remarks */}
+              
+              <div style={{
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '20px',
+                border: '2px solid #2196f3'
+              }}>
+                <h4 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '16px', fontWeight: 'bold' }}>
+                  🏢 Center Information
+                </h4>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                  gap: '12px',
+                  fontSize: '13px'
+                }}>
+                  <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedRemarks.centerCode}</span></div>
+                  <div><strong>Center Name:</strong> {selectedRemarks.centerName}</div>
+                  <div><strong>Project Name:</strong> {selectedRemarks.projectName || '-'}</div>
+                  <div><strong>ZM Name:</strong> {selectedRemarks.zmName || '-'}</div>
+                  <div><strong>Region Head:</strong> {selectedRemarks.regionHeadName || '-'}</div>
+                  <div><strong>Area/Cluster Mgr:</strong> {selectedRemarks.areaClusterManager || '-'}</div>
+                  <div><strong>Center Head:</strong> {selectedRemarks.centerHeadName || '-'}</div>
+                  <div><strong>Center Type:</strong> <span style={{
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: selectedRemarks.centerType === 'CDC' ? '#e3f2fd' : selectedRemarks.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                    color: selectedRemarks.centerType === 'CDC' ? '#1976d2' : selectedRemarks.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                  }}>{selectedRemarks.centerType || 'CDC'}</span></div>
+                  <div><strong>Location:</strong> {selectedRemarks.location || selectedRemarks.geolocation || '-'}</div>
+                  <div><strong>Zonal Head:</strong> {selectedRemarks.zonalHeadName || '-'}</div>
+                  <div><strong>Audited By:</strong> {selectedRemarks.auditedBy || '-'}</div>
+                  <div><strong>Audit Period:</strong> {selectedRemarks.auditPeriod || '-'}</div>
+                  <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedRemarks.financialYear || 'FY26'}</span></div>
+                  <div><strong>Audit Date:</strong> {selectedRemarks.auditDate || '-'}</div>
+                  <div><strong>Grand Total:</strong> <span style={{
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    color: getGrandTotalColor(selectedRemarks)
+                  }}>{parseFloat(selectedRemarks.grandTotal || 0).toFixed(2)}/100</span></div>
+                  <div><strong>Status:</strong> <span style={{
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: getGrandTotalColor(selectedRemarks) === '#28a745' ? '#e8f5e9' : getGrandTotalColor(selectedRemarks) === '#ffc107' ? '#fff3e0' : '#ffebee',
+                    color: getGrandTotalColor(selectedRemarks) === '#28a745' ? '#2e7d32' : getGrandTotalColor(selectedRemarks) === '#ffc107' ? '#e65100' : '#c62828'
+                  }}>{getAuditStatus(selectedRemarks)}</span></div>
+                </div>
+              </div>
+
               {selectedRemarks.overallRemarks && (
                 <div style={{
                   background: '#fff9e6',
@@ -590,7 +563,6 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                   </p>
                 </div>
               )}
-              {/* Info Bar */}
               {selectedRemarks.centerRemarksBy && (
                 <div style={{
                   background: '#e3f2fd',
@@ -605,25 +577,27 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                 </div>
               )}
 
-              {/* COMPLETE DETAILED AUDIT TABLE */}
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>S.NO</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '220px' }}>CHECKPOINT</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>WEIGHTAGE<br/>(%)</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>MAX<br/>SCORE</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>TOTAL<br/>SAMPLES</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SAMPLES<br/>COMPLIANT</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>COMPLIANT<br/>%</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SCORE</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>REMARKS<br/>(आप अपनी भाषा में लिख सकते हैं)</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>CENTER HEAD<br/>REMARKS</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>S.NO</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '220px' }}>CHECKPOINT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>WEIGHTAGE<br/>(%)</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>MAX<br/>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>TOTAL<br/>SAMPLES</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SAMPLES<br/>COMPLIANT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>COMPLIANT<br/>%</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>REMARKS</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px', background: '#4caf50' }}>CENTER HEAD<br/>REMARKS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
-                    const areas = getCheckpointsByArea(selectedRemarks.placementApplicable || 'yes');
+                    const areas = getCheckpointsByArea(
+                      selectedRemarks.centerType || 'CDC',
+                      selectedRemarks.placementApplicable || 'yes'
+                    );
                     const areasArray = [
                       { key: 'frontOffice', number: 1 },
                       { key: 'deliveryProcess', number: 2 },
@@ -634,24 +608,17 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                     return areasArray.map(({ key, number }) => {
                       const area = areas[key];
                       
-                      // Skip placement if NA
-                      if (area.isNA) {
-                        return (
-                          <React.Fragment key={key}>
-                            <tr style={{ background: '#999', color: 'white' }}>
-                              <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                                Area {number}: {area.areaName} (N/A - Not Applicable)
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        );
-                      }
-
+                      let areaTotal = 0;
+                      area.checkpoints.forEach(cp => {
+                        const cpData = selectedRemarks.data?.[cp.id] || {};
+                        areaTotal += parseFloat(cpData.score || 0);
+                      });
+                      
                       return (
                         <React.Fragment key={key}>
-                          <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                          <tr style={{ background: area.isNA ? '#999' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
                             <td colSpan="10" style={{ padding: '12px', fontWeight: 'bold', fontSize: '15px' }}>
-                              Area {number}: {area.areaName} (Total Score: {area.totalScore})
+                              Area {number}: {area.areaName} {area.isNA ? '(N/A - Not Applicable)' : `(Total Score: ${area.totalScore})`}
                             </td>
                           </tr>
                           {area.checkpoints.map((cp, idx) => {
@@ -673,6 +640,17 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                               </tr>
                             );
                           })}
+                          {!area.isNA && (
+                            <tr style={{ background: '#f0f4ff', borderTop: '3px solid #667eea', borderBottom: '3px solid #667eea' }}>
+                              <td colSpan="7" style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px', color: '#1e40af' }}>
+                                {area.areaName} Total:
+                              </td>
+                              <td style={{ padding: '12px 8px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#dc2626', background: '#fef3c7' }}>
+                                {areaTotal.toFixed(2)} / {area.totalScore}
+                              </td>
+                              <td colSpan="2" style={{ padding: '12px 8px', background: '#f0f4ff' }}></td>
+                            </tr>
+                          )}
                         </React.Fragment>
                       );
                     });
@@ -681,12 +659,12 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
               </table>
             </div>
 
-            {/* Modal Footer */}
             <div style={{
               padding: '15px 25px',
               borderTop: '1px solid #eee',
               display: 'flex',
-              justifyContent: 'flex-end'
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
               <button
                 onClick={() => {
@@ -694,7 +672,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                   setSelectedRemarks(null);
                 }}
                 style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: '#999',
                   color: 'white',
                   border: 'none',
                   padding: '12px 30px',
@@ -704,16 +682,51 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                   fontWeight: 'bold'
                 }}
               >
-                ✓ Close
+                ← Back
               </button>
+              
+              <div style={{ display: 'flex', gap: '15px' }}>
+                <button
+                  onClick={() => handleRejectReport(selectedRemarks.centerCode, selectedRemarks.centerName)}
+                  disabled={loading}
+                  style={{
+                    background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '12px 35px',
+                    borderRadius: '8px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 4px 15px rgba(244, 67, 54, 0.3)',
+                    opacity: loading ? 0.6 : 1
+                  }}
+                >
+                  ✕ Reject Report
+                </button>
+                <button
+                  onClick={() => handleApproveReport(selectedRemarks.centerCode)}
+                  disabled={loading}
+                  style={{
+                    background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '12px 35px',
+                    borderRadius: '8px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)',
+                    opacity: loading ? 0.6 : 1
+                  }}
+                >
+                  ✓ Approve Report
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-
-
-      {/* HISTORY TAB - Year Wise Reports */}
-
     </div>
   );
 };

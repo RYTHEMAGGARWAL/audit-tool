@@ -4,7 +4,64 @@ import { API_URL } from '../config';
 const EditRequestsApproval = ({ onApprovalUpdate }) => {
   const [editRequests, setEditRequests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+
+  // ========================================
+  // RED FLAG STATUS LOGIC
+  // ========================================
+  
+  const getGrandTotalColor = (report) => {
+    const status = getAuditStatus(report);
+    if (status === 'Compliant') return '#28a745';
+    if (status === 'Amber') return '#ffc107';
+    return '#dc3545';
+  };
+
+  const getAuditStatus = (report) => {
+    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+    const ppMax = 15;
+    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
+    
+    const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+    const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+    const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
+    const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+    
+    const areas = [
+      { name: 'FO', percent: foPercent },
+      { name: 'DP', percent: dpPercent },
+      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+      { name: 'MP', percent: mpPercent }
+    ].filter(Boolean);
+    
+    const red = areas.filter(a => a.percent < 65).length;
+    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+    const green = areas.filter(a => a.percent >= 80).length;
+    
+    if (red > 0) return 'Non-Compliant';
+    if (amber >= 3) return 'Non-Compliant';
+    if (amber === 2) return 'Amber';
+    if (green === areas.length) return 'Compliant';
+    if (amber === 1) return 'Compliant';
+    return 'Amber';
+  };
+
+  const getAreaScoreInfo = (score, maxScore) => {
+    if (score === 'NA') return { status: 'NA', color: '#999' };
+    const numScore = parseFloat(score || 0);
+    const percent = (numScore / maxScore) * 100;
+    
+    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+    return { status: 'Non-Compliant', color: '#dc3545' };
+  };
+
+  // ========================================
+  // END RED FLAG STATUS LOGIC
+  // ========================================
 
   const loadEditRequests = async () => {
     try {
@@ -17,7 +74,6 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
         setEditRequests(data);
         console.log(`✅ Loaded ${data.length} edit requests`);
         
-        // Notify parent of count change
         if (onApprovalUpdate) {
           onApprovalUpdate(data.length);
         }
@@ -31,7 +87,6 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
 
   useEffect(() => {
     loadEditRequests();
-    // Refresh every 30 seconds
     const interval = setInterval(loadEditRequests, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -57,6 +112,11 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
     }
   };
 
+  const handleViewReport = (report) => {
+    setSelectedReport(report);
+    setShowModal(true);
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '40px' }}>
@@ -68,7 +128,6 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
 
   return (
     <div style={{ padding: '20px' }}>
-      {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg, #ff9800 0%, #ff5722 100%)',
         padding: '20px',
@@ -116,28 +175,52 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
           background: 'white',
           borderRadius: '12px',
           boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-          overflow: 'hidden'
+          overflow: 'auto'
         }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1400px' }}>
             <thead>
               <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'left', fontWeight: 600 }}>
-                  Center Code
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: 0, zIndex: 3, background: '#667eea' }}>
+                  CENTER<br/>CODE
                 </th>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'left', fontWeight: 600 }}>
-                  Center Name
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: '100px', zIndex: 3, background: '#667eea' }}>
+                  CENTER<br/>NAME
                 </th>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'left', fontWeight: 600 }}>
-                  CH Name
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  PROJECT<br/>NAME
                 </th>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'left', fontWeight: 600 }}>
-                  Requested By
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  ZM<br/>NAME
                 </th>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'left', fontWeight: 600 }}>
-                  Request Date
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  REGION<br/>HEAD
                 </th>
-                <th style={{ padding: '15px', color: 'white', textAlign: 'center', fontWeight: 600 }}>
-                  Actions
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  AREA/CLUSTER<br/>MANAGER
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  CENTER<br/>HEAD
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                  CENTER<br/>TYPE
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  LOCATION
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  ZONAL<br/>HEAD
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  FINANCIAL<br/>YEAR
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  REQUESTED<br/>BY
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                  REQUEST<br/>DATE
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                  ACTIONS
                 </th>
               </tr>
             </thead>
@@ -150,46 +233,79 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                     background: idx % 2 === 0 ? 'white' : '#f9f9f9'
                   }}
                 >
-                  <td style={{ padding: '15px', fontWeight: 'bold', color: '#667eea' }}>
+                  <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#667eea', position: 'sticky', left: 0, zIndex: 2, background: idx % 2 === 0 ? 'white' : '#f9f9f9' }}>
                     {req.centerCode}
                   </td>
-                  <td style={{ padding: '15px' }}>
+                  <td style={{ padding: '12px 8px', fontWeight: 600, position: 'sticky', left: '100px', zIndex: 2, background: idx % 2 === 0 ? 'white' : '#f9f9f9' }}>
                     {req.centerName}
                   </td>
-                  <td style={{ padding: '15px' }}>
-                    {req.chName || '-'}
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.projectName || '-'}
                   </td>
-                  <td style={{ padding: '15px' }}>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.zmName || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.regionHeadName || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.areaClusterManager || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.centerHeadName || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      background: req.centerType === 'CDC' ? '#e3f2fd' : req.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                      color: req.centerType === 'CDC' ? '#1976d2' : req.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                    }}>
+                      {req.centerType || 'CDC'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.location || req.geolocation || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
+                    {req.zonalHeadName || '-'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px', fontWeight: 'bold', color: '#667eea' }}>
+                    {req.financialYear || 'FY26'}
+                  </td>
+                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
                     {req.centerHeadEditRequestBy}
                   </td>
-                  <td style={{ padding: '15px', fontSize: '13px', color: '#666' }}>
+                  <td style={{ padding: '12px 8px', fontSize: '12px', color: '#666' }}>
                     {req.centerHeadEditRequestDate}
                   </td>
-                  <td style={{ padding: '15px', textAlign: 'center' }}>
+                  <td style={{ padding: '12px 8px', textAlign: 'center' }}>
                     <button
-                      onClick={() => handleApprove(req._id, req.centerCode)}
+                      onClick={() => handleViewReport(req)}
                       style={{
-                        padding: '10px 20px',
-                        background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                        padding: '8px 20px',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                         color: 'white',
                         border: 'none',
                         borderRadius: '8px',
                         cursor: 'pointer',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: 'bold',
-                        boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+                        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
                         transition: 'all 0.3s ease'
                       }}
                       onMouseOver={(e) => {
                         e.target.style.transform = 'translateY(-2px)';
-                        e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)';
+                        e.target.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.4)';
                       }}
                       onMouseOut={(e) => {
                         e.target.style.transform = 'translateY(0)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)';
+                        e.target.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
                       }}
                     >
-                      ✅ Approve Edit Permission
+                      📊 View Report
                     </button>
                   </td>
                 </tr>
@@ -199,7 +315,236 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
         </div>
       )}
 
-      {/* Info Box */}
+      {showModal && selectedReport && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '15px',
+            width: '95%',
+            maxWidth: '1000px',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #ff9800 0%, #ff5722 100%)',
+              padding: '20px 25px',
+              color: 'white',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '20px' }}>📊 Audit Report - Edit Request</h3>
+                <p style={{ margin: '5px 0 0', fontSize: '14px', opacity: 0.9 }}>
+                  {selectedReport.centerName} ({selectedReport.centerCode}) | Grand Total: {selectedReport.grandTotal}/100
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setSelectedReport(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: 'white',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto' }}>
+              
+              <div style={{
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                padding: '15px 20px',
+                borderRadius: '10px',
+                marginBottom: '20px',
+                border: '2px solid #2196f3'
+              }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#1976d2', fontSize: '14px' }}>🏢 Center Information</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '13px' }}>
+                  <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReport.centerCode}</span></div>
+                  <div><strong>Center Name:</strong> {selectedReport.centerName}</div>
+                  <div><strong>Project:</strong> {selectedReport.projectName || '-'}</div>
+                  <div><strong>Center Type:</strong> <span style={{
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    background: selectedReport.centerType === 'CDC' ? '#e3f2fd' : selectedReport.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                    color: selectedReport.centerType === 'CDC' ? '#1976d2' : selectedReport.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                  }}>{selectedReport.centerType || 'CDC'}</span></div>
+                  <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReport.financialYear || 'FY26'}</span></div>
+                  <div><strong>Audit Date:</strong> {selectedReport.auditDateString || selectedReport.auditDate || '-'}</div>
+                </div>
+              </div>
+
+              <div style={{
+                background: '#fff9e6',
+                padding: '15px 20px',
+                borderRadius: '10px',
+                marginBottom: '20px',
+                border: '2px solid #ffc107'
+              }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#e65100', fontSize: '14px' }}>📊 Audit Scores</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', fontSize: '13px' }}>
+                  <div>
+                    <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Front Office:</strong>
+                    <span style={{
+                      fontSize: '16px', 
+                      fontWeight: 'bold', 
+                      color: getAreaScoreInfo(selectedReport.frontOfficeScore, selectedReport.placementApplicable === 'no' ? 35 : 30).color
+                    }}>{parseFloat(selectedReport.frontOfficeScore || 0).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Delivery:</strong>
+                    <span style={{
+                      fontSize: '16px', 
+                      fontWeight: 'bold', 
+                      color: getAreaScoreInfo(selectedReport.deliveryProcessScore, selectedReport.placementApplicable === 'no' ? 45 : 40).color
+                    }}>{parseFloat(selectedReport.deliveryProcessScore || 0).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Placement:</strong>
+                    <span style={{
+                      fontSize: '16px', 
+                      fontWeight: 'bold', 
+                      color: selectedReport.placementApplicable === 'no' ? '#999' : getAreaScoreInfo(selectedReport.placementScore, 15).color
+                    }}>
+                      {selectedReport.placementApplicable === 'no' ? 'N/A' : parseFloat(selectedReport.placementScore || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Management:</strong>
+                    <span style={{
+                      fontSize: '16px', 
+                      fontWeight: 'bold', 
+                      color: getAreaScoreInfo(selectedReport.managementScore, selectedReport.placementApplicable === 'no' ? 20 : 15).color
+                    }}>{parseFloat(selectedReport.managementScore || 0).toFixed(2)}</span>
+                  </div>
+                  <div style={{ 
+                    gridColumn: 'span 2', 
+                    background: (() => {
+                      const color = getGrandTotalColor(selectedReport);
+                      if (color === '#28a745') return 'linear-gradient(135deg, #28a745 0%, #4caf50 100%)';
+                      if (color === '#ffc107') return 'linear-gradient(135deg, #ffc107 0%, #ffb300 100%)';
+                      return 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
+                    })(), 
+                    padding: '10px', 
+                    borderRadius: '8px', 
+                    textAlign: 'center' 
+                  }}>
+                    <strong style={{display: 'block', color: 'white', fontSize: '12px'}}>GRAND TOTAL</strong>
+                    <span style={{fontSize: '22px', fontWeight: 'bold', color: 'white'}}>{parseFloat(selectedReport.grandTotal || 0).toFixed(2)}/100</span>
+                    <div style={{fontSize: '11px', color: 'white', marginTop: '4px'}}>
+                      {getAuditStatus(selectedReport) === 'Compliant' ? '✅ Compliant' : getAuditStatus(selectedReport) === 'Amber' ? '⚠️ Amber' : '❌ Non-Compliant'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                background: '#fff3e0',
+                padding: '15px 20px',
+                borderRadius: '10px',
+                marginBottom: '20px',
+                border: '2px solid #ff9800'
+              }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#e65100', fontSize: '14px' }}>🔓 Edit Request Details</h4>
+                <div style={{ fontSize: '13px' }}>
+                  <div style={{marginBottom: '5px'}}><strong>Requested By:</strong> {selectedReport.centerHeadEditRequestBy || '-'}</div>
+                  <div><strong>Request Date:</strong> {selectedReport.centerHeadEditRequestDate || '-'}</div>
+                </div>
+              </div>
+
+              {selectedReport.remarksText && (
+                <div style={{
+                  background: '#f0f9ff',
+                  padding: '15px 20px',
+                  borderRadius: '10px',
+                  border: '2px solid #3b82f6'
+                }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#1e40af', fontSize: '14px' }}>💬 User Remarks</h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#333', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                    {selectedReport.remarksText}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              padding: '15px 25px',
+              borderTop: '1px solid #eee',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#f9fafb'
+            }}>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setSelectedRemarks(null);
+                }}
+                style={{
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 30px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                ← Close
+              </button>
+              
+              <button
+                onClick={() => {
+                  handleApprove(selectedReport._id, selectedReport.centerCode);
+                  setShowModal(false);
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 35px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)'
+                }}
+              >
+                ✅ Approve Edit Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{
         background: '#e3f2fd',
         padding: '15px 20px',

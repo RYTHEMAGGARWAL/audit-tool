@@ -80,14 +80,23 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Center Schema
+// Center Schema - UPDATED with new fields
 const centerSchema = new mongoose.Schema({
   centerCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
   centerName: { type: String, required: true, trim: true },
+  projectName: { type: String, trim: true, default: '' },
+  zmName: { type: String, trim: true, default: '' },
+  regionHeadName: { type: String, trim: true, default: '' },
+  areaClusterManager: { type: String, trim: true, default: '' },
+  centerHeadName: { type: String, trim: true, default: '' },
+  centerType: { type: String, enum: ['CDC', 'SDC', 'DTV'], default: 'CDC', trim: true },
+  location: { type: String, trim: true, default: '' },
+  zonalHeadName: { type: String, trim: true, default: '' },
+  auditedBy: { type: String, trim: true, default: '' },
+  auditPeriod: { type: String, trim: true, default: '' },
+  // Legacy fields (for backward compatibility)
   chName: { type: String, trim: true, default: '' },
   geolocation: { type: String, trim: true, default: '' },
-  centerHeadName: { type: String, trim: true, default: '' },
-  zonalHeadName: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
@@ -106,6 +115,8 @@ const checkpointDataSchema = new mongoose.Schema({
 const auditReportSchema = new mongoose.Schema({
   centerCode: { type: String, required: true, trim: true },
   centerName: { type: String, required: true, trim: true },
+  auditType: { type: String, enum: ['Skills-CDC', 'Skills-SDC', 'DTV'], required: true, default: 'Skills-CDC' },
+  centerType: { type: String, enum: ['CDC', 'SDC', 'DTV'], default: 'CDC' },
   chName: { type: String, trim: true, default: '' },
   geolocation: { type: String, trim: true, default: '' },
   centerHeadName: { type: String, trim: true, default: '' },
@@ -446,6 +457,7 @@ app.post('/api/update-users', async (req, res) => {
 // ========================================
 
 // Get all centers
+// ✅ FIXED VERSION
 app.get('/api/centers', async (req, res) => {
   try {
     const centers = await Center.find({ isActive: true }).sort({ centerCode: 1 });
@@ -453,11 +465,20 @@ app.get('/api/centers', async (req, res) => {
       _id: c._id,
       centerCode: c.centerCode,
       centerName: c.centerName,
-      chName: c.chName || '',
-      geolocation: c.geolocation || '',
+      projectName: c.projectName || '',
+      zmName: c.zmName || '',
+      regionHeadName: c.regionHeadName || '',
+      areaClusterManager: c.areaClusterManager || '',
       centerHeadName: c.centerHeadName || '',
-      zonalHeadName: c.zonalHeadName || ''
+      centerType: c.centerType || 'CDC',  // ← ADD THIS!
+      location: c.location || c.geolocation || '',
+      zonalHeadName: c.zonalHeadName || '',
+      auditedBy: c.auditedBy || '',
+      auditPeriod: c.auditPeriod || '',
+      chName: c.chName || '',
+      geolocation: c.geolocation || ''
     }));
+    console.log(`📍 Centers fetched: ${centers.length}`);
     res.json(formatted);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -574,12 +595,21 @@ app.get('/api/audit-reports/pending', async (req, res) => {
 });
 
 // Save/Update audit report
+// Save/Update audit report - FIXED VERSION
 app.post('/api/save-audit-report', async (req, res) => {
   try {
     const data = req.body;
     console.log(`\n💾 ========== SAVING AUDIT REPORT ==========`);
     console.log(`💾 Center: ${data.centerCode} - ${data.centerName}`);
     console.log(`💾 Grand Total: ${data.grandTotal}/100`);
+
+    // ✅ STEP 1: FETCH CENTER DATA FIRST (before using it!)
+    const centerData = await Center.findOne({ centerCode: data.centerCode });
+    console.log('🏢 Fetched center data:', {
+      found: !!centerData,
+      centerType: centerData?.centerType,
+      centerCode: data.centerCode
+    });
 
     // Parse audit data JSON if provided
     let auditData = {};
@@ -650,10 +680,13 @@ app.post('/api/save-audit-report', async (req, res) => {
     const placementTable = data.placementApplicable === 'no' ? '\n📋 PLACEMENT PROCESS: NA (Not Applicable)' : buildCheckpointTable('PP', 'PLACEMENT PROCESS (Max: 15)', ['PP1','PP2','PP3','PP4']);
     const managementTable = buildCheckpointTable('MP', 'MANAGEMENT PROCESS (Max: 15)', ['MP1','MP2','MP3','MP4','MP5']);
 
+    // ✅ STEP 2: NOW create updateData using centerData (which is already fetched)
     const updateData = {
       // ========== READABLE REPORT (VIEW THIS!) ==========
       _REPORT_VIEW: `
-╔══════════════════════════════════════════════════════════════════════════════╗           ║
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  Center Code    : ${(data.centerCode || '-').substring(0,20).padEnd(20)}                              ║
+║  Center Name    : ${(data.centerName || '-').substring(0,20).padEnd(20)}                              ║
 ║  CH Name        : ${(data.chName || '-').substring(0,20).padEnd(20)}                              ║
 ║  Audit Date     : ${(data.auditDate || new Date().toLocaleDateString('en-GB')).padEnd(20)}                              ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
@@ -672,13 +705,24 @@ ${placementTable}
 ${managementTable}
 `,
       
-      // ========== CENTER INFO ==========
+      // ========== CENTER INFO (FROM DATABASE) ==========
       centerCode: data.centerCode,
       centerName: data.centerName,
+      projectName: centerData?.projectName || data.projectName || '',
+      zmName: centerData?.zmName || data.zmName || '',
+      regionHeadName: centerData?.regionHeadName || data.regionHeadName || '',
+      areaClusterManager: centerData?.areaClusterManager || data.areaClusterManager || '',
+      centerHeadName: centerData?.centerHeadName || data.centerHeadName || '',
+      centerType: centerData?.centerType || data.centerType || 'CDC',  // ✅ NOW centerData is defined!
+      location: centerData?.location || data.location || '',
+      zonalHeadName: centerData?.zonalHeadName || data.zonalHeadName || '',
+      auditedBy: centerData?.auditedBy || data.auditedBy || '',
+      auditPeriod: centerData?.auditPeriod || data.auditPeriod || '',
+      auditType: data.auditType || 'Skills-CDC',
+      financialYear: data.financialYear || 'FY26',
+      // Legacy fields
       chName: data.chName || '',
       geolocation: data.geolocation || '',
-      centerHeadName: data.centerHeadName || '',
-      zonalHeadName: data.zonalHeadName || '',
       
       // ========== SCORES ==========
       frontOfficeScore: parseFloat(data.frontOfficeScore) || 0,
@@ -711,29 +755,30 @@ ${managementTable}
         }, {}))
     };
     
+    console.log('💾 Saving with centerType:', updateData.centerType);
     console.log('💾 Saving placementApplicable:', data.placementApplicable);
 
-   const report = await AuditReport.findOneAndUpdate(
-  { centerCode: data.centerCode },
-  updateData,
-  { upsert: true, new: true }
-);
+    // ✅ STEP 3: Save to database
+    const report = await AuditReport.findOneAndUpdate(
+      { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' },
+      updateData,
+      { upsert: true, new: true }
+    );
 
-// ✅ ADD BELOW HERE:
-report.centerHeadRemarksLocked = false;
-report.centerHeadEditRequest = false;
-report.centerHeadEditRequestDate = '';
-report.centerHeadEditRequestBy = '';
-await report.save();
-console.log('🔓 Center Head remarks unlocked');
-// ✅ ADD ABOVE HERE
-
-console.log(`✅ Report saved for ${data.centerCode}`);
-
+    // Reset center head remarks lock
+    report.centerHeadRemarksLocked = false;
+    report.centerHeadEditRequest = false;
+    report.centerHeadEditRequestDate = '';
+    report.centerHeadEditRequestBy = '';
+    await report.save();
+    
     console.log(`✅ Report saved for ${data.centerCode}`);
+    console.log(`✅ Saved centerType: ${report.centerType}`);
+    
     res.json({ success: true, message: 'Audit report saved successfully', report });
   } catch (err) {
     console.error('❌ Save error:', err.message);
+    console.error('❌ Stack:', err.stack);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1300,6 +1345,151 @@ app.post('/api/fix-center-codes', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ========================================
+// ADD THIS ROUTE TO server.js (ONE-TIME FIX)
+// ========================================
+
+// Run once: http://localhost:3001/api/fix-audit-report-types
+app.get('/api/fix-audit-report-types', async (req, res) => {
+  try {
+    console.log('\n🔧 ========== FIXING AUDIT REPORT CENTER TYPES ==========');
+    
+    const reports = await AuditReport.find({});
+    console.log(`📊 Total reports to fix: ${reports.length}`);
+    
+    let updated = 0;
+    let skipped = 0;
+    const summary = [];
+    
+    for (const report of reports) {
+      try {
+        // Fetch center data from Centers table
+        const centerData = await Center.findOne({ centerCode: report.centerCode });
+        
+        if (centerData) {
+          // Update report with ALL center fields
+          report.centerType = centerData.centerType || 'CDC';
+          report.projectName = centerData.projectName || '';
+          report.zmName = centerData.zmName || '';
+          report.regionHeadName = centerData.regionHeadName || '';
+          report.areaClusterManager = centerData.areaClusterManager || '';
+          report.centerHeadName = centerData.centerHeadName || '';
+          report.location = centerData.location || '';
+          report.zonalHeadName = centerData.zonalHeadName || '';
+          report.auditedBy = centerData.auditedBy || '';
+          report.auditPeriod = centerData.auditPeriod || '';
+          
+          await report.save();
+          
+          console.log(`✅ ${report.centerCode} (${report.financialYear}): ${centerData.centerType}`);
+          summary.push({
+            centerCode: report.centerCode,
+            centerName: report.centerName,
+            financialYear: report.financialYear,
+            centerType: centerData.centerType,
+            status: 'UPDATED'
+          });
+          updated++;
+        } else {
+          console.log(`⚠️ ${report.centerCode}: Center not found in database`);
+          summary.push({
+            centerCode: report.centerCode,
+            centerName: report.centerName,
+            financialYear: report.financialYear,
+            centerType: 'NOT FOUND',
+            status: 'SKIPPED'
+          });
+          skipped++;
+        }
+      } catch (err) {
+        console.error(`❌ Error updating ${report.centerCode}:`, err.message);
+      }
+    }
+    
+    console.log(`\n✅ DONE!`);
+    console.log(`   Updated: ${updated}`);
+    console.log(`   Skipped: ${skipped}`);
+    console.log('========================================\n');
+    
+    res.json({
+      success: true,
+      message: `Fixed ${updated} audit reports, skipped ${skipped}`,
+      updated,
+      skipped,
+      total: reports.length,
+      summary
+    });
+    
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// USAGE INSTRUCTIONS:
+// ========================================
+/*
+1. Add this route to server.js (before app.listen())
+2. Restart server: node server.js
+3. Open browser: http://localhost:3001/api/fix-audit-report-types
+4. Wait for response showing all updates
+5. Refresh Audit → View Reports page
+6. Should see correct centerType badges! ✅
+7. Remove this route after running once (optional)
+*/
+// ========================================
+// DEBUG ROUTE - Check Database Center Types
+// ========================================
+
+// Add this to server.js temporarily
+app.get('/api/debug-centers', async (req, res) => {
+  try {
+    console.log('\n🔍 ========== DEBUG: CHECKING DATABASE ==========');
+    
+    // Get ALL centers from database (no formatting)
+    const centers = await Center.find({}).lean();
+    
+    console.log(`📊 Total centers in DB: ${centers.length}`);
+    console.log('\n📋 Raw data from MongoDB:');
+    
+    centers.forEach(c => {
+      console.log(`\n  Center: ${c.centerCode}`);
+      console.log(`  Name: ${c.centerName}`);
+      console.log(`  centerType field exists? ${c.hasOwnProperty('centerType')}`);
+      console.log(`  centerType value: "${c.centerType}"`);
+      console.log(`  Type of centerType: ${typeof c.centerType}`);
+    });
+    
+    console.log('\n========================================\n');
+    
+    // Return full raw data
+    res.json({
+      success: true,
+      totalCenters: centers.length,
+      centers: centers.map(c => ({
+        _id: c._id,
+        centerCode: c.centerCode,
+        centerName: c.centerName,
+        centerType: c.centerType,
+        centerTypeExists: c.hasOwnProperty('centerType'),
+        centerTypeType: typeof c.centerType,
+        allFields: Object.keys(c)
+      }))
+    });
+    
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// USAGE:
+// 1. Add this route to server.js
+// 2. Restart server
+// 3. Open: http://localhost:3001/api/debug-centers
+// 4. Check console AND browser response
+// 5. Send screenshot to me!
 app.post('/api/force-fix-fy', async (req, res) => {
   try {
     console.log('🔧 FORCE FIXING all reports...');
@@ -1330,7 +1520,7 @@ app.listen(PORT, () => {
   console.log(`   POST /api/login`);
   console.log(`   GET  /api/users`);
   console.log(`   GET  /api/centers`);
-  console.log(`   GET  /api/audit-reports`);
+  console.log(`   GET  /api/audit-reports`);  
   console.log(`   POST /api/save-audit-report`);
   console.log(`\n========================================\n`);
 });

@@ -14,6 +14,62 @@ const CenterDashboard = () => {
   const [checkpointRemarks, setCheckpointRemarks] = useState({});
   const [saving, setSaving] = useState(false);
   const [editRequestStatus, setEditRequestStatus] = useState({});
+  const [centerData, setCenterData] = useState(null);
+
+  // ========================================
+  // RED FLAG STATUS LOGIC
+  // ========================================
+  
+  const getGrandTotalColor = (report) => {
+    const status = getAuditStatus(report);
+    if (status === 'Compliant') return '#28a745';
+    if (status === 'Amber') return '#ffc107';
+    return '#dc3545';
+  };
+
+  const getAuditStatus = (report) => {
+    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+    const ppMax = 15;
+    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
+    
+    const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+    const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+    const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
+    const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+    
+    const areas = [
+      { name: 'FO', percent: foPercent },
+      { name: 'DP', percent: dpPercent },
+      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+      { name: 'MP', percent: mpPercent }
+    ].filter(Boolean);
+    
+    const red = areas.filter(a => a.percent < 65).length;
+    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+    const green = areas.filter(a => a.percent >= 80).length;
+    
+    if (red > 0) return 'Non-Compliant';
+    if (amber >= 3) return 'Non-Compliant';
+    if (amber === 2) return 'Amber';
+    if (green === areas.length) return 'Compliant';
+    if (amber === 1) return 'Compliant';
+    return 'Amber';
+  };
+
+  const getAreaScoreInfo = (score, maxScore) => {
+    if (score === 'NA') return { status: 'NA', color: '#999' };
+    const numScore = parseFloat(score || 0);
+    const percent = (numScore / maxScore) * 100;
+    
+    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+    return { status: 'Non-Compliant', color: '#dc3545' };
+  };
+
+  // ========================================
+  // END RED FLAG STATUS LOGIC
+  // ========================================
 
   // Dynamic checkpoint data based on placement applicable
   const getCheckpointData = (placementApplicable) => {
@@ -76,8 +132,25 @@ const CenterDashboard = () => {
     console.log('   Center Code:', loggedUser.centerCode);
     
     loadMyReports();
+    loadCenterData();
   }, []);
 
+
+  const loadCenterData = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/centers`);
+      if (response.ok) {
+        const centers = await response.json();
+        const myCenter = centers.find(c => c.centerCode === loggedUser.centerCode);
+        if (myCenter) {
+          setCenterData(myCenter);
+          console.log('✅ Center data loaded:', myCenter);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error loading center data:', err);
+    }
+  };
   const loadMyReports = async () => {
     try {
       setLoading(true);
@@ -235,13 +308,54 @@ const CenterDashboard = () => {
       </header>
 
       <main className="admin-content">
-        {/* Info Banner */}
-        <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '20px', borderRadius: '12px', marginBottom: '25px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
-          <h2 style={{ margin: 0, fontSize: '20px' }}>🏢 Your Center: <strong>{loggedUser.centerCode}</strong></h2>
-          <p style={{ margin: '8px 0 0', fontSize: '14px', opacity: 0.9 }}>
-            Showing reports only for your center
-          </p>
-        </div>
+        {/* Center Details Card */}
+        {centerData ? (
+          <div style={{
+            background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+            padding: '20px',
+            borderRadius: '12px',
+            marginBottom: '25px',
+            border: '2px solid #2196f3',
+            boxShadow: '0 4px 15px rgba(33, 150, 243, 0.2)'
+          }}>
+            <h2 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '20px', fontWeight: 'bold' }}>
+              🏢 Center Information
+            </h2>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+              gap: '12px',
+              fontSize: '14px'
+            }}>
+              <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
+              <div><strong>Center Name:</strong> {centerData.centerName}</div>
+              <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
+              <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
+              <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
+              <div><strong>Area/Cluster Mgr:</strong> {centerData.areaClusterManager || '-'}</div>
+              <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+              <div><strong>Center Type:</strong> <span style={{
+                padding: '2px 8px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                background: centerData.centerType === 'CDC' ? '#e3f2fd' : centerData.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+              }}>{centerData.centerType || 'CDC'}</span></div>
+              <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
+              <div><strong>Zonal Head:</strong> {centerData.zonalHeadName || '-'}</div>
+              <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
+              <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '20px', borderRadius: '12px', marginBottom: '25px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
+            <h2 style={{ margin: 0, fontSize: '20px' }}>🏢 Your Center: <strong>{loggedUser.centerCode}</strong></h2>
+            <p style={{ margin: '8px 0 0', fontSize: '14px', opacity: 0.9 }}>
+              Loading center information...
+            </p>
+          </div>
+        )}
 
         {/* Reports List */}
         <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
@@ -271,16 +385,16 @@ const CenterDashboard = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
+                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -288,26 +402,18 @@ const CenterDashboard = () => {
                     const isLocked = editRequestStatus[report._id]?.locked;
                     const isRequestPending = editRequestStatus[report._id]?.requestPending;
                     
-                    // STATUS calculation - matching AuditManagement.jsx
-                    const statusData = report.grandTotal >= 80 ? { text: 'Compliant', color: '#28a745', bg: '#d4edda' } :
-                                      report.grandTotal >= 65 ? { text: 'Amber', color: '#ffc107', bg: '#fff3cd' } :
-                                      { text: 'Non-Compliant', color: '#dc3545', bg: '#f8d7da' };
+                    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+                    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+                    const ppMax = 15;
+                    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
 
-                    // Helper function to get area score status and color (matching AuditManagement.jsx)
-                    const getAreaScoreInfo = (score, maxScore) => {
-                      if (score === 'NA') return { status: 'NA', color: '#999' };
-                      const numScore = parseFloat(score || 0);
-                      const percent = (numScore / maxScore) * 100;
-                      
-                      if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
-                      if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
-                      return { status: 'Non-Compliant', color: '#dc3545' };
-                    };
+                    const foData = getAreaScoreInfo(report.frontOfficeScore, foMax);
+                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, dpMax);
+                    const ppData = report.placementApplicable === 'no' ? { status: 'NA', color: '#999' } : getAreaScoreInfo(report.placementScore, ppMax);
+                    const mpData = getAreaScoreInfo(report.managementScore, mpMax);
 
-                    const foData = getAreaScoreInfo(report.frontOfficeScore, report.placementApplicable === 'no' ? 35 : 30);
-                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, report.placementApplicable === 'no' ? 45 : 40);
-                    const ppData = report.placementApplicable === 'no' ? { status: 'NA', color: '#999' } : getAreaScoreInfo(report.placementScore, 15);
-                    const mpData = getAreaScoreInfo(report.managementScore, report.placementApplicable === 'no' ? 20 : 15);
+                    const grandStatus = getAuditStatus(report);
+                    const grandColor = getGrandTotalColor(report);
 
                     return (
                       <tr key={report._id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
@@ -337,11 +443,18 @@ const CenterDashboard = () => {
                           <div style={{ fontSize: '14px', color: mpData.color, fontWeight: 'bold' }}>({parseFloat(report.managementScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '20px', fontWeight: '700', color: '#dc2626' }}>{report.grandTotal.toFixed(2)}</div>
+                          <div style={{ fontSize: '20px', fontWeight: '700', color: grandColor }}>{parseFloat(report.grandTotal || 0).toFixed(2)}</div>
                         </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>
-                          <span style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: statusData.bg, color: statusData.color }}>
-                            {statusData.text}
+                          <span style={{ 
+                            padding: '6px 14px', 
+                            borderRadius: '6px', 
+                            fontSize: '12px', 
+                            fontWeight: '600', 
+                            background: grandColor === '#28a745' ? '#d4edda' : grandColor === '#ffc107' ? '#fff3cd' : '#f8d7da',
+                            color: grandColor
+                          }}>
+                            {grandStatus}
                           </span>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
@@ -384,6 +497,49 @@ const CenterDashboard = () => {
             </div>
 
             <div style={{ flex: 1, overflow: 'auto', background: '#f9fafb' }}>
+              
+              {/* CENTER DETAILS CARD */}
+              {centerData && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                  padding: '15px 20px',
+                  margin: '15px',
+                  borderRadius: '10px',
+                  border: '2px solid #2196f3',
+                  boxShadow: '0 2px 10px rgba(33, 150, 243, 0.15)'
+                }}>
+                  <h3 style={{ margin: '0 0 12px 0', color: '#1976d2', fontSize: '16px', fontWeight: 'bold' }}>
+                    🏢 Center Information
+                  </h3>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                    gap: '10px',
+                    fontSize: '13px'
+                  }}>
+                    <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
+                    <div><strong>Center Name:</strong> {centerData.centerName}</div>
+                    <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
+                    <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
+                    <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
+                    <div><strong>Area/Cluster Manager:</strong> {centerData.areaClusterManager || '-'}</div>
+                    <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+                    <div><strong>Center Type:</strong> <span style={{
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      background: centerData.centerType === 'CDC' ? '#e3f2fd' : centerData.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
+                      color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
+                    }}>{centerData.centerType || 'CDC'}</span></div>
+                    <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
+                    <div><strong>Zonal Head:</strong> {centerData.zonalHeadName || '-'}</div>
+                    <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
+                    <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
+                  </div>
+                </div>
+              )}
+
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
                   <tr style={{ background: '#e5e7eb' }}>
@@ -405,11 +561,20 @@ const CenterDashboard = () => {
                     // Skip Placement Process area if it's empty (when placement is NA)
                     if (checkpoints.length === 0) return null;
                     
+                    // Calculate area total
+                    let areaTotal = 0;
+                    let areaMaxTotal = 0;
+                    checkpoints.forEach(cp => {
+                      const cpData = selectedReport[cp.id] || {};
+                      areaTotal += parseFloat(cpData.score || 0);
+                      areaMaxTotal += cp.maxScore;
+                    });
+                    
                     return (
                     <React.Fragment key={areaIdx}>
                       <tr>
                         <td colSpan="10" style={{ padding: '14px 20px', background: areaName === 'Placement Process' && selectedReport.placementApplicable === 'no' ? '#999' : '#6366f1', color: 'white', fontWeight: '700', fontSize: '15px', border: '1px solid #4f46e5' }}>
-                          Area {areaIdx + 1}: {areaName} {areaName === 'Placement Process' && selectedReport.placementApplicable === 'no' ? '(N/A)' : ''}
+                          Area {areaIdx + 1}: {areaName} {areaName === 'Placement Process' && selectedReport.placementApplicable === 'no' ? '(N/A)' : `(Total Score: ${areaMaxTotal})`}
                         </td>
                       </tr>
 
@@ -451,6 +616,17 @@ const CenterDashboard = () => {
                           </tr>
                         );
                       })}
+                      
+                      {/* Area Total Summary Row */}
+                      <tr style={{ background: '#eff6ff', borderTop: '3px solid #3b82f6', borderBottom: '3px solid #3b82f6' }}>
+                        <td colSpan="7" style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px', color: '#1e40af', border: '1px solid #93c5fd' }}>
+                          {areaName} Total:
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#dc2626', background: '#fef3c7', border: '1px solid #fbbf24' }}>
+                          {areaTotal.toFixed(2)} / {areaMaxTotal}
+                        </td>
+                        <td colSpan="2" style={{ padding: '12px 10px', background: '#eff6ff', border: '1px solid #93c5fd' }}></td>
+                      </tr>
                     </React.Fragment>
                   );})}
                 </tbody>
