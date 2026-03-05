@@ -155,6 +155,8 @@ const auditReportSchema = new mongoose.Schema({
   MP3: { type: checkpointDataSchema, default: () => ({}) },
   MP4: { type: checkpointDataSchema, default: () => ({}) },
   MP5: { type: checkpointDataSchema, default: () => ({}) },
+  MP6: { type: checkpointDataSchema, default: () => ({}) },
+   MP7: { type: checkpointDataSchema, default: () => ({}) },
   placementApplicable: { type: String, enum: ['yes', 'no'], default: 'yes' },
   submissionStatus: { type: String, default: 'Not Submitted' },
   currentStatus: { type: String, default: 'Not Submitted' },
@@ -651,7 +653,9 @@ app.post('/api/save-audit-report', async (req, res) => {
       MP2: "TIRM details register",
       MP3: "Monthly Centre Review Meeting",
       MP4: "Physical asset verification",
-      MP5: "Verification of bill authenticity"
+      MP5: "Verification of bill authenticity",
+       MP6: "Log book for Genset & Vehicle",
+      MP7: "Availability and requirement of Biometric"
     };
 
     // Build readable checkpoint data
@@ -678,7 +682,7 @@ app.post('/api/save-audit-report', async (req, res) => {
     const frontOfficeTable = buildCheckpointTable('FO', 'FRONT OFFICE (Max: 30)', ['FO1','FO2','FO3','FO4','FO5']);
     const deliveryTable = buildCheckpointTable('DP', 'DELIVERY PROCESS (Max: 40)', ['DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11']);
     const placementTable = data.placementApplicable === 'no' ? '\n📋 PLACEMENT PROCESS: NA (Not Applicable)' : buildCheckpointTable('PP', 'PLACEMENT PROCESS (Max: 15)', ['PP1','PP2','PP3','PP4']);
-    const managementTable = buildCheckpointTable('MP', 'MANAGEMENT PROCESS (Max: 15)', ['MP1','MP2','MP3','MP4','MP5']);
+    const managementTable = buildCheckpointTable('MP', 'MANAGEMENT PROCESS (Max: 15)', ['MP1','MP2','MP3','MP4','MP5','MP6','MP7']);
 
     // ✅ STEP 2: NOW create updateData using centerData (which is already fetched)
     const updateData = {
@@ -747,7 +751,7 @@ ${managementTable}
       emailSentTo: '',
       
       // ========== CHECKPOINT DATA ==========
-      ...(['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5']
+      ...(['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7']
         .reduce((acc, key) => { 
           if(data[key]) acc[key] = data[key]; 
           else if(auditData[key]) acc[key] = auditData[key]; 
@@ -925,7 +929,7 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
         'FO1','FO2','FO3','FO4','FO5',
         'DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11',
         'PP1','PP2','PP3','PP4',
-        'MP1','MP2','MP3','MP4','MP5'
+        'MP1','MP2','MP3','MP4','MP5','MP6','MP7'
       ];
       
       let savedCount = 0;
