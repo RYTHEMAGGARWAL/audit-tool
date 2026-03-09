@@ -344,8 +344,8 @@ const CenterDashboard = () => {
               }}>{centerData.centerType || 'CDC'}</span></div>
               <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
               
-              <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
-              <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
+              <div><strong>Audited By:</strong> {myReports[0]?.auditedBy || '-'}</div>
+<div><strong>Audit Period:</strong> {myReports[0]?.auditPeriod || '-'}</div>
             </div>
           </div>
         ) : (
@@ -534,8 +534,8 @@ const CenterDashboard = () => {
                     }}>{centerData.centerType || 'CDC'}</span></div>
                     <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
                   
-                    <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
-                    <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
+                    <div><strong>Audited By:</strong> {selectedReport.auditedBy || centerData.auditedBy || '-'}</div>
+<div><strong>Audit Period:</strong> {selectedReport.auditPeriod || centerData.auditPeriod || '-'}</div>
                   </div>
                 </div>
               )}

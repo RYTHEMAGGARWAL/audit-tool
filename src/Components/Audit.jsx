@@ -23,7 +23,14 @@ const AuditManagement = () => {
   const [selectedReportForEmail, setSelectedReportForEmail] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [startDate, setStartDate] = useState('');
+  const [fyDateRange, setFyDateRange] = useState({ min: '', max: '' });
+
 const [endDate, setEndDate] = useState('');
+const [auditorsList, setAuditorsList] = useState(['Jatin', 'Rythem', 'Preeti']);
+const [showAddAuditor, setShowAddAuditor] = useState(false);
+const [newAuditorName, setNewAuditorName] = useState('');
+const [auditPeriodFrom, setAuditPeriodFrom] = useState('');
+const [auditPeriodTo, setAuditPeriodTo] = useState('');
   const [emailData, setEmailData] = useState({
     to: '',
     cc: '',
@@ -291,16 +298,19 @@ const [endDate, setEndDate] = useState('');
           console.log(`  - FY: ${r.financialYear || 'UNDEFINED!'}, Status: ${r.currentStatus}`);
         });
         
-        const found = reports.find(r => {
-          const dbCode = (r.centerCode || '').trim();
-          const selectedCode = (center.centerCode || '').trim();
-          const dbFY = (r.financialYear || '').trim();
-          const selectedFY = (selectedFinancialYear || '').trim();
-          
-          console.log(`🔍 Comparing: "${dbCode}" === "${selectedCode}" && "${dbFY}" === "${selectedFY}"`);
-          
-          return dbCode === selectedCode && dbFY === selectedFY;
-        });
+    const found = reports.find(r => {
+  const dbCode = (r.centerCode || '').trim();
+  const selectedCode = (center.centerCode || '').trim();
+  const dbFY = (r.financialYear || '').trim();
+  const selectedFY = (selectedFinancialYear || '').trim();
+  const dbPeriod = (r.auditPeriod || '').trim();
+  const selectedPeriod = (selectedCenter?.auditPeriod || '').trim();
+  
+  const sameBase = dbCode === selectedCode && dbFY === selectedFY;
+  if (!sameBase) return false;
+  if (dbPeriod && selectedPeriod) return dbPeriod === selectedPeriod;
+  return sameBase;
+});
         console.log('\n🎯 Checking:', center.centerCode, '+', selectedFinancialYear);
         console.log('Found duplicate?', found ? '✅ YES' : '❌ NO');
         
@@ -320,11 +330,13 @@ const [endDate, setEndDate] = useState('');
     if (existingReport) {
       console.log('📢 Showing EDIT dialog...');
       const choice = window.confirm(
-        `⚠️ A report already exists for ${center.centerName} (${selectedFinancialYear})!\n\n` +
-        '✅ Click OK to EDIT the existing report\n' +
-        '❌ Click CANCEL to go back and select different center or year\n\n' +
-        'Note: To create a new report, select a different Financial Year.'
-      );
+  `⚠️ A report already exists for ${center.centerName}!\n\n` +
+  `📅 Financial Year: ${selectedFinancialYear}\n` +
+  `🗓️ Audit Period: ${selectedCenter?.auditPeriod || 'Same period'}\n\n` +
+  '✅ Click OK to EDIT the existing report\n' +
+  '❌ Click CANCEL to go back\n\n' +
+  'Tip: Different audit period select karo nayi report ke liye!'
+);
       
       if (!choice) {
         setSelectedCenter(null);
@@ -500,9 +512,14 @@ const [endDate, setEndDate] = useState('');
     return total.toFixed(2);
   };
 
-  const handleSaveReport = async () => {
+ const handleSaveReport = async () => {
     if (!selectedCenter) {
       alert('⚠️ Please select a center first!');
+      return;
+    }
+
+    if (!selectedCenter.auditDate) {
+      alert('⚠️ Please select Audit Date!');
       return;
     }
 
@@ -526,12 +543,15 @@ const [endDate, setEndDate] = useState('');
         geolocation: selectedCenter.geolocation || '',
         centerHeadName: selectedCenter.centerHeadName || '',
        auditedBy: selectedCenter.auditedBy || '',
+       auditPeriod: selectedCenter.auditPeriod || '',
         frontOfficeScore: frontOfficeTotal,
         deliveryProcessScore: deliveryTotal,
         placementScore: placementApplicable === 'no' ? 0 : placementTotal,
         managementScore: managementTotal,
         grandTotal: grandTotal,
-        auditDate: new Date().toLocaleDateString('en-GB'),
+        auditDate: selectedCenter.auditDate 
+  ? new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')
+  : '',
         placementApplicable: placementApplicable === 'no' ? 'no' : 'yes',
         ...auditData,
         submissionStatus: 'Not Submitted',
@@ -1040,8 +1060,174 @@ const isWithinDateRange = (reportDate, start, end) => {
                 }}>{selectedCenter.centerType || 'CDC'}</span></div>
                 <div><strong>Location:</strong> {selectedCenter.location || selectedCenter.geolocation || '-'}</div>
                 
-                <div><strong>Audited By:</strong> {selectedCenter.auditedBy || ''}</div>
-                <div><strong>Audit Period:</strong> {selectedCenter.auditPeriod || '-'}</div>
+                {/* AUDITED BY DROPDOWN */}
+<div style={{position: 'relative'}}>
+  <strong>Audited By:</strong>
+  <select
+    value={selectedCenter.auditedBy || ''}
+    onChange={(e) => {
+      if (e.target.value === '__add_new__') {
+        setShowAddAuditor(true);
+      } else {
+        setSelectedCenter({...selectedCenter, auditedBy: e.target.value});
+      }
+    }}
+    style={{
+      marginLeft: '8px', padding: '5px 10px',
+      border: '2px solid #667eea', borderRadius: '6px',
+      cursor: 'pointer', fontSize: '13px', color: '#333'
+    }}
+  >
+    <option value="">-- Select --</option>
+    {auditorsList.map(a => (
+      <option key={a} value={a}>{a}</option>
+    ))}
+    <option value="__add_new__">➕ Add New</option>
+  </select>
+
+  {showAddAuditor && (
+    <div style={{
+      position: 'absolute', top: '110%', left: 0,
+      background: 'white', border: '2px solid #667eea',
+      borderRadius: '8px', padding: '12px', zIndex: 999,
+      boxShadow: '0 8px 20px rgba(0,0,0,0.15)', minWidth: '250px'
+    }}>
+      <p style={{margin: '0 0 8px', fontWeight: 'bold', color: '#667eea', fontSize: '13px'}}>
+        ➕ Add New Auditor
+      </p>
+      <div style={{display: 'flex', gap: '8px'}}>
+        <input
+          type="text"
+          placeholder="Auditor name..."
+          value={newAuditorName}
+          onChange={(e) => setNewAuditorName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newAuditorName.trim()) {
+              setAuditorsList(prev => [...prev, newAuditorName.trim()]);
+              setSelectedCenter({...selectedCenter, auditedBy: newAuditorName.trim()});
+              setNewAuditorName('');
+              setShowAddAuditor(false);
+            }
+          }}
+          style={{flex: 1, padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px'}}
+        />
+        <button onClick={() => {
+          if (newAuditorName.trim()) {
+            setAuditorsList(prev => [...prev, newAuditorName.trim()]);
+            setSelectedCenter({...selectedCenter, auditedBy: newAuditorName.trim()});
+            setNewAuditorName('');
+            setShowAddAuditor(false);
+          }
+        }} style={{padding: '8px 14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>✓</button>
+        <button onClick={() => {setShowAddAuditor(false); setNewAuditorName('');}}
+          style={{padding: '8px 12px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>✕</button>
+      </div>
+    </div>
+  )}
+</div>
+
+
+{selectedFinancialYear && (
+  <div style={{ marginTop: '15px', padding: '18px 20px', background: 'white', borderRadius: '10px', border: '2px solid #11998e', boxShadow: '0 2px 8px rgba(17,153,142,0.1)' }}>
+    <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
+      🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
+    </label>
+    <input
+      type="date"
+      value={selectedCenter.auditDate || ''}
+      max={new Date().toISOString().split('T')[0]}
+      onChange={(e) => setSelectedCenter(prev => ({ ...prev, auditDate: e.target.value }))}
+      style={{
+        padding: '10px 14px', border: '2px solid #11998e',
+        borderRadius: '8px', fontSize: '14px', cursor: 'pointer', width: '220px'
+      }}
+    />
+    {selectedCenter.auditDate && (
+      <span style={{ marginLeft: '12px', color: '#2e7d32', fontWeight: 'bold', fontSize: '14px' }}>
+        ✅ {new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')}
+      </span>
+    )}
+  </div>
+)}
+
+{/* AUDIT PERIOD DATE RANGE */}
+{selectedFinancialYear && (
+  <div style={{
+    marginTop: '15px',
+    padding: '18px 20px',
+    background: 'white',
+    borderRadius: '10px',
+    border: '2px solid #667eea',
+    boxShadow: '0 2px 8px rgba(102,126,234,0.1)'
+  }}>
+    <label style={{ 
+      fontSize: '15px', fontWeight: 'bold', color: '#667eea', 
+      display: 'block', marginBottom: '12px' 
+    }}>
+      📅 Audit Period 
+      <span style={{fontSize: '12px', color: '#888', fontWeight: 'normal', marginLeft: '8px'}}>
+        (FY Range: {fyDateRange.min} → {fyDateRange.max})
+      </span>
+    </label>
+    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
+        <input
+          type="date"
+          value={auditPeriodFrom}
+          min={fyDateRange.min}
+          max={fyDateRange.max}
+          onChange={(e) => {
+            setAuditPeriodFrom(e.target.value);
+            setAuditPeriodTo('');
+            setSelectedCenter(prev => ({...prev, auditPeriod: e.target.value}));
+          }}
+          style={{
+            padding: '8px 12px', border: '2px solid #667eea',
+            borderRadius: '6px', fontSize: '14px', cursor: 'pointer'
+          }}
+        />
+      </div>
+      <span style={{ color: '#667eea', fontWeight: 'bold', fontSize: '20px', paddingBottom: '6px' }}>→</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>To</label>
+        <input
+          type="date"
+          value={auditPeriodTo}
+          min={auditPeriodFrom || fyDateRange.min}
+          max={fyDateRange.max}
+          disabled={!auditPeriodFrom}
+          onChange={(e) => {
+            setAuditPeriodTo(e.target.value);
+            const period = `${auditPeriodFrom} to ${e.target.value}`;
+            setSelectedCenter(prev => ({...prev, auditPeriod: period}));
+          }}
+          style={{
+            padding: '8px 12px', border: '2px solid #667eea',
+            borderRadius: '6px', fontSize: '14px',
+            opacity: !auditPeriodFrom ? 0.4 : 1,
+            cursor: !auditPeriodFrom ? 'not-allowed' : 'pointer'
+          }}
+        />
+      </div>
+      {auditPeriodFrom && auditPeriodTo && (
+        <div style={{
+          padding: '8px 16px', background: '#e8f5e9',
+          borderRadius: '8px', border: '1px solid #4caf50',
+          fontSize: '13px', fontWeight: 'bold', color: '#2e7d32',
+          paddingBottom: '10px'
+        }}>
+          ✅ {new Date(auditPeriodFrom).toLocaleDateString('en-GB')} → {new Date(auditPeriodTo).toLocaleDateString('en-GB')}
+        </div>
+      )}
+    </div>
+    {auditPeriodFrom && !auditPeriodTo && (
+      <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#e65100', fontWeight: '500' }}>
+        ⚠️ "To" date bhi select karo
+      </p>
+    )}
+  </div>
+)}
               </div>
 
               {selectedCenter && (() => {
@@ -1097,7 +1283,21 @@ const isWithinDateRange = (reportDate, start, end) => {
                   </label>
                   <select
                     value={selectedFinancialYear}
-                    onChange={(e) => setSelectedFinancialYear(e.target.value)}
+                    onChange={(e) => {
+  const fy = e.target.value;
+setSelectedFinancialYear(fy);
+setAuditPeriodFrom('');
+setAuditPeriodTo('');
+setSelectedCenter(prev => ({...prev, auditPeriod: ''}));
+
+const fyMap = {
+  'FY24': { min: '2023-04-01', max: '2024-03-31' },
+  'FY25': { min: '2024-04-01', max: '2025-03-31' },
+  'FY26': { min: '2025-04-01', max: new Date().toISOString().split('T')[0] },
+  'FY27': { min: '2026-04-01', max: '2027-03-31' },
+};
+setFyDateRange(fyMap[fy] || { min: '', max: '' });
+}}
                     style={{
                       padding: '12px 16px',
                       fontSize: '16px',
@@ -1720,6 +1920,7 @@ const isWithinDateRange = (reportDate, start, end) => {
                     <th>CENTER<br/>HEAD NAME</th>
                     <th>FINANCIAL<br/>YEAR</th>
                      <th>AUDIT<br/>DATE</th>
+                     <th>AUDIT<br/>PERIOD</th>
                     <th>AUDITED<br/>BY</th> 
                     <th>FRONT<br/>OFFICE</th>
                     <th>DELIVERY</th>
@@ -1810,7 +2011,40 @@ const isWithinDateRange = (reportDate, start, end) => {
                         <td>{report.centerHeadName || '-'}</td>
                         <td style={{ textAlign: "center", fontWeight: "bold", fontSize: "14px", color: "#667eea" }}>{report.financialYear || "FY26"}</td>
                         <td>{report.auditDate}</td>
-                        <td style={{ textAlign: 'center' }}>{report.auditedBy || '-'}</td> 
+<td style={{ 
+  textAlign: 'center',
+  minWidth: '160px'
+}}>
+  {report.auditPeriod ? (() => {
+    const parts = report.auditPeriod.split(' to ');
+    const from = parts[0] ? new Date(parts[0]).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) : parts[0];
+    const to = parts[1] ? new Date(parts[1]).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) : parts[1];
+    return (
+      <div style={{
+        background: 'linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%)',
+        padding: '8px 10px',
+        borderRadius: '8px',
+        border: '1px solid #9fa8da',
+        display: 'inline-block',
+        minWidth: '150px'
+      }}>
+        <div style={{ fontSize: '11px', color: '#5c6bc0', fontWeight: 'bold', marginBottom: '4px' }}>
+          📅 Audit Period
+        </div>
+        <div style={{ fontSize: '12px', color: '#283593', fontWeight: 'bold' }}>
+          {from}
+        </div>
+        <div style={{ fontSize: '11px', color: '#7986cb', margin: '2px 0' }}>↓</div>
+        <div style={{ fontSize: '12px', color: '#283593', fontWeight: 'bold' }}>
+          {to}
+        </div>
+      </div>
+    );
+  })() : (
+    <span style={{ color: '#999', fontSize: '12px' }}>—</span>
+  )}
+</td>
+<td style={{ textAlign: 'center' }}>{report.auditedBy || '-'}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', color: frontOfficeInfo.color }}>
                           {report.frontOfficeScore === 'NA' ? 'NA' : (
                             <>
@@ -2053,10 +2287,16 @@ const isWithinDateRange = (reportDate, start, end) => {
                         <td style={{ textAlign: 'center', padding: '8px', background: '#f1f8e9' }}>
                           {(report.emailSent === true && report.currentStatus === 'Approved') ? (
                             <button
-                              onClick={() => {
-                                setSelectedReportForRemarks(report);
-                                setShowCenterRemarksModal(true);
-                              }}
+                              onClick={async () => {
+  // Fresh data fetch karo MongoDB se
+  const res = await fetch(`${API_URL}/api/audit-reports`);
+  const allReports = await res.json();
+  const freshReport = allReports.find(r => r._id === report._id);
+  setSelectedReportForRemarks(freshReport || report);
+  setShowCenterRemarksModal(true);
+}}
+
+
                               style={{
                                 background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
                                 color: 'white',
@@ -2371,10 +2611,10 @@ const isWithinDateRange = (reportDate, start, end) => {
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setShowCenterRemarksModal(false);
-                  setSelectedReportForRemarks(null);
-                }}
+               onClick={() => {
+  setShowCenterRemarksModal(false);
+  setSelectedReportForRemarks(null);
+}}
                 style={{
                   background: 'rgba(255,255,255,0.2)',
                   border: 'none',

@@ -131,6 +131,11 @@ auditPeriod: { type: String, trim: true, default: '' },
   auditDate: { type: Date, default: Date.now },
   auditDateString: { type: String, default: '' },
   financialYear: { type: String, default: 'FY26' },
+  projectName: { type: String, trim: true, default: '' },
+zmName: { type: String, trim: true, default: '' },
+regionHeadName: { type: String, trim: true, default: '' },
+areaClusterManager: { type: String, trim: true, default: '' },
+location: { type: String, trim: true, default: '' },
   // Checkpoints
   FO1: { type: checkpointDataSchema, default: () => ({}) },
   FO2: { type: checkpointDataSchema, default: () => ({}) },
@@ -765,11 +770,16 @@ ${managementTable}
     console.log('💾 Saving placementApplicable:', data.placementApplicable);
 
     // ✅ STEP 3: Save to database
-    const report = await AuditReport.findOneAndUpdate(
-      { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' },
-      updateData,
-      { upsert: true, new: true }
-    );
+    const auditPeriod = data.auditPeriod || '';
+const matchQuery = auditPeriod
+  ? { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26', auditPeriod: auditPeriod }
+  : { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' };
+
+const report = await AuditReport.findOneAndUpdate(
+  matchQuery,
+  updateData,
+  { upsert: true, new: true }
+);
 
     // Reset center head remarks lock
     report.centerHeadRemarksLocked = false;
@@ -1382,8 +1392,8 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
           report.centerHeadName = centerData.centerHeadName || '';
           report.location = centerData.location || '';
           report.zonalHeadName = centerData.zonalHeadName || '';
-          report.auditedBy = centerData.auditedBy || '';
-          report.auditPeriod = centerData.auditPeriod || '';
+         if (!report.auditedBy) report.auditedBy = centerData.auditedBy || '';
+if (!report.auditPeriod) report.auditPeriod = centerData.auditPeriod || '';
           
           await report.save();
           
@@ -1449,6 +1459,30 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
 // ========================================
 
 // Add this to server.js temporarily
+
+
+app.get('/api/fix-audited-by', async (req, res) => {
+  try {
+    const reports = await AuditReport.find({});
+    let updated = 0;
+    
+    for (const report of reports) {
+      // AuditManagement.jsx se jo data save hua tha, 
+      // woh report mein already hoga - bas markModified karo
+      report.markModified('auditedBy');
+      report.markModified('auditPeriod');
+      await report.save();
+      updated++;
+    }
+    
+    res.json({ success: true, updated });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 app.get('/api/debug-centers', async (req, res) => {
   try {
     console.log('\n🔍 ========== DEBUG: CHECKING DATABASE ==========');
@@ -1509,6 +1543,40 @@ app.post('/api/force-fix-fy', async (req, res) => {
     console.log('✅ Fixed:', result.modifiedCount);
     
     res.json({ success: true, fixed: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+app.get('/api/fix-audit-index', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const collection = db.collection('auditreports');
+    
+    // Drop BOTH problematic indexes
+    const indexesToDrop = ['centerCode_1', 'centerCode_1_financialYear_1'];
+    const results = [];
+    
+    for (const indexName of indexesToDrop) {
+      try {
+        await collection.dropIndex(indexName);
+        console.log(`✅ Dropped: ${indexName}`);
+        results.push({ index: indexName, status: 'DROPPED' });
+      } catch (e) {
+        console.log(`⚠️ ${indexName}: ${e.message}`);
+        results.push({ index: indexName, status: 'NOT FOUND / ALREADY DROPPED' });
+      }
+    }
+    
+    const remainingIndexes = await collection.indexes();
+    
+    res.json({
+      success: true,
+      results,
+      remainingIndexes: remainingIndexes.map(i => ({ name: i.name, key: i.key }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

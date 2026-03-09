@@ -15,8 +15,8 @@ const CenterManagement = () => {
     centerType: '',
     location: '',
     
-    auditedBy: '',
-    auditPeriod: ''
+   
+
   });
   const [editingId, setEditingId] = useState(null);
 
@@ -78,8 +78,7 @@ const CenterManagement = () => {
           centerType: '',
           location: '',
          
-          auditedBy: '',
-          auditPeriod: ''
+       
         });
         loadCenters();
       } else {
@@ -262,24 +261,7 @@ const CenterManagement = () => {
           />
         </div>
 
-        {/* Row 4: Zonal Head Name, Audited By, Audit Period */}
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', marginBottom: '15px'}}>
-         
-          <input
-            type="text"
-            placeholder="Audited By"
-            value={newCenter.auditedBy}
-            onChange={(e) => setNewCenter({...newCenter, auditedBy: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
-          <input
-            type="text"
-            placeholder="Audit Period"
-            value={newCenter.auditPeriod}
-            onChange={(e) => setNewCenter({...newCenter, auditPeriod: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
-        </div>
+        
 
         <button
           onClick={handleAdd}
@@ -322,8 +304,7 @@ const CenterManagement = () => {
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER TYPE</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>LOCATION</th>
                   
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDITED BY</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDIT PERIOD</th>
+                  
                   <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd'}}>ACTIONS</th>
                 </tr>
               </thead>
@@ -466,36 +447,7 @@ const CenterManagement = () => {
                       ) : (center.location || center.geolocation || '-')}
                     </td>
                     
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.auditedBy || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, auditedBy: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.auditedBy || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.auditPeriod || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, auditPeriod: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.auditPeriod || '-')}
-                    </td>
+                    
                     <td style={{padding: '12px', textAlign: 'center'}}>
                       {editingId === center._id ? (
                         <>
