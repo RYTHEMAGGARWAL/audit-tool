@@ -4,6 +4,7 @@ import { saveAs } from 'file-saver';
 import axios from 'axios';
 import { API_URL } from '../config';
 import { getCheckpointsByArea } from './checkpointConfig';
+import Select from 'react-select';
 
 import './Audit.css';
 
@@ -20,6 +21,9 @@ const AuditManagement = () => {
   const [editableRemarks, setEditableRemarks] = useState({});
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [selectedReportForEmail, setSelectedReportForEmail] = useState(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [startDate, setStartDate] = useState('');
+const [endDate, setEndDate] = useState('');
   const [emailData, setEmailData] = useState({
     to: '',
     cc: '',
@@ -521,7 +525,7 @@ const AuditManagement = () => {
         chName: selectedCenter.chName || '',
         geolocation: selectedCenter.geolocation || '',
         centerHeadName: selectedCenter.centerHeadName || '',
-        zonalHeadName: selectedCenter.zonalHeadName || '',
+       auditedBy: selectedCenter.auditedBy || '',
         frontOfficeScore: frontOfficeTotal,
         deliveryProcessScore: deliveryTotal,
         placementScore: placementApplicable === 'no' ? 0 : placementTotal,
@@ -812,7 +816,29 @@ ${loggedUser.firstname || 'Audit Team'}`
     if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
     return { status: 'Non-Compliant', color: '#dc3545' };
   };
-
+const isWithinDateRange = (reportDate, start, end) => {
+  if (!start && !end) return true; // No filter
+  
+  // Parse report date (format: DD/MM/YYYY)
+  const [day, month, year] = (reportDate || '').split('/');
+  if (!day || !month || !year) return true;
+  
+  const rDate = new Date(year, month - 1, day);
+  
+  if (start && end) {
+    const sDate = new Date(start);
+    const eDate = new Date(end);
+    return rDate >= sDate && rDate <= eDate;
+  } else if (start) {
+    const sDate = new Date(start);
+    return rDate >= sDate;
+  } else if (end) {
+    const eDate = new Date(end);
+    return rDate <= eDate;
+  }
+  
+  return true;
+};
   // ========================================
   // END RED FLAG STATUS LOGIC
   // ========================================
@@ -930,36 +956,62 @@ ${loggedUser.firstname || 'Audit Team'}`
           <h3>📝 Create New Audit Report</h3>
 
           <div className="select-user" style={{ marginBottom: '25px' }}>
-            <label><strong>Select Center:</strong></label>
-            <select
-              value={selectedCenter?.centerCode || ''}
-              onChange={(e) => {
-                const center = centers.find(c => c.centerCode === e.target.value);
-                console.log('🏢 Center Selected:', center);
-                console.log('📋 Center Type:', center?.centerType);
-                setSelectedCenter(center);
-                setShowAuditTable(false);
-                setEditableRemarks({});
-                setPlacementApplicable(null);
-                setSelectedFinancialYear('');
-                if (center) {
-                  const centerType = center.centerType || 'CDC';
-                  console.log('✅ Detected Center Type:', centerType);
-                  const autoAuditType = centerType === 'DTV' ? 'DTV' : `Skills-${centerType}`;
-                  console.log('✅ Auto Audit Type:', autoAuditType);
-                  setAuditType(autoAuditType);
-                  initializeAuditData();
-                }
-              }}
-            >
-              <option value="">-- Select a Center --</option>
-              {centers.map(center => (
-                <option key={center.centerCode} value={center.centerCode}>
-                  {center.centerCode} - {center.centerName}
-                </option>
-              ))}
-            </select>
-          </div>
+  <label><strong>Select Center:</strong></label>
+  <Select
+    value={selectedCenter ? {
+      value: selectedCenter.centerCode,
+      label: `${selectedCenter.centerCode} - ${selectedCenter.centerName}`
+    } : null}
+    onChange={(selectedOption) => {
+      if (selectedOption) {
+        const center = centers.find(c => c.centerCode === selectedOption.value);
+        console.log('🏢 Center Selected:', center);
+        console.log('📋 Center Type:', center?.centerType);
+        setSelectedCenter(center);
+        setShowAuditTable(false);
+        setEditableRemarks({});
+        setPlacementApplicable(null);
+        setSelectedFinancialYear('');
+        if (center) {
+          const centerType = center.centerType || 'CDC';
+          console.log('✅ Detected Center Type:', centerType);
+          const autoAuditType = centerType === 'DTV' ? 'DTV' : `Skills-${centerType}`;
+          console.log('✅ Auto Audit Type:', autoAuditType);
+          setAuditType(autoAuditType);
+          initializeAuditData();
+        }
+      }
+    }}
+    options={centers.map(center => ({
+      value: center.centerCode,
+      label: `${center.centerCode} - ${center.centerName}`
+    }))}
+    placeholder="-- Select a Center --"
+    isClearable={true}
+    isSearchable={true}
+    styles={{
+      control: (base) => ({
+        ...base,
+        padding: '8px',
+        fontSize: '16px',
+        borderRadius: '8px',
+        border: '2px solid #667eea',
+        minHeight: '50px'
+      }),
+      option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isSelected ? '#667eea' : state.isFocused ? '#e3f2fd' : 'white',
+        color: state.isSelected ? 'white' : '#333',
+        padding: '12px',
+        cursor: 'pointer'
+      }),
+      menu: (base) => ({
+        ...base,
+        zIndex: 9999
+      })
+    }}
+  />
+</div>
 
           {selectedCenter && !showAuditTable && (
             <div style={{ 
@@ -987,8 +1039,8 @@ ${loggedUser.firstname || 'Audit Team'}`
                   color: selectedCenter.centerType === 'CDC' ? '#1976d2' : selectedCenter.centerType === 'SDC' ? '#e65100' : '#2e7d32'
                 }}>{selectedCenter.centerType || 'CDC'}</span></div>
                 <div><strong>Location:</strong> {selectedCenter.location || selectedCenter.geolocation || '-'}</div>
-                <div><strong>Zonal Head:</strong> {selectedCenter.zonalHeadName || '-'}</div>
-                <div><strong>Audited By:</strong> {selectedCenter.auditedBy || '-'}</div>
+                
+                <div><strong>Audited By:</strong> {selectedCenter.auditedBy || ''}</div>
                 <div><strong>Audit Period:</strong> {selectedCenter.auditPeriod || '-'}</div>
               </div>
 
@@ -1379,75 +1431,253 @@ ${loggedUser.firstname || 'Audit Team'}`
           </div>
 
           <div style={{ 
-            marginBottom: '20px',
-            padding: '20px',
-            background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
-            borderRadius: '12px',
-            border: '2px solid #2196f3'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <label style={{ 
-                fontSize: '16px', 
-                fontWeight: 'bold', 
-                color: '#1976d2',
-                minWidth: '80px'
-              }}>
-                🔍 Search:
-              </label>
-              <input
-                type="text"
-                placeholder="Search by Center, Code, Year, CH Name, Status..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: '12px 16px',
-                  fontSize: '15px',
-                  border: '2px solid #2196f3',
-                  borderRadius: '8px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease'
-                }}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  style={{
-                    padding: '12px 20px',
-                    background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    boxShadow: '0 4px 12px rgba(244, 67, 54, 0.3)'
-                  }}
-                >
-                  ✕ Clear
-                </button>
-              )}
-            </div>
-            {searchQuery && (
-              <p style={{ 
-                marginTop: '10px', 
-                fontSize: '14px', 
-                color: '#1565c0',
-                fontWeight: '500'
-              }}>
-                🔎 Found {savedReports.filter(r => {
-                  const q = searchQuery.toLowerCase();
-                  return (
-                    r.centerName?.toLowerCase().includes(q) ||
-                    r.centerCode?.toLowerCase().includes(q) ||
-                    r.chName?.toLowerCase().includes(q) ||
-                    r.financialYear?.toLowerCase().includes(q) ||
-                    r.currentStatus?.toLowerCase().includes(q)
-                  );
-                }).length} results for "{searchQuery}"
-              </p>
-            )}
+  marginBottom: '20px',
+  padding: '20px',
+  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+  borderRadius: '12px',
+  border: '2px solid #2196f3'
+}}>
+  {/* SEARCH BAR */}
+  {/* SMART SEARCH BAR WITH SUGGESTIONS */}
+<div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px', position: 'relative' }}>
+  <label style={{ fontSize: '16px', fontWeight: 'bold', color: '#1976d2', minWidth: '80px' }}>
+    🔍 Search:
+  </label>
+  <div style={{ flex: 1, position: 'relative' }}>
+    <input
+      type="text"
+      placeholder="Search by Center, Code, Type, FY, Audited By, Status..."
+      value={searchQuery}
+      onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
+      onFocus={() => setShowSuggestions(true)}
+      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+      style={{
+        width: '100%',
+        padding: '12px 16px',
+        fontSize: '15px',
+        border: '2px solid #2196f3',
+        borderRadius: '8px',
+        outline: 'none',
+        boxSizing: 'border-box'
+      }}
+    />
+    {/* SUGGESTIONS DROPDOWN */}
+    {showSuggestions && searchQuery.length >= 1 && (() => {
+      const q = searchQuery.toLowerCase();
+      const suggestions = [];
+
+      savedReports.forEach(r => {
+        // Center Name
+        if (r.centerName?.toLowerCase().includes(q))
+          suggestions.push({ label: r.centerName, type: 'Center Name', icon: '🏢' });
+        // Center Code
+        if (r.centerCode?.toLowerCase().includes(q))
+          suggestions.push({ label: r.centerCode, type: 'Center Code', icon: '🔑' });
+        // Center Type
+        if (r.centerType?.toLowerCase().includes(q))
+          suggestions.push({ label: r.centerType, type: 'Center Type', icon: '🏷️' });
+        // Financial Year
+        if (r.financialYear?.toLowerCase().includes(q))
+          suggestions.push({ label: r.financialYear, type: 'Financial Year', icon: '📅' });
+        // Audited By
+        if (r.auditedBy?.toLowerCase().includes(q) && r.auditedBy)
+          suggestions.push({ label: r.auditedBy, type: 'Audited By', icon: '👤' });
+        // Audit Status
+        const status = getAuditStatus(r);
+        if (status?.toLowerCase().includes(q))
+          suggestions.push({ label: status, type: 'Audit Status', icon: '📊' });
+        // Current Status
+        if (r.currentStatus?.toLowerCase().includes(q))
+          suggestions.push({ label: r.currentStatus, type: 'Submit Status', icon: '📤' });
+      });
+
+      // Deduplicate
+      const unique = suggestions.filter((s, i, arr) =>
+        arr.findIndex(x => x.label === s.label && x.type === s.type) === i
+      ).slice(0, 8);
+
+      if (unique.length === 0) return null;
+
+      return (
+        <div style={{
+          position: 'absolute',
+          top: '110%',
+          left: 0,
+          right: 0,
+          background: 'white',
+          border: '2px solid #2196f3',
+          borderRadius: '10px',
+          boxShadow: '0 8px 24px rgba(33,150,243,0.2)',
+          zIndex: 9999,
+          overflow: 'hidden'
+        }}>
+          <div style={{ padding: '8px 12px', background: '#e3f2fd', fontSize: '12px', color: '#1976d2', fontWeight: 'bold' }}>
+            💡 Suggestions
           </div>
+          {unique.map((s, i) => (
+            <div
+              key={i}
+              onMouseDown={() => { setSearchQuery(s.label); setShowSuggestions(false); }}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                borderBottom: i < unique.length - 1 ? '1px solid #f0f0f0' : 'none',
+                transition: 'background 0.15s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = '#e3f2fd'}
+              onMouseOut={e => e.currentTarget.style.background = 'white'}
+            >
+              <span style={{ fontSize: '16px' }}>{s.icon}</span>
+              <span style={{ fontWeight: 'bold', color: '#333', flex: 1 }}>{s.label}</span>
+              <span style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                background: '#e3f2fd',
+                color: '#1976d2',
+                fontWeight: 'bold'
+              }}>{s.type}</span>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
+  </div>
+  {searchQuery && (
+    <button
+      onClick={() => { setSearchQuery(''); setShowSuggestions(false); }}
+      style={{
+        padding: '12px 20px',
+        background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
+        color: 'white', border: 'none', borderRadius: '8px',
+        cursor: 'pointer', fontSize: '14px', fontWeight: 'bold'
+      }}
+    >✕ Clear</button>
+  )}
+</div>
+
+  {/* DATE RANGE FILTER - ADD THIS! */}
+  <div style={{ 
+    display: 'grid', 
+    gridTemplateColumns: 'auto 1fr 1fr auto', 
+    gap: '15px', 
+    alignItems: 'center',
+    background: 'white',
+    padding: '15px',
+    borderRadius: '10px',
+    border: '2px solid #2196f3'
+  }}>
+    <label style={{ 
+      fontSize: '16px', 
+      fontWeight: 'bold', 
+      color: '#1976d2',
+      whiteSpace: 'nowrap'
+    }}>
+      📅 Date Range:
+    </label>
+    
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
+      <input
+        type="date"
+        value={startDate}
+        onChange={(e) => setStartDate(e.target.value)}
+        style={{
+          padding: '10px 12px',
+          fontSize: '14px',
+          border: '2px solid #2196f3',
+          borderRadius: '6px',
+          outline: 'none',
+          cursor: 'pointer'
+        }}
+      />
+    </div>
+    
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
+      <input
+        type="date"
+        value={endDate}
+        onChange={(e) => setEndDate(e.target.value)}
+        style={{
+          padding: '10px 12px',
+          fontSize: '14px',
+          border: '2px solid #2196f3',
+          borderRadius: '6px',
+          outline: 'none',
+          cursor: 'pointer'
+        }}
+      />
+    </div>
+    
+    {(startDate || endDate) && (
+      <button
+        onClick={() => {
+          setStartDate('');
+          setEndDate('');
+        }}
+        style={{
+          padding: '10px 16px',
+          background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        ✕ Clear Dates
+      </button>
+    )}
+  </div>
+
+  {/* FILTER SUMMARY */}
+  {(searchQuery || startDate || endDate) && (
+    <div style={{ 
+      marginTop: '12px', 
+      padding: '10px 15px',
+      background: '#e8f5e9',
+      borderRadius: '8px',
+      border: '1px solid #4caf50'
+    }}>
+      <p style={{ 
+        margin: 0, 
+        fontSize: '14px', 
+        color: '#2e7d32',
+        fontWeight: '500'
+      }}>
+        🔎 Active Filters: 
+        {searchQuery && ` Text="${searchQuery}"`}
+        {startDate && ` | From: ${new Date(startDate).toLocaleDateString('en-GB')}`}
+        {endDate && ` | To: ${new Date(endDate).toLocaleDateString('en-GB')}`}
+        {` | Found ${savedReports.filter(r => {
+          // Search filter
+          const matchesSearch = !searchQuery || (
+            r.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.chName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          
+          // Date filter
+          const matchesDate = isWithinDateRange(
+            r.auditDateString || r.auditDate,
+            startDate,
+            endDate
+          );
+          
+          return matchesSearch && matchesDate;
+        }).length} results`}
+      </p>
+    </div>
+  )}
+</div>
 
           <div className="table-header" style={{marginTop: 0}}>
             <div style={{visibility: 'hidden'}}>placeholder</div>
@@ -1489,7 +1719,8 @@ ${loggedUser.firstname || 'Audit Team'}`
                     <th>CENTER<br/>TYPE</th>
                     <th>CENTER<br/>HEAD NAME</th>
                     <th>FINANCIAL<br/>YEAR</th>
-                    <th>AUDIT<br/>DATE</th>
+                     <th>AUDIT<br/>DATE</th>
+                    <th>AUDITED<br/>BY</th> 
                     <th>FRONT<br/>OFFICE</th>
                     <th>DELIVERY</th>
                     <th>PLACEMENT</th>
@@ -1506,18 +1737,29 @@ ${loggedUser.firstname || 'Audit Team'}`
                 </thead>
                 <tbody>
                   {savedReports
-                    .filter(report => {
-                      if (!searchQuery) return true;
-                      const q = searchQuery.toLowerCase();
-                      return (
-                        report.centerName?.toLowerCase().includes(q) ||
-                        report.centerCode?.toLowerCase().includes(q) ||
-                        report.chName?.toLowerCase().includes(q) ||
-                        report.financialYear?.toLowerCase().includes(q) ||
-                        report.currentStatus?.toLowerCase().includes(q) ||
-                        report.auditDateString?.toLowerCase().includes(q)
-                      );
-                    })
+  .filter(report => {
+    // Text search filter
+    const matchesSearch = !searchQuery || (
+      report.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.chName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.auditedBy?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.centerType?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getAuditStatus(report)?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.auditDateString?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
+    // Date range filter
+    const matchesDate = isWithinDateRange(
+      report.auditDateString || report.auditDate,
+      startDate,
+      endDate
+    );
+    
+    return matchesSearch && matchesDate;
+  })
                     .map((report, index) => {
                     const canSubmit = report.currentStatus === 'Not Submitted' || 
                                       report.currentStatus.startsWith('Rejected');
@@ -1537,7 +1779,7 @@ ${loggedUser.firstname || 'Audit Team'}`
                     const managementInfo = getAreaScoreInfo(report.managementScore, mpMax);
 
                     return (
-                      <tr key={index}>
+                      <tr key={index} style={{ verticalAlign: 'middle' }}>
                         <td style={{ position: 'sticky', left: 0, zIndex: 2, background: 'white', minWidth: '150px' }}>{report.centerName}</td>
                         <td style={{ 
                           position: 'sticky',
@@ -1568,6 +1810,7 @@ ${loggedUser.firstname || 'Audit Team'}`
                         <td>{report.centerHeadName || '-'}</td>
                         <td style={{ textAlign: "center", fontWeight: "bold", fontSize: "14px", color: "#667eea" }}>{report.financialYear || "FY26"}</td>
                         <td>{report.auditDate}</td>
+                        <td style={{ textAlign: 'center' }}>{report.auditedBy || '-'}</td> 
                         <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', color: frontOfficeInfo.color }}>
                           {report.frontOfficeScore === 'NA' ? 'NA' : (
                             <>
@@ -2184,7 +2427,7 @@ ${loggedUser.firstname || 'Audit Team'}`
                     color: selectedReportForRemarks.centerType === 'CDC' ? '#1976d2' : selectedReportForRemarks.centerType === 'SDC' ? '#e65100' : '#2e7d32'
                   }}>{selectedReportForRemarks.centerType || 'CDC'}</span></div>
                   <div><strong>Location:</strong> {selectedReportForRemarks.location || selectedReportForRemarks.geolocation || '-'}</div>
-                  <div><strong>Zonal Head:</strong> {selectedReportForRemarks.zonalHeadName || '-'}</div>
+                  
                   <div><strong>Audited By:</strong> {selectedReportForRemarks.auditedBy || '-'}</div>
                   <div><strong>Audit Period:</strong> {selectedReportForRemarks.auditPeriod || '-'}</div>
                   <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReportForRemarks.financialYear || 'FY26'}</span></div>
@@ -2347,59 +2590,179 @@ ${loggedUser.firstname || 'Audit Team'}`
             📜 Audit History - Year Wise Reports
           </h3>
           
-          <div style={{
-            marginBottom: '25px',
-            padding: '20px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            borderRadius: '15px',
-            boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <span style={{ fontSize: '20px' }}>🔍</span>
-              <input
-                type="text"
-                placeholder="Search by Center Name, Code, Year, Status..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: '12px 20px',
-                  fontSize: '16px',
-                  border: '2px solid white',
-                  borderRadius: '10px',
-                  outline: 'none',
-                  background: 'white'
-                }}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  style={{
-                    padding: '10px 20px',
-                    background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '14px'
-                  }}
-                >
-                  ✕ Clear
-                </button>
-              )}
-            </div>
-            {searchQuery && (
-              <p style={{
-                marginTop: '10px',
-                color: 'white',
-                fontSize: '14px',
-                textAlign: 'center'
-              }}>
-                🔍 Searching for: "{searchQuery}"
-              </p>
-            )}
-          </div>
+          <div style={{ 
+  marginBottom: '20px',
+  padding: '20px',
+  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+  borderRadius: '12px',
+  border: '2px solid #2196f3'
+}}>
+  {/* SEARCH BAR */}
+  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
+    <label style={{ 
+      fontSize: '16px', 
+      fontWeight: 'bold', 
+      color: '#1976d2',
+      minWidth: '80px'
+    }}>
+      🔍 Search:
+    </label>
+    <input
+      type="text"
+      placeholder="Search by Center, Code, Year, CH Name, Status..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      style={{
+        flex: 1,
+        padding: '12px 16px',
+        fontSize: '15px',
+        border: '2px solid #2196f3',
+        borderRadius: '8px',
+        outline: 'none',
+        transition: 'all 0.3s ease'
+      }}
+    />
+    {searchQuery && (
+      <button
+        onClick={() => setSearchQuery('')}
+        style={{
+          padding: '12px 20px',
+          background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(244, 67, 54, 0.3)'
+        }}
+      >
+        ✕ Clear
+      </button>
+    )}
+  </div>
+
+  {/* DATE RANGE FILTER */}
+  <div style={{ 
+    display: 'grid', 
+    gridTemplateColumns: 'auto 1fr 1fr auto', 
+    gap: '15px', 
+    alignItems: 'center',
+    background: 'white',
+    padding: '15px',
+    borderRadius: '10px',
+    border: '2px solid #2196f3'
+  }}>
+    <label style={{ 
+      fontSize: '16px', 
+      fontWeight: 'bold', 
+      color: '#1976d2',
+      whiteSpace: 'nowrap'
+    }}>
+      📅 Date Range:
+    </label>
+    
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
+      <input
+        type="date"
+        value={startDate}
+        onChange={(e) => setStartDate(e.target.value)}
+        style={{
+          padding: '10px 12px',
+          fontSize: '14px',
+          border: '2px solid #2196f3',
+          borderRadius: '6px',
+          outline: 'none',
+          cursor: 'pointer'
+        }}
+      />
+    </div>
+    
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
+      <input
+        type="date"
+        value={endDate}
+        onChange={(e) => setEndDate(e.target.value)}
+        style={{
+          padding: '10px 12px',
+          fontSize: '14px',
+          border: '2px solid #2196f3',
+          borderRadius: '6px',
+          outline: 'none',
+          cursor: 'pointer'
+        }}
+      />
+    </div>
+    
+    {(startDate || endDate) && (
+      <button
+        onClick={() => {
+          setStartDate('');
+          setEndDate('');
+        }}
+        style={{
+          padding: '10px 16px',
+          background: 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        ✕ Clear Dates
+      </button>
+    )}
+  </div>
+
+  {/* FILTER SUMMARY */}
+  {(searchQuery || startDate || endDate) && (
+    <div style={{ 
+      marginTop: '12px', 
+      padding: '10px 15px',
+      background: '#e8f5e9',
+      borderRadius: '8px',
+      border: '1px solid #4caf50'
+    }}>
+      <p style={{ 
+        margin: 0, 
+        fontSize: '14px', 
+        color: '#2e7d32',
+        fontWeight: '500'
+      }}>
+        🔎 Active Filters: 
+        {searchQuery && ` Text="${searchQuery}"`}
+        {startDate && ` | From: ${new Date(startDate).toLocaleDateString('en-GB')}`}
+        {endDate && ` | To: ${new Date(endDate).toLocaleDateString('en-GB')}`}
+        {` | Found ${savedReports.filter(r => {
+          // Search filter
+          const matchesSearch = !searchQuery || (
+            r.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.chName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            r.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          
+          // Date filter
+          const matchesDate = isWithinDateRange(
+            r.auditDateString || r.auditDate,
+            startDate,
+            endDate
+          );
+          
+          return matchesSearch && matchesDate;
+        }).length} results`}
+      </p>
+    </div>
+  )}
+</div>
+
+           
           
           {savedReports.length === 0 ? (
             <div style={{

@@ -139,7 +139,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         areaClusterManager: report.areaClusterManager || '',
         centerHeadName: report.centerHeadName || '',
         location: report.location || '',
-        zonalHeadName: report.zonalHeadName || '',
+       
         auditedBy: report.auditedBy || '',
         auditPeriod: report.auditPeriod || '',
         financialYear: report.financialYear || 'FY26',
@@ -526,7 +526,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                     color: selectedRemarks.centerType === 'CDC' ? '#1976d2' : selectedRemarks.centerType === 'SDC' ? '#e65100' : '#2e7d32'
                   }}>{selectedRemarks.centerType || 'CDC'}</span></div>
                   <div><strong>Location:</strong> {selectedRemarks.location || selectedRemarks.geolocation || '-'}</div>
-                  <div><strong>Zonal Head:</strong> {selectedRemarks.zonalHeadName || '-'}</div>
+                  
                   <div><strong>Audited By:</strong> {selectedRemarks.auditedBy || '-'}</div>
                   <div><strong>Audit Period:</strong> {selectedRemarks.auditPeriod || '-'}</div>
                   <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedRemarks.financialYear || 'FY26'}</span></div>

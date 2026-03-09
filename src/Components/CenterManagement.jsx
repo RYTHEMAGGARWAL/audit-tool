@@ -12,9 +12,9 @@ const CenterManagement = () => {
     regionHeadName: '',
     areaClusterManager: '',
     centerHeadName: '',
-    centerType: 'CDC',
+    centerType: '',
     location: '',
-    zonalHeadName: '',
+    
     auditedBy: '',
     auditPeriod: ''
   });
@@ -44,9 +44,14 @@ const CenterManagement = () => {
   };
 
   const handleAdd = async () => {
+    if (!newCenter.centerType) {
+  alert('⚠️ Please select Center Type (CDC/SDC/DTV)');
+  return;
+}
     if (!newCenter.centerCode || !newCenter.centerName) {
       alert('Please fill Center Code and Name');
       return;
+      
     }
 
     try {
@@ -70,9 +75,9 @@ const CenterManagement = () => {
           regionHeadName: '',
           areaClusterManager: '',
           centerHeadName: '',
-          centerType: 'CDC',
+          centerType: '',
           location: '',
-          zonalHeadName: '',
+         
           auditedBy: '',
           auditPeriod: ''
         });
@@ -241,8 +246,9 @@ const CenterManagement = () => {
           <select
             value={newCenter.centerType}
             onChange={(e) => setNewCenter({...newCenter, centerType: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer'}}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer',color: newCenter.centerType ? '#333' : '#999'}}
           >
+          <option value="" disabled>-- Select Center Type --</option>
             <option value="CDC">CDC</option>
             <option value="SDC">SDC</option>
             <option value="DTV">DTV</option>
@@ -257,14 +263,8 @@ const CenterManagement = () => {
         </div>
 
         {/* Row 4: Zonal Head Name, Audited By, Audit Period */}
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
-          <input
-            type="text"
-            placeholder="Zonal Head Name"
-            value={newCenter.zonalHeadName}
-            onChange={(e) => setNewCenter({...newCenter, zonalHeadName: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', marginBottom: '15px'}}>
+         
           <input
             type="text"
             placeholder="Audited By"
@@ -321,7 +321,7 @@ const CenterManagement = () => {
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER HEAD</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER TYPE</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>LOCATION</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>ZONAL HEAD</th>
+                  
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDITED BY</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AUDIT PERIOD</th>
                   <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd'}}>ACTIONS</th>
@@ -465,21 +465,7 @@ const CenterManagement = () => {
                         />
                       ) : (center.location || center.geolocation || '-')}
                     </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.zonalHeadName || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, zonalHeadName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.zonalHeadName || '-')}
-                    </td>
+                    
                     <td style={{padding: '12px'}}>
                       {editingId === center._id ? (
                         <input

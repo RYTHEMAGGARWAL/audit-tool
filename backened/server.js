@@ -122,6 +122,8 @@ const auditReportSchema = new mongoose.Schema({
   centerHeadName: { type: String, trim: true, default: '' },
   zonalHeadName: { type: String, trim: true, default: '' },
   frontOfficeScore: { type: Number, default: 0 },
+  auditedBy: { type: String, trim: true, default: '' },      // ← YE ADD KARO
+auditPeriod: { type: String, trim: true, default: '' },  
   deliveryProcessScore: { type: Number, default: 0 },
   placementScore: { type: Number, default: 0 },
   managementScore: { type: Number, default: 0 },

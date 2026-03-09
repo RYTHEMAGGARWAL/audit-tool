@@ -343,7 +343,7 @@ const CenterDashboard = () => {
                 color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
               }}>{centerData.centerType || 'CDC'}</span></div>
               <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
-              <div><strong>Zonal Head:</strong> {centerData.zonalHeadName || '-'}</div>
+              
               <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
               <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
             </div>
@@ -533,7 +533,7 @@ const CenterDashboard = () => {
                       color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
                     }}>{centerData.centerType || 'CDC'}</span></div>
                     <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
-                    <div><strong>Zonal Head:</strong> {centerData.zonalHeadName || '-'}</div>
+                  
                     <div><strong>Audited By:</strong> {centerData.auditedBy || '-'}</div>
                     <div><strong>Audit Period:</strong> {centerData.auditPeriod || '-'}</div>
                   </div>

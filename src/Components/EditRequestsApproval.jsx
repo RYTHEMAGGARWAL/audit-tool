@@ -207,9 +207,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                 <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   LOCATION
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
-                  ZONAL<br/>HEAD
-                </th>
+                
                 <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   FINANCIAL<br/>YEAR
                 </th>
@@ -269,9 +267,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                   <td style={{ padding: '12px 8px', fontSize: '13px' }}>
                     {req.location || req.geolocation || '-'}
                   </td>
-                  <td style={{ padding: '12px 8px', fontSize: '13px' }}>
-                    {req.zonalHeadName || '-'}
-                  </td>
+                  
                   <td style={{ padding: '12px 8px', fontSize: '13px', fontWeight: 'bold', color: '#667eea' }}>
                     {req.financialYear || 'FY26'}
                   </td>
