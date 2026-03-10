@@ -385,16 +385,16 @@ const CenterDashboard = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
-                    <th style={{ padding: '14px 10px', color: 'white', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>STATUS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
