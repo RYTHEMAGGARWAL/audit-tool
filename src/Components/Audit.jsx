@@ -865,24 +865,6 @@ const isWithinDateRange = (reportDate, start, end) => {
   // END RED FLAG STATUS LOGIC
   // ========================================
 
-  const filteredReportsCount = savedReports.filter(r => {
-    const matchesSearch = !searchQuery || (() => {
-      const q = searchQuery.toLowerCase();
-      return (
-        r.centerName?.toLowerCase().includes(q) ||
-        r.centerCode?.toLowerCase().includes(q) ||
-        r.chName?.toLowerCase().includes(q) ||
-        r.financialYear?.toLowerCase().includes(q) ||
-        r.currentStatus?.toLowerCase().includes(q) ||
-        r.auditedBy?.toLowerCase().includes(q) ||
-        r.centerType?.toLowerCase().includes(q) ||
-        getAuditStatus(r)?.toLowerCase().includes(q)
-      );
-    })();
-    const matchesDate = isWithinDateRange(r.auditDateString || r.auditDate, startDate, endDate);
-    return matchesSearch && matchesDate;
-  }).length;
-
   return (
     <div className="management-section">
       <h2>📋 Audit Management</h2>
@@ -1145,109 +1127,6 @@ const isWithinDateRange = (reportDate, start, end) => {
     </div>
   )}
 </div>
-
-
-{selectedFinancialYear && (
-  <div style={{ marginTop: '15px', padding: '18px 20px', background: 'white', borderRadius: '10px', border: '2px solid #11998e', boxShadow: '0 2px 8px rgba(17,153,142,0.1)' }}>
-    <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
-      🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
-    </label>
-    <input
-      type="date"
-      value={selectedCenter.auditDate || ''}
-      max={new Date().toISOString().split('T')[0]}
-      onChange={(e) => setSelectedCenter(prev => ({ ...prev, auditDate: e.target.value }))}
-      style={{
-        padding: '10px 14px', border: '2px solid #11998e',
-        borderRadius: '8px', fontSize: '14px', cursor: 'pointer', width: '220px'
-      }}
-    />
-    {selectedCenter.auditDate && (
-      <span style={{ marginLeft: '12px', color: '#2e7d32', fontWeight: 'bold', fontSize: '14px' }}>
-        ✅ {new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')}
-      </span>
-    )}
-  </div>
-)}
-
-{/* AUDIT PERIOD DATE RANGE */}
-{selectedFinancialYear && (
-  <div style={{
-    marginTop: '15px',
-    padding: '18px 20px',
-    background: 'white',
-    borderRadius: '10px',
-    border: '2px solid #667eea',
-    boxShadow: '0 2px 8px rgba(102,126,234,0.1)'
-  }}>
-    <label style={{ 
-      fontSize: '15px', fontWeight: 'bold', color: '#667eea', 
-      display: 'block', marginBottom: '12px' 
-    }}>
-      📅 Audit Period 
-      <span style={{fontSize: '12px', color: '#888', fontWeight: 'normal', marginLeft: '8px'}}>
-        (FY Range: {fyDateRange.min} → {fyDateRange.max})
-      </span>
-    </label>
-    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-        <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
-        <input
-          type="date"
-          value={auditPeriodFrom}
-          min={fyDateRange.min}
-          max={fyDateRange.max}
-          onChange={(e) => {
-            setAuditPeriodFrom(e.target.value);
-            setAuditPeriodTo('');
-            setSelectedCenter(prev => ({...prev, auditPeriod: e.target.value}));
-          }}
-          style={{
-            padding: '8px 12px', border: '2px solid #667eea',
-            borderRadius: '6px', fontSize: '14px', cursor: 'pointer'
-          }}
-        />
-      </div>
-      <span style={{ color: '#667eea', fontWeight: 'bold', fontSize: '20px', paddingBottom: '6px' }}>→</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-        <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>To</label>
-        <input
-          type="date"
-          value={auditPeriodTo}
-          min={auditPeriodFrom || fyDateRange.min}
-          max={fyDateRange.max}
-          disabled={!auditPeriodFrom}
-          onChange={(e) => {
-            setAuditPeriodTo(e.target.value);
-            const period = `${auditPeriodFrom} to ${e.target.value}`;
-            setSelectedCenter(prev => ({...prev, auditPeriod: period}));
-          }}
-          style={{
-            padding: '8px 12px', border: '2px solid #667eea',
-            borderRadius: '6px', fontSize: '14px',
-            opacity: !auditPeriodFrom ? 0.4 : 1,
-            cursor: !auditPeriodFrom ? 'not-allowed' : 'pointer'
-          }}
-        />
-      </div>
-      {auditPeriodFrom && auditPeriodTo && (
-        <div style={{
-          padding: '8px 16px', background: '#e8f5e9',
-          borderRadius: '8px', border: '1px solid #4caf50',
-          fontSize: '13px', fontWeight: 'bold', color: '#2e7d32',
-          paddingBottom: '10px'
-        }}>
-          ✅ {new Date(auditPeriodFrom).toLocaleDateString('en-GB')} → {new Date(auditPeriodTo).toLocaleDateString('en-GB')}
-        </div>
-      )}
-    </div>
-    {auditPeriodFrom && !auditPeriodTo && (
-      <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#e65100', fontWeight: '500' }}>
-        ⚠️ "To" date bhi select karo
-      </p>
-    )}
-  </div>
-)}
               </div>
 
               {selectedCenter && (() => {
@@ -1345,6 +1224,102 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
                       fontStyle: 'italic'
                     }}>
                       ⚠️ Please select a financial year before starting audit
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* AUDIT DATE - shown after FY selected */}
+              {selectedFinancialYear && (
+                <div style={{ marginTop: '20px', padding: '18px 20px', background: 'white', borderRadius: '10px', border: '2px solid #11998e', boxShadow: '0 2px 8px rgba(17,153,142,0.1)' }}>
+                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
+                    🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={selectedCenter.auditDate || ''}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setSelectedCenter(prev => ({ ...prev, auditDate: e.target.value }))}
+                    style={{
+                      padding: '10px 14px', border: '2px solid #11998e',
+                      borderRadius: '8px', fontSize: '14px', cursor: 'pointer', width: '220px'
+                    }}
+                  />
+                  {selectedCenter.auditDate && (
+                    <span style={{ marginLeft: '12px', color: '#2e7d32', fontWeight: 'bold', fontSize: '14px' }}>
+                      ✅ {new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* AUDIT PERIOD - shown after FY selected */}
+              {selectedFinancialYear && (
+                <div style={{
+                  marginTop: '20px',
+                  padding: '18px 20px',
+                  background: 'white',
+                  borderRadius: '10px',
+                  border: '2px solid #667eea',
+                  boxShadow: '0 2px 8px rgba(102,126,234,0.1)'
+                }}>
+                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#667eea', display: 'block', marginBottom: '12px' }}>
+                    📅 Audit Period
+                    <span style={{fontSize: '12px', color: '#888', fontWeight: 'normal', marginLeft: '8px'}}>
+                      (FY Range: {fyDateRange.min} → {fyDateRange.max})
+                    </span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
+                      <input
+                        type="date"
+                        value={auditPeriodFrom}
+                        min={fyDateRange.min}
+                        max={fyDateRange.max}
+                        onChange={(e) => {
+                          setAuditPeriodFrom(e.target.value);
+                          setAuditPeriodTo('');
+                          setSelectedCenter(prev => ({...prev, auditPeriod: e.target.value}));
+                        }}
+                        style={{ padding: '8px 12px', border: '2px solid #667eea', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}
+                      />
+                    </div>
+                    <span style={{ color: '#667eea', fontWeight: 'bold', fontSize: '20px', paddingBottom: '6px' }}>→</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>To</label>
+                      <input
+                        type="date"
+                        value={auditPeriodTo}
+                        min={auditPeriodFrom || fyDateRange.min}
+                        max={fyDateRange.max}
+                        disabled={!auditPeriodFrom}
+                        onChange={(e) => {
+                          setAuditPeriodTo(e.target.value);
+                          const period = `${auditPeriodFrom} to ${e.target.value}`;
+                          setSelectedCenter(prev => ({...prev, auditPeriod: period}));
+                        }}
+                        style={{
+                          padding: '8px 12px', border: '2px solid #667eea',
+                          borderRadius: '6px', fontSize: '14px',
+                          opacity: !auditPeriodFrom ? 0.4 : 1,
+                          cursor: !auditPeriodFrom ? 'not-allowed' : 'pointer'
+                        }}
+                      />
+                    </div>
+                    {auditPeriodFrom && auditPeriodTo && (
+                      <div style={{
+                        padding: '8px 16px', background: '#e8f5e9',
+                        borderRadius: '8px', border: '1px solid #4caf50',
+                        fontSize: '13px', fontWeight: 'bold', color: '#2e7d32'
+                      }}>
+                        ✅ {new Date(auditPeriodFrom).toLocaleDateString('en-GB')} → {new Date(auditPeriodTo).toLocaleDateString('en-GB')}
+                      </div>
+                    )}
+                  </div>
+                  {auditPeriodFrom && !auditPeriodTo && (
+                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#e65100', fontWeight: '500' }}>
+                      ⚠️ "To" date bhi select karo
                     </p>
                   )}
                 </div>
@@ -1647,7 +1622,19 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
       {activeOption === 'view' && (
         <div className="view-user">
           <div className="table-header">
-            <h3>📊 All Audit Reports ({filteredReportsCount})</h3>
+            <h3>📊 All Audit Reports ({savedReports.filter(r => {
+  const matchesSearch = !searchQuery || (
+    r.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.auditedBy?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.centerType?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    getAuditStatus(r)?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const matchesDate = isWithinDateRange(r.auditDateString || r.auditDate, startDate, endDate);
+  return matchesSearch && matchesDate;
+}).length})</h3>
           </div>
 
           <div style={{ 
@@ -1856,47 +1843,6 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
     )}
   </div>
 
-  {/* FILTER SUMMARY */}
-  {(searchQuery || startDate || endDate) && (
-    <div style={{ 
-      marginTop: '12px', 
-      padding: '10px 15px',
-      background: '#e8f5e9',
-      borderRadius: '8px',
-      border: '1px solid #4caf50'
-    }}>
-      <p style={{ 
-        margin: 0, 
-        fontSize: '14px', 
-        color: '#2e7d32',
-        fontWeight: '500'
-      }}>
-        🔎 Active Filters: 
-        {searchQuery && ` Text="${searchQuery}"`}
-        {startDate && ` | From: ${new Date(startDate).toLocaleDateString('en-GB')}`}
-        {endDate && ` | To: ${new Date(endDate).toLocaleDateString('en-GB')}`}
-        {` | Found ${savedReports.filter(r => {
-          // Search filter
-          const matchesSearch = !searchQuery || (
-            r.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.chName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-          
-          // Date filter
-          const matchesDate = isWithinDateRange(
-            r.auditDateString || r.auditDate,
-            startDate,
-            endDate
-          );
-          
-          return matchesSearch && matchesDate;
-        }).length} results`}
-      </p>
-    </div>
-  )}
 </div>
 
           <div className="table-header" style={{marginTop: 0}}>
@@ -2979,47 +2925,6 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
     )}
   </div>
 
-  {/* FILTER SUMMARY */}
-  {(searchQuery || startDate || endDate) && (
-    <div style={{ 
-      marginTop: '12px', 
-      padding: '10px 15px',
-      background: '#e8f5e9',
-      borderRadius: '8px',
-      border: '1px solid #4caf50'
-    }}>
-      <p style={{ 
-        margin: 0, 
-        fontSize: '14px', 
-        color: '#2e7d32',
-        fontWeight: '500'
-      }}>
-        🔎 Active Filters: 
-        {searchQuery && ` Text="${searchQuery}"`}
-        {startDate && ` | From: ${new Date(startDate).toLocaleDateString('en-GB')}`}
-        {endDate && ` | To: ${new Date(endDate).toLocaleDateString('en-GB')}`}
-        {` | Found ${savedReports.filter(r => {
-          // Search filter
-          const matchesSearch = !searchQuery || (
-            r.centerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.centerCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.chName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.financialYear?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            r.currentStatus?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-          
-          // Date filter
-          const matchesDate = isWithinDateRange(
-            r.auditDateString || r.auditDate,
-            startDate,
-            endDate
-          );
-          
-          return matchesSearch && matchesDate;
-        }).length} results`}
-      </p>
-    </div>
-  )}
 </div>
 
            
