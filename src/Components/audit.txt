@@ -1233,7 +1233,7 @@ ${loggedUser.firstname || 'Audit Team'}`
       {activeOption === 'view' && (
         <div className="view-user">
           <div className="table-header">
-            <h3>📊 All Audit Reports ({savedReports.length})</h3>
+            <h3>📊 All Audit Reports ({filteredReportsCount})</h3>
           </div>
 
           {/* SEARCH BAR */}

@@ -1176,16 +1176,16 @@ ${loggedUser.firstname || 'Audit Team'}`
         </div>
       )}
 
-      {/* VIEW REPORTS */}
-      {activeOption === 'view' && (
-        <div className="view-user">
-          <div className="table-header">
-            <h3>📊 All Audit Reports ({savedReports.length})</h3>
-          </div>
+        {/* VIEW REPORTS */}
+        {activeOption === 'view' && (
+          <div className="view-user">
+            <div className="table-header">
+             <h3>📊 All Audit Reports ({filteredReportsCount})</h3>
+            </div>
 
-          {/* SEARCH BAR */}
-          <div style={{ 
-            marginBottom: '20px',
+            {/* SEARCH BAR */}
+            <div style={{ 
+              marginBottom: '20px',
             padding: '20px',
             background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
             borderRadius: '12px',

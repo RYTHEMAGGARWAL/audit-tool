@@ -859,9 +859,29 @@ const isWithinDateRange = (reportDate, start, end) => {
   
   return true;
 };
+
+
   // ========================================
   // END RED FLAG STATUS LOGIC
   // ========================================
+
+  const filteredReportsCount = savedReports.filter(r => {
+    const matchesSearch = !searchQuery || (() => {
+      const q = searchQuery.toLowerCase();
+      return (
+        r.centerName?.toLowerCase().includes(q) ||
+        r.centerCode?.toLowerCase().includes(q) ||
+        r.chName?.toLowerCase().includes(q) ||
+        r.financialYear?.toLowerCase().includes(q) ||
+        r.currentStatus?.toLowerCase().includes(q) ||
+        r.auditedBy?.toLowerCase().includes(q) ||
+        r.centerType?.toLowerCase().includes(q) ||
+        getAuditStatus(r)?.toLowerCase().includes(q)
+      );
+    })();
+    const matchesDate = isWithinDateRange(r.auditDateString || r.auditDate, startDate, endDate);
+    return matchesSearch && matchesDate;
+  }).length;
 
   return (
     <div className="management-section">
@@ -1627,7 +1647,7 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
       {activeOption === 'view' && (
         <div className="view-user">
           <div className="table-header">
-            <h3>📊 All Audit Reports ({savedReports.length})</h3>
+            <h3>📊 All Audit Reports ({filteredReportsCount})</h3>
           </div>
 
           <div style={{ 
