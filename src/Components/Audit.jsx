@@ -676,38 +676,65 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     alert('📥 Download feature coming soon!');
   };
 
-  const handleOpenEmailForm = (report) => {
+  const handleOpenEmailForm = async (report) => {
     setSelectedReportForEmail(report);
+    const gt = parseFloat(report.grandTotal) || 0;
+    const status = gt >= 80 ? 'Compliant' : gt >= 65 ? 'Amber' : 'Non-Compliant';
+
+    // Time-based greeting
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+    // Center Head Name
+    const chName = report.centerHeadName || report.chName || 'Sir/Madam';
+
+    // Default message - baad mein credentials se update hoga
+    const buildMessage = (username = '', password = '') => {
+      const loginUrl = 'https://audit-tool-liard.vercel.app';
+      return `${greeting} ${chName},
+
+Thank you to you and your entire team for the cooperation extended during the physical visit at your centre.
+
+Kindly review the observations and share your comments using the following login credentials:
+
+Username: ${username || '(center username)'}
+Password: ${password || '(center password)'}
+
+Please login here to submit your remarks:
+${loginUrl}
+
+Note: You can edit and submit your remarks only once. After submission, any changes will require admin approval.
+
+Important: Please fill in your remarks within 7 days, otherwise the report will be automatically closed.
+
+If you have any suggestions or thoughts related to the audit for further improvement, you are most welcome to share them as well.`;
+    };
+
+    // Set initial state with default message
     setEmailData({
       to: '',
       cc: '',
-      subject: `Audit Report - ${report.centerName} - Score: ${report.grandTotal}/100`,
-      message: `Dear Sir/Madam,
-
-Please find the audit report details below:
-
-Center Name: ${report.centerName}
-Center Code: ${report.centerCode}
-Project Name: ${report.projectName || 'N/A'}
-Center Type: ${report.centerType || 'N/A'}
-Location: ${report.location || report.geolocation || 'N/A'}
-Audit Date: ${report.auditDate}
-
-Scores:
-- Front Office: ${report.frontOfficeScore}/30
-- Delivery Process: ${report.deliveryProcessScore}/40
-- Placement: ${report.placementScore}/15
-- Management: ${report.managementScore}/15
-
-Grand Total: ${report.grandTotal}/100
-Status: ${parseFloat(report.grandTotal) >= 80 ? 'Compliant' : parseFloat(report.grandTotal) >= 65 ? 'Amber' : 'Non-Compliant'}
-
-Approved By: ${report.approvedBy || 'N/A'}
-
-Regards,
-${loggedUser.firstname || 'Audit Team'}`
+      subject: `Audit Report - ${report.centerName} - Score: ${gt.toFixed(2)}/100 - ${status}`,
+      message: buildMessage()
     });
     setShowEmailForm(true);
+
+    // Async: Center User ka email + credentials fetch karo
+    try {
+      const res = await fetch(`${API_URL}/api/center-user-email/${report.centerCode}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.email) {
+          setEmailData(prev => ({
+            ...prev,
+            to: data.email,
+            message: buildMessage(data.username, data.password)
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error fetching center user email:', err);
+    }
   };
 
   const handleCloseEmailForm = () => {
@@ -745,7 +772,7 @@ ${loggedUser.firstname || 'Audit Team'}`
         to: emailData.to,
         cc: finalCC || undefined,
         subject: emailData.subject,
-        message: emailData.message,
+        customMessage: emailData.message || '',  // optional extra message
         reportData: selectedReportForEmail
       }, {
         timeout: 60000
@@ -1128,6 +1155,7 @@ const isWithinDateRange = (reportDate, start, end) => {
   )}
 </div>
               </div>
+              {/* ── END BASIC INFO GRID ── */}
 
               {selectedCenter && (() => {
                 const centerType = selectedCenter.centerType || 'CDC';
@@ -1138,137 +1166,154 @@ const isWithinDateRange = (reportDate, start, end) => {
                 return null;
               })()}
 
-              {selectedCenter && !selectedFinancialYear && (
-                <div style={{
-                  background: selectedCenter.centerType === 'DTV' 
-                    ? 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)'
-                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: 'white',
-                  padding: '15px 20px',
-                  borderRadius: '10px',
-                  marginTop: '20px',
-                  marginBottom: '20px',
-                  boxShadow: '0 4px 15px rgba(0,0,0,0.15)'
-                }}>
-                  <p style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
-                    {selectedCenter.centerType === 'DTV' ? '🚀' : '🎯'} Audit Type: <span style={{ 
-                      background: 'rgba(255,255,255,0.3)',
-                      padding: '4px 12px',
-                      borderRadius: '6px',
-                      marginLeft: '10px'
-                    }}>
-                      {selectedCenter.centerType === 'DTV' ? 'DTV Audit' : `Skills Audit - ${selectedCenter.centerType || 'CDC'}`}
-                    </span>
-                  </p>
-                  <p style={{ margin: '5px 0 0', fontSize: '13px', opacity: 0.9 }}>
-                    {selectedCenter.centerType === 'DTV' 
-                      ? 'Using DTV checklist (different from Skills)'
-                      : `Using Skills checklist for ${selectedCenter.centerType || 'CDC'} centers`
-                    }
-                  </p>
-                </div>
-              )}
-
-              {selectedCenter && (
-                <div style={{ marginTop: '20px', marginBottom: '25px' }}>
-                  <label style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
-                    display: 'block', 
-                    marginBottom: '10px',
-                    color: '#1976d2'
+              {/* AUDIT TYPE BANNER */}
+              <div style={{
+                background: selectedCenter.centerType === 'DTV' 
+                  ? 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)'
+                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                padding: '15px 20px',
+                borderRadius: '10px',
+                marginTop: '20px',
+                marginBottom: '20px',
+                boxShadow: '0 4px 15px rgba(0,0,0,0.15)'
+              }}>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
+                  {selectedCenter.centerType === 'DTV' ? '🚀' : '🎯'} Audit Type: <span style={{ 
+                    background: 'rgba(255,255,255,0.3)',
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    marginLeft: '10px'
                   }}>
-                    📅 Select Financial Year: <span style={{color: 'red'}}>*</span>
-                  </label>
-                  <select
-                    value={selectedFinancialYear}
-                    onChange={(e) => {
-  const fy = e.target.value;
-setSelectedFinancialYear(fy);
-setAuditPeriodFrom('');
-setAuditPeriodTo('');
-setSelectedCenter(prev => ({...prev, auditPeriod: ''}));
+                    {selectedCenter.centerType === 'DTV' ? 'DTV Audit' : `Skills Audit - ${selectedCenter.centerType || 'CDC'}`}
+                  </span>
+                </p>
+                <p style={{ margin: '5px 0 0', fontSize: '13px', opacity: 0.9 }}>
+                  {selectedCenter.centerType === 'DTV' 
+                    ? 'Using DTV checklist (different from Skills)'
+                    : `Using Skills checklist for ${selectedCenter.centerType || 'CDC'} centers`
+                  }
+                </p>
+              </div>
 
-const fyMap = {
-  'FY24': { min: '2023-04-01', max: '2024-03-31' },
-  'FY25': { min: '2024-04-01', max: '2025-03-31' },
-  'FY26': { min: '2025-04-01', max: new Date().toISOString().split('T')[0] },
-  'FY27': { min: '2026-04-01', max: '2027-03-31' },
-};
-setFyDateRange(fyMap[fy] || { min: '', max: '' });
-}}
-                    style={{
-                      padding: '12px 16px',
-                      fontSize: '16px',
-                      borderRadius: '8px',
-                      border: selectedFinancialYear ? '2px solid #4caf50' : '2px solid #667eea',
-                      width: '100%',
-                      maxWidth: '400px',
-                      background: selectedFinancialYear ? '#e8f5e9' : 'white',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease'
-                    }}
-                  >
-                    <option value="">-- Select Financial Year --</option>
-                    {financialYears.map(fy => (
-                      <option key={fy.code} value={fy.code}>
-                        {fy.code} ({fy.label})
-                      </option>
-                    ))}
-                  </select>
-                  {!selectedFinancialYear && (
-                    <p style={{ 
-                      marginTop: '8px', 
-                      fontSize: '13px', 
-                      color: '#d32f2f',
-                      fontStyle: 'italic'
-                    }}>
-                      ⚠️ Please select a financial year before starting audit
+              {/* ══ STEP 1: SELECT FINANCIAL YEAR ══ */}
+              <div style={{
+                background: 'white',
+                borderRadius: '12px',
+                border: selectedFinancialYear ? '2px solid #4caf50' : '2px solid #667eea',
+                padding: '20px',
+                marginBottom: '16px'
+              }}>
+                <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#1976d2', display: 'block', marginBottom: '10px' }}>
+                  📅 Select Financial Year <span style={{color: 'red'}}>*</span>
+                </label>
+                <select
+                  value={selectedFinancialYear}
+                  onChange={(e) => {
+                    const fy = e.target.value;
+                    setSelectedFinancialYear(fy);
+                    setAuditPeriodFrom('');
+                    setAuditPeriodTo('');
+                    setSelectedCenter(prev => ({...prev, auditDate: '', auditPeriod: ''}));
+                    const fyMap = {
+                      'FY24': { min: '2023-04-01', max: '2024-03-31' },
+                      'FY25': { min: '2024-04-01', max: '2025-03-31' },
+                      'FY26': { min: '2025-04-01', max: new Date().toISOString().split('T')[0] },
+                      'FY27': { min: '2026-04-01', max: '2027-03-31' },
+                    };
+                    setFyDateRange(fyMap[fy] || { min: '', max: '' });
+                  }}
+                  style={{
+                    padding: '12px 16px',
+                    fontSize: '16px',
+                    borderRadius: '8px',
+                    border: selectedFinancialYear ? '2px solid #4caf50' : '2px solid #667eea',
+                    width: '100%',
+                    maxWidth: '400px',
+                    background: selectedFinancialYear ? '#e8f5e9' : 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <option value="">-- Select Financial Year --</option>
+                  {financialYears.map(fy => (
+                    <option key={fy.code} value={fy.code}>
+                      {fy.code} ({fy.label})
+                    </option>
+                  ))}
+                </select>
+                {!selectedFinancialYear && (
+                  <p style={{ marginTop: '8px', fontSize: '13px', color: '#d32f2f', fontStyle: 'italic' }}>
+                    ⚠️ Please select a financial year before proceeding
+                  </p>
+                )}
+              </div>
+
+              {/* ══ STEP 2: AUDIT DATE (shown after FY selected) ══ */}
+              {selectedFinancialYear && (
+                <div style={{
+                  background: 'white',
+                  borderRadius: '12px',
+                  border: selectedCenter.auditDate ? '2px solid #4caf50' : '2px solid #11998e',
+                  padding: '20px',
+                  marginBottom: '16px'
+                }}>
+                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
+                    🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                    <input
+                      type="date"
+                      value={selectedCenter.auditDate || ''}
+                      min={fyDateRange.min}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const newAuditDate = e.target.value;
+                        setSelectedCenter(prev => ({ ...prev, auditDate: newAuditDate }));
+                        // Reset auditPeriodTo if it exceeds new auditDate
+                        if (auditPeriodTo && auditPeriodTo > newAuditDate) {
+                          setAuditPeriodTo('');
+                          setSelectedCenter(prev => ({
+                            ...prev,
+                            auditDate: newAuditDate,
+                            auditPeriod: auditPeriodFrom ? `${auditPeriodFrom} to ` : ''
+                          }));
+                        }
+                      }}
+                      style={{
+                        padding: '10px 14px', border: '2px solid #11998e',
+                        borderRadius: '8px', fontSize: '14px', cursor: 'pointer', width: '220px'
+                      }}
+                    />
+                    {selectedCenter.auditDate && (
+                      <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '14px' }}>
+                        ✅ {new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')}
+                      </span>
+                    )}
+                  </div>
+                  {!selectedCenter.auditDate && (
+                    <p style={{ marginTop: '8px', fontSize: '12px', color: '#e65100' }}>
+                      ⚠️ Audit Date mandatory hai
                     </p>
                   )}
                 </div>
               )}
 
-              {/* AUDIT DATE - shown after FY selected */}
-              {selectedFinancialYear && (
-                <div style={{ marginTop: '20px', padding: '18px 20px', background: 'white', borderRadius: '10px', border: '2px solid #11998e', boxShadow: '0 2px 8px rgba(17,153,142,0.1)' }}>
-                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
-                    🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedCenter.auditDate || ''}
-                    max={new Date().toISOString().split('T')[0]}
-                    onChange={(e) => setSelectedCenter(prev => ({ ...prev, auditDate: e.target.value }))}
-                    style={{
-                      padding: '10px 14px', border: '2px solid #11998e',
-                      borderRadius: '8px', fontSize: '14px', cursor: 'pointer', width: '220px'
-                    }}
-                  />
-                  {selectedCenter.auditDate && (
-                    <span style={{ marginLeft: '12px', color: '#2e7d32', fontWeight: 'bold', fontSize: '14px' }}>
-                      ✅ {new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* AUDIT PERIOD - shown after FY selected */}
-              {selectedFinancialYear && (
+              {/* ══ STEP 3: AUDIT PERIOD (shown after AuditDate selected; To max = auditDate) ══ */}
+              {selectedFinancialYear && selectedCenter.auditDate && (
                 <div style={{
-                  marginTop: '20px',
-                  padding: '18px 20px',
                   background: 'white',
-                  borderRadius: '10px',
-                  border: '2px solid #667eea',
-                  boxShadow: '0 2px 8px rgba(102,126,234,0.1)'
+                  borderRadius: '12px',
+                  border: (auditPeriodFrom && auditPeriodTo) ? '2px solid #4caf50' : '2px solid #667eea',
+                  padding: '20px',
+                  marginBottom: '16px'
                 }}>
-                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#667eea', display: 'block', marginBottom: '12px' }}>
+                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#667eea', display: 'block', marginBottom: '4px' }}>
                     📅 Audit Period
-                    <span style={{fontSize: '12px', color: '#888', fontWeight: 'normal', marginLeft: '8px'}}>
-                      (FY Range: {fyDateRange.min} → {fyDateRange.max})
-                    </span>
                   </label>
+                  <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#888' }}>
+                    FY Range: {fyDateRange.min ? new Date(fyDateRange.min).toLocaleDateString('en-GB') : ''} → {selectedCenter.auditDate ? new Date(selectedCenter.auditDate).toLocaleDateString('en-GB') : ''}
+                  </p>
                   <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                       <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
@@ -1276,13 +1321,16 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
                         type="date"
                         value={auditPeriodFrom}
                         min={fyDateRange.min}
-                        max={fyDateRange.max}
+                        max={selectedCenter.auditDate}
                         onChange={(e) => {
                           setAuditPeriodFrom(e.target.value);
                           setAuditPeriodTo('');
                           setSelectedCenter(prev => ({...prev, auditPeriod: e.target.value}));
                         }}
-                        style={{ padding: '8px 12px', border: '2px solid #667eea', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}
+                        style={{
+                          padding: '8px 12px', border: '2px solid #667eea',
+                          borderRadius: '6px', fontSize: '14px', cursor: 'pointer'
+                        }}
                       />
                     </div>
                     <span style={{ color: '#667eea', fontWeight: 'bold', fontSize: '20px', paddingBottom: '6px' }}>→</span>
@@ -1292,7 +1340,7 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
                         type="date"
                         value={auditPeriodTo}
                         min={auditPeriodFrom || fyDateRange.min}
-                        max={fyDateRange.max}
+                        max={selectedCenter.auditDate}
                         disabled={!auditPeriodFrom}
                         onChange={(e) => {
                           setAuditPeriodTo(e.target.value);
@@ -1319,7 +1367,7 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
                   </div>
                   {auditPeriodFrom && !auditPeriodTo && (
                     <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#e65100', fontWeight: '500' }}>
-                      ⚠️ "To" date bhi select karo
+                      ⚠️ "To" date bhi select karo (max: Audit Date tak)
                     </p>
                   )}
                 </div>
@@ -1408,8 +1456,13 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
                       alert('⚠️ Please select a Financial Year first!');
                       return;
                     }
+
+                    if (!selectedCenter.auditDate) {
+                      alert('⚠️ Please select Audit Date first!');
+                      return;
+                    }
                     
-                    console.log('✅ FY check passed, calling handleCenterSelect...');
+                    console.log('✅ FY + AuditDate check passed, calling handleCenterSelect...');
                     handleCenterSelect(selectedCenter);
                     console.log('✅ handleCenterSelect called!');
                   }}
@@ -2671,16 +2724,16 @@ setFyDateRange(fyMap[fy] || { min: '', max: '' });
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
                 <thead>
                   <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>S.NO</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '220px' }}>CHECKPOINT</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>WEIGHTAGE<br/>(%)</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>MAX<br/>SCORE</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>TOTAL<br/>SAMPLES</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SAMPLES<br/>COMPLIANT</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>COMPLIANT<br/>%</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SCORE</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>REMARKS</th>
-                    <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px', background: '#4caf50' }}>CENTER HEAD<br/>REMARKS</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>S.NO</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '220px' }}>CHECKPOINT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>WEIGHTAGE<br/>(%)</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>MAX<br/>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>TOTAL<br/>SAMPLES</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SAMPLES<br/>COMPLIANT</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>COMPLIANT<br/>%</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontSize: '12px', fontWeight: 'bold' }}>SCORE</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px' }}>REMARKS<br/>(आप अपनी भाषा में लिख सकते हैं)</th>
+                    <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontSize: '12px', fontWeight: 'bold', minWidth: '180px', background: '#4caf50' }}>CENTER HEAD<br/>REMARKS</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -20,17 +20,14 @@ const PORT = process.env.PORT || 3001;
 // NODEMAILER EMAIL CONFIGURATION
 // ========================================
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.sendgrid.net',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === 'true',
+  service: 'gmail',
   auth: {
-    user: process.env.SMTP_USER || 'apikey',
-    pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
+console.log('📧 Email configured with Gmail');
+console.log('📧 User:', process.env.EMAIL_USER);
 
 // Skip verification - causes timeout
 console.log('📧 Email configured with SendGrid');
@@ -1165,9 +1162,11 @@ app.get('/api/audit-reports/edit-requests/pending', async (req, res) => {
 
 
 
-async function sendEmailInBackground(to, cc, subject, message, reportData) {
+async function sendEmailInBackground(to, cc, subject, customMessage, reportData) {
   try {
     console.log('📧 Background email started...');
+    
+    const htmlBody = generateEmailHTML(reportData, customMessage || '');
     
     const pdfBuffer = await generatePDF(reportData);
     console.log('✅ PDF generated');
@@ -1177,7 +1176,7 @@ async function sendEmailInBackground(to, cc, subject, message, reportData) {
       to: to,
       cc: cc || undefined,
       subject: subject,
-      html: message,
+      html: htmlBody,
       attachments: [{
         filename: `Audit_${reportData.centerCode}.pdf`,
         content: pdfBuffer,
@@ -1204,15 +1203,14 @@ async function sendEmailInBackground(to, cc, subject, message, reportData) {
 // ========================================
 app.post('/api/send-audit-email', async (req, res) => {
   try {
-    const { to, cc, subject, message, reportData } = req.body;
+    const { to, cc, subject, customMessage, reportData } = req.body;
     
     console.log('\n📧 EMAIL REQUEST:', reportData.centerName);
     
-    // Respond immediately
     res.json({ success: true, message: 'Email is being sent...' });
     
-    // Send in background
-    sendEmailInBackground(to, cc, subject, message, reportData);
+    // ✅ customMessage pass karo
+    sendEmailInBackground(to, cc, subject, customMessage || '', reportData);
     
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1578,6 +1576,42 @@ app.get('/api/fix-audit-index', async (req, res) => {
       remainingIndexes: remainingIndexes.map(i => ({ name: i.name, key: i.key }))
     });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// GET CENTER USER EMAIL + CREDENTIALS
+// ========================================
+app.get('/api/center-user-email/:centerCode', async (req, res) => {
+  try {
+    const { centerCode } = req.params;
+    console.log(`\n📧 ========== FETCH CENTER USER EMAIL ==========`);
+    console.log(`📧 Center Code: ${centerCode}`);
+
+    // Us center ka Center User dhundho
+    const centerUser = await User.findOne({
+      centerCode: centerCode.toUpperCase(),
+      role: 'Center User',
+      isActive: true
+    });
+
+    if (!centerUser) {
+      console.log(`⚠️ No Center User found for centerCode: ${centerCode}`);
+      return res.json({ success: false, email: '', username: '', firstname: '' });
+    }
+
+    console.log(`✅ Found center user: ${centerUser.username} - ${centerUser.email}`);
+    res.json({
+      success: true,
+      email: centerUser.email || '',
+      username: centerUser.username || '',
+      firstname: centerUser.firstname || '',
+      password: centerUser.password || ''
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching center user email:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

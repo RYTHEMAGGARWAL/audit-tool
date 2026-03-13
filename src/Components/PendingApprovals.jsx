@@ -268,22 +268,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
           <p style={{ textAlign: 'center', padding: '40px', color: '#667eea' }}>
             Loading pending reports...
           </p>
-        ) : pendingReports.length === 0 ? (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '60px 20px',
-            background: 'linear-gradient(135deg, #e3f2fd 0%, #c8e6c9 100%)',
-            borderRadius: '12px',
-            marginTop: '20px'
-          }}>
-            <h3 style={{ color: '#4CAF50', fontSize: '24px', marginBottom: '10px' }}>
-              🎉 All Caught Up!
-            </h3>
-            <p style={{ color: '#666', fontSize: '16px' }}>
-              No pending approvals at the moment. Great job!
-            </p>
-          </div>
-        ) : (
+        ) : pendingReports.length === 0 ? null : (
           <div className="table-wrapper" style={{ marginTop: '20px' }}>
             <table>
               <thead>

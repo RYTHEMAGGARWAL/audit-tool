@@ -263,7 +263,7 @@ const Login = () => {
       <div className="login-box">
         {!showForgotPassword ? (
           <>
-            <h2>🔐 NIIT Audit System</h2>
+            <h2>🔐 NIIT FOUNDATION</h2>
             <p className="subtitle">Login to continue</p>
             
             <form onSubmit={handleLogin}>
