@@ -176,10 +176,23 @@ location: { type: String, trim: true, default: '' },
   centerHeadEditRequest: { type: Boolean, default: false },
   centerHeadEditRequestDate: { type: String, default: '' },
   centerHeadEditRequestBy: { type: String, default: '' },
+  remarksEditedOnce: { type: Boolean, default: false }, // After 2nd submit, no more edits
   // Email Sent Status
   emailSent: { type: Boolean, default: false },
   emailSentDate: { type: String, default: '' },
-  emailSentTo: { type: String, default: '' }
+  emailSentTo: { type: String, default: '' },
+  // Reminder tracking: array of days at which reminder was sent e.g. [3, 5, 6, 7]
+  remindersSent: { type: [Number], default: [] },
+  reminderClosedSent: { type: Boolean, default: false },
+  // Auditor reminders
+  auditorRemindersSent: { type: [Number], default: [] },
+  auditorAutoClosedEmailSent: { type: Boolean, default: false },
+  // Auditor review deadline: 5 working days after center submits remarks
+  auditorReviewDeadline: { type: Date, default: null },
+  auditorReviewDeadlineString: { type: String, default: '' },
+  // Track when auditor manually closed
+  auditorClosedDate: { type: String, default: '' },
+  auditorClosedBy: { type: String, default: '' }
 }, { timestamps: true });
 
 const AuditReport = mongoose.model('AuditReport', auditReportSchema);
@@ -966,11 +979,24 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
       console.log(`✅ Saved ${savedCount} checkpoint remarks to individual fields`);
     }
     
-    // Lock remarks after first save
+    // Lock remarks
     if (!report.centerHeadRemarksLocked) {
+      // First time submit
       report.centerHeadRemarksLocked = true;
-      console.log('🔒 Remarks LOCKED - Center Head needs admin approval to edit');
+      console.log('🔒 Remarks LOCKED (1st submit) - Center Head can request edit once');
+    } else {
+      // Second time submit (after admin approved edit) — permanent lock
+      report.remarksEditedOnce = true;
+      report.centerHeadRemarksLocked = true;
+      console.log('🔒 Remarks PERMANENTLY LOCKED (2nd submit) - No more edits allowed');
     }
+
+    // Set auditor review deadline: 5 working days from now
+    const reviewDeadline = addWorkingDaysSrv(new Date(), 5);
+    report.auditorReviewDeadline = reviewDeadline;
+    report.auditorReviewDeadlineString = reviewDeadline.toLocaleDateString('en-GB');
+    console.log(`📅 Auditor review deadline: ${report.auditorReviewDeadlineString}`);
+
     
     // Save to MongoDB
     await report.save();
@@ -1162,6 +1188,349 @@ app.get('/api/audit-reports/edit-requests/pending', async (req, res) => {
 
 
 
+// ========================================
+// REMINDER EMAIL FUNCTION
+// ========================================
+async function sendReminderEmail(report, daysLeft) {
+  try {
+    // Get center user email
+    const centerUser = await User.findOne({
+      centerCode: report.centerCode.toUpperCase(),
+      role: 'Center User',
+      isActive: true
+    });
+
+    if (!centerUser || !centerUser.email) {
+      console.log(`⚠️ No center user email for ${report.centerCode}`);
+      return false;
+    }
+
+    const loginUrl = 'https://audit-tool-liard.vercel.app';
+    const chName = report.centerHeadName || centerUser.firstname || 'Sir/Madam';
+
+    let subject, message, urgencyColor, urgencyEmoji;
+
+    if (daysLeft === 'closed') {
+      // After Day 7 - Closed notice
+      subject = `📋 Audit Remarks Window Closed - ${report.centerName}`;
+      urgencyColor = '#6c757d';
+      urgencyEmoji = '🔒';
+      message = `
+        <div style="background:#f8f9fa; border-left:4px solid #6c757d; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#6c757d;">🔒 Remarks Window Closed</h3>
+          <p style="margin:0; color:#555; font-size:15px;">
+            The 7-day window to submit your remarks for the audit report has now expired and has been <strong>automatically closed</strong>.
+          </p>
+        </div>
+        <p style="color:#555; font-size:15px;">
+          If you have any queries regarding this audit report, please contact the <strong>Auditor Team</strong> directly.
+        </p>
+        <div style="background:#fff3cd; border:1px solid #ffc107; padding:15px; border-radius:8px; margin:15px 0;">
+          <p style="margin:0; color:#856404; font-size:14px;">
+            ⚠️ <strong>Note:</strong> The timeline limit for submitting remarks has been reached. This report is now closed for any further input from your side.
+          </p>
+        </div>
+      `;
+    } else if (daysLeft <= 0) {
+      // Day 7 - Last day
+      subject = `🚨 TODAY IS THE LAST DAY - Submit Remarks Now | ${report.centerName}`;
+      urgencyColor = '#dc3545';
+      urgencyEmoji = '🚨';
+      message = `
+        <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0; animation:pulse 1s infinite;">
+          <h3 style="margin:0 0 10px; color:#dc3545;">🚨 TODAY IS THE LAST DAY!</h3>
+          <p style="margin:0; color:#555; font-size:15px;">
+            This is your <strong>final opportunity</strong> to submit your remarks. The window will close <strong>TODAY</strong> at midnight.
+          </p>
+        </div>
+        <p style="color:#555; font-size:15px;">After today, the report will be automatically closed and no further remarks can be submitted.</p>
+      `;
+    } else if (daysLeft === 1) {
+      // Day 6 - Final warning
+      subject = `🚨 FINAL WARNING: Only 1 Day Left to Submit Remarks | ${report.centerName}`;
+      urgencyColor = '#dc3545';
+      urgencyEmoji = '🚨';
+      message = `
+        <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#dc3545;">🚨 FINAL WARNING - 1 Day Left!</h3>
+          <p style="margin:0; color:#555; font-size:15px;">
+            You have only <strong>1 working day remaining</strong> to submit your remarks. Please act immediately.
+          </p>
+        </div>
+        <p style="color:#555; font-size:15px;">After the deadline, the report will be automatically closed.</p>
+      `;
+    } else if (daysLeft === 2) {
+      // Day 5 - Urgent
+      subject = `⚠️ URGENT: Only 2 Days Left to Submit Remarks | ${report.centerName}`;
+      urgencyColor = '#e65100';
+      urgencyEmoji = '⚠️';
+      message = `
+        <div style="background:#fff3e0; border-left:4px solid #ff9800; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#e65100;">⚠️ Only 2 Working Days Left!</h3>
+          <p style="margin:0; color:#555; font-size:15px;">
+            Your deadline to submit remarks is approaching fast. Only <strong>2 working days</strong> remain.
+          </p>
+        </div>
+      `;
+    } else {
+      // Day 3 onwards - First reminder
+      subject = `📋 Reminder: ${daysLeft} Days Left to Submit Audit Remarks | ${report.centerName}`;
+      urgencyColor = '#1976d2';
+      urgencyEmoji = '📋';
+      message = `
+        <div style="background:#e3f2fd; border-left:4px solid #2196f3; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#1976d2;">📋 Reminder: ${daysLeft} Working Days Remaining</h3>
+          <p style="margin:0; color:#555; font-size:15px;">
+            This is a friendly reminder that you have <strong>${daysLeft} working days</strong> left to review and submit your remarks for the audit report.
+          </p>
+        </div>
+      `;
+    }
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0; padding:0; font-family:Arial,sans-serif; background:#f5f5f5;">
+  <div style="max-width:700px; margin:0 auto; background:white;">
+    
+    <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding:25px; text-align:center;">
+      <h1 style="color:white; margin:0; font-size:24px;">${urgencyEmoji} Audit Remarks ${daysLeft === 'closed' ? 'Closed' : 'Reminder'}</h1>
+      <p style="color:rgba(255,255,255,0.9); margin:8px 0 0; font-size:15px;">${report.centerName} (${report.centerCode})</p>
+    </div>
+
+    <div style="padding:30px;">
+      <p style="font-size:16px; color:#333;">Dear <strong>${chName}</strong>,</p>
+      
+      ${message}
+
+      ${daysLeft !== 'closed' ? `
+      <div style="text-align:center; margin:25px 0;">
+        <a href="${loginUrl}" style="display:inline-block; padding:14px 35px; background:linear-gradient(135deg, #667eea, #764ba2); color:white; text-decoration:none; border-radius:8px; font-weight:bold; font-size:16px;">
+          📝 Submit Remarks Now
+        </a>
+      </div>
+      <div style="background:#f8f9fa; padding:15px; border-radius:8px; margin:15px 0; font-size:13px; color:#666;">
+        <strong>Login URL:</strong> ${loginUrl}<br/>
+        <strong>Username:</strong> ${centerUser.username}<br/>
+        <strong>Report:</strong> ${report.centerName} | Score: ${report.grandTotal}/100
+      </div>
+      <p style="font-size:12px; color:#999; margin-top:10px;">
+        ⏰ Deadline: ${report.centerDeadlineString || 'As communicated'} | You can edit remarks only <strong>once</strong> after submitting.
+      </p>
+      ` : `
+      <p style="color:#555; font-size:14px; margin-top:20px;">
+        For any queries, please reach out to your <strong>Auditor Team</strong>.
+      </p>
+      `}
+
+      <p style="font-size:14px; color:#666; margin-top:25px;">
+        Best Regards,<br/>
+        <strong>NIIT Audit Team</strong>
+      </p>
+    </div>
+
+    <div style="background:#f5f5f5; padding:15px; text-align:center; border-top:1px solid #ddd;">
+      <p style="margin:0; color:#999; font-size:12px;">This is an automated reminder from NIIT Audit System.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    await transporter.sendMail({
+      from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+      to: centerUser.email,
+      subject: subject,
+      html: htmlBody
+    });
+
+    console.log(`✅ Reminder email sent to ${centerUser.email} | ${report.centerCode} | daysLeft: ${daysLeft}`);
+    return true;
+
+  } catch (err) {
+    console.error(`❌ Reminder email failed for ${report.centerCode}:`, err.message);
+    return false;
+  }
+}
+
+// ========================================
+// AUDITOR REMINDER EMAIL FUNCTION
+// ========================================
+async function sendAuditorReminderEmail(report, daysLeft) {
+  try {
+    // auditedBy naam se Audit User dhundo
+    if (!report.auditedBy) {
+      console.log(`⚠️ No auditedBy for ${report.centerCode}`);
+      return false;
+    }
+
+    // auditedBy mein "Firstname Lastname" ya sirf "Firstname" ho sakta hai
+    const firstName = report.auditedBy.split(' ')[0].trim();
+    const auditorUser = await User.findOne({
+      firstname: { $regex: new RegExp(`^${firstName}$`, 'i') },
+      role: { $in: ['Audit User', 'Admin'] },
+      isActive: true
+    });
+
+    if (!auditorUser || !auditorUser.email) {
+      console.log(`⚠️ No auditor email found for: ${report.auditedBy}`);
+      return false;
+    }
+
+    const loginUrl = 'https://audit-tool-liard.vercel.app';
+    const auditorName = auditorUser.firstname || report.auditedBy;
+
+    let subject, urgencyBlock;
+
+    if (daysLeft === 'auto_closed') {
+      subject = `🔒 Report Auto-Closed: ${report.centerName} | Deadline Expired`;
+      urgencyBlock = `
+        <div style="background:#f8f9fa; border-left:4px solid #6c757d; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#6c757d;">🔒 Report Auto-Closed</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            The audit report for <strong>${report.centerName}</strong> has been <strong>automatically closed</strong> 
+            as it was not submitted within the 15 working day deadline.
+          </p>
+        </div>
+        <p style="color:#555; font-size:14px;">Please ensure future reports are submitted within the stipulated time.</p>`;
+    } else if (daysLeft === 0) {
+      subject = `🚨 TODAY IS THE LAST DAY - Submit Audit Report | ${report.centerName}`;
+      urgencyBlock = `
+        <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#dc3545;">🚨 TODAY IS YOUR LAST DAY!</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            The 15 working day deadline to submit the audit report for <strong>${report.centerName}</strong> 
+            expires <strong>TODAY</strong>. Please submit immediately.
+          </p>
+        </div>
+        <p style="color:#dc3545; font-weight:bold; font-size:14px;">⚠️ If not submitted today, the report will be automatically closed.</p>`;
+    } else if (daysLeft === 1) {
+      subject = `🚨 FINAL WARNING: 1 Day Left - Submit Audit Report | ${report.centerName}`;
+      urgencyBlock = `
+        <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#dc3545;">🚨 Only 1 Working Day Left!</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            You have only <strong>1 working day remaining</strong> to submit the audit report 
+            for <strong>${report.centerName}</strong>. Please take immediate action.
+          </p>
+        </div>`;
+    } else if (daysLeft === 3) {
+      subject = `⚠️ Reminder: 3 Days Left - Submit Audit Report | ${report.centerName}`;
+      urgencyBlock = `
+        <div style="background:#fff3e0; border-left:4px solid #ff9800; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#e65100;">⚠️ 3 Working Days Remaining</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            This is an urgent reminder. Only <strong>3 working days</strong> remain to submit 
+            the audit report for <strong>${report.centerName}</strong>.
+          </p>
+        </div>`;
+    } else if (daysLeft === 5) {
+      subject = `📋 Reminder: 5 Days Left - Submit Audit Report | ${report.centerName}`;
+      urgencyBlock = `
+        <div style="background:#fff3e0; border-left:4px solid #ff9800; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#e65100;">📋 5 Working Days Remaining</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            Reminder: You have <strong>5 working days</strong> left to submit the audit report 
+            for <strong>${report.centerName}</strong>.
+          </p>
+        </div>`;
+    } else {
+      // 10 days left
+      subject = `📋 Reminder: ${daysLeft} Days Left - Submit Audit Report | ${report.centerName}`;
+      urgencyBlock = `
+        <div style="background:#e3f2fd; border-left:4px solid #2196f3; padding:20px; border-radius:8px; margin:20px 0;">
+          <h3 style="margin:0 0 10px; color:#1976d2;">📋 ${daysLeft} Working Days Remaining</h3>
+          <p style="margin:0; color:#555; font-size:15px; line-height:1.6;">
+            This is a friendly reminder that you have <strong>${daysLeft} working days</strong> 
+            remaining to submit the audit report for <strong>${report.centerName}</strong>.
+          </p>
+        </div>`;
+    }
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0; padding:0; font-family:Arial,sans-serif; background:#f5f5f5;">
+  <div style="max-width:700px; margin:0 auto; background:white;">
+
+    <div style="background:linear-gradient(135deg, #1a237e 0%, #283593 100%); padding:25px; text-align:center;">
+      <h1 style="color:white; margin:0; font-size:22px;">📋 Audit Report ${daysLeft === 'auto_closed' ? 'Auto-Closed' : 'Submission Reminder'}</h1>
+      <p style="color:rgba(255,255,255,0.85); margin:8px 0 0; font-size:14px;">NIIT Audit Management System</p>
+    </div>
+
+    <div style="padding:30px;">
+      <p style="font-size:16px; color:#333;">Dear <strong>${auditorName}</strong>,</p>
+
+      ${urgencyBlock}
+
+      <table style="width:100%; border-collapse:collapse; margin:20px 0; font-size:13px;">
+        <tr style="background:#e8eaf6;">
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Center Name</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9;">${report.centerName}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Center Code</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9;">${report.centerCode}</td>
+        </tr>
+        <tr style="background:#e8eaf6;">
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Financial Year</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9;">${report.financialYear || 'FY26'}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Audit Date</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9;">${report.auditDateString || '-'}</td>
+        </tr>
+        <tr style="background:#e8eaf6;">
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Grand Total</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9; font-weight:bold;">${report.grandTotal}/100</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px; font-weight:bold; color:#283593; border:1px solid #c5cae9;">Submission Deadline</td>
+          <td style="padding:10px 14px; border:1px solid #c5cae9; color:#dc3545; font-weight:bold;">${report.auditorDeadlineString || '-'}</td>
+        </tr>
+      </table>
+
+      ${daysLeft !== 'auto_closed' ? `
+      <div style="text-align:center; margin:25px 0;">
+        <a href="${loginUrl}" style="display:inline-block; padding:14px 40px; background:linear-gradient(135deg, #1a237e, #3949ab); color:white; text-decoration:none; border-radius:8px; font-weight:bold; font-size:15px;">
+          🔐 Login & Submit Report
+        </a>
+      </div>
+      <p style="font-size:12px; color:#999; text-align:center;">
+        Login at: ${loginUrl}
+      </p>` : ''}
+
+      <p style="font-size:14px; color:#666; margin-top:25px; border-top:1px solid #eee; padding-top:15px;">
+        Best Regards,<br/>
+        <strong>NIIT Audit Management System</strong>
+      </p>
+    </div>
+
+    <div style="background:#e8eaf6; padding:12px; text-align:center; border-top:1px solid #c5cae9;">
+      <p style="margin:0; color:#666; font-size:12px;">This is an automated reminder. Please do not reply to this email.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    await transporter.sendMail({
+      from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+      to: auditorUser.email,
+      subject: subject,
+      html: htmlBody
+    });
+
+    console.log(`✅ Auditor reminder sent to ${auditorUser.email} | ${report.centerCode} | daysLeft: ${daysLeft}`);
+    return true;
+
+  } catch (err) {
+    console.error(`❌ Auditor reminder failed for ${report.centerCode}:`, err.message);
+    return false;
+  }
+}
+
+// ========================================
 async function sendEmailInBackground(to, cc, subject, customMessage, reportData) {
   try {
     console.log('📧 Background email started...');
@@ -1580,28 +1949,190 @@ app.get('/api/fix-audit-index', async (req, res) => {
   }
 });
 
+
+// ========================================
+// WORKING DAYS HELPER (Server Side)
+// ========================================
+const HOLIDAYS_SERVER = {
+  2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
+         '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
+  2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
+         '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
+         '2026-11-24','2026-12-25']
+};
+
+function isWorkingDaySrv(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 0 || day === 6) return false;
+  const ds = d.toISOString().split('T')[0];
+  return !(HOLIDAYS_SERVER[d.getFullYear()] || []).includes(ds);
+}
+
+function addWorkingDaysSrv(startDate, days) {
+  let d = new Date(startDate); d.setHours(0,0,0,0);
+  let count = 0;
+  while (count < days) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) count++; }
+  return d;
+}
+
+// ========================================
+// AUTO-CLOSE DEADLINE CHECK
+// ========================================
+app.post('/api/audit-reports/check-deadlines', async (req, res) => {
+  try {
+    const now = new Date(); now.setHours(0,0,0,0);
+    let auditorClosed = 0, centerClosed = 0, editWindowClosed = 0;
+
+    // 1. AUDITOR DEADLINE: 15 working days - close Not Submitted reports
+    const auditorOverdue = await AuditReport.find({
+      currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
+      auditorDeadline: { $lt: now },
+      autoClosedBy: { $not: { $regex: 'auditor_deadline' } }
+    });
+    for (const report of auditorOverdue) {
+      report.currentStatus = 'Closed';
+      report.autoClosedBy = 'auditor_deadline';
+      report.autoClosedDate = now.toLocaleDateString('en-GB');
+      await report.save();
+      auditorClosed++;
+      console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
+    }
+
+    // 2. CENTER REMARKS DEADLINE: 7 working days - lock remarks window
+    const centerOverdue = await AuditReport.find({
+      currentStatus: 'Approved',
+      emailSent: true,
+      centerDeadline: { $lt: now },
+      centerHeadRemarksLocked: false
+    });
+    for (const report of centerOverdue) {
+      report.centerHeadRemarksLocked = true;
+      if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
+      report.autoClosedDate = now.toLocaleDateString('en-GB');
+      await report.save();
+      centerClosed++;
+      console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+    }
+
+    // Note: Edit request window (3 days) is handled on frontend only
+
+    // ── 3. CENTER REMINDER EMAILS ──
+    // Find all approved reports where email was sent but remarks not yet submitted
+    let remindersSent = 0;
+    let closedEmailsSent = 0;
+
+    const activeReports = await AuditReport.find({
+      currentStatus: 'Approved',
+      emailSent: true,
+      centerHeadRemarksLocked: false,  // remarks not yet submitted
+      centerRemarksDate: { $in: [null, ''] }, // Double check - koi remarks nahi
+      centerDeadline: { $exists: true, $ne: null, $gte: now } // deadline abhi future mein hai
+    });
+
+    for (const report of activeReports) {
+      if (!report.centerDeadline) continue;
+
+      // Calculate remaining working days
+      const deadline = new Date(report.centerDeadline); deadline.setHours(0,0,0,0);
+      let rem = 0;
+      let d = new Date(now);
+      if (now <= deadline) {
+        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
+      } else {
+        rem = -1; // overdue
+      }
+
+      // Reminder thresholds: send at 4 days left, 2 days left, 1 day left, 0 days left
+      const thresholds = [4, 2, 1, 0];
+      const remindersSentArr = report.remindersSent || [];
+
+      for (const threshold of thresholds) {
+        if (rem === threshold && !remindersSentArr.includes(threshold)) {
+          const sent = await sendReminderEmail(report, threshold);
+          if (sent) {
+            report.remindersSent = [...remindersSentArr, threshold];
+            await report.save();
+            remindersSent++;
+          }
+          break;
+        }
+      }
+    }
+
+    // ── 4. CLOSED EMAIL — after deadline, send closed notice once ──
+    const overdueReports = await AuditReport.find({
+      currentStatus: 'Approved',
+      emailSent: true,
+      centerDeadline: { $lt: now },
+      centerHeadRemarksLocked: false,  // ✅ Sirf tab jab remarks submit NAHI hui
+      centerRemarksDate: { $in: [null, ''] }, // Double check - remarks nahi bhara
+      reminderClosedSent: { $ne: true }
+    });
+
+    for (const report of overdueReports) {
+      // Lock remarks (deadline cross ho gayi, ab lock karo)
+      report.centerHeadRemarksLocked = true;
+      // Send closed email
+      const sent = await sendReminderEmail(report, 'closed');
+      if (sent) {
+        report.reminderClosedSent = true;
+      }
+      await report.save();
+      closedEmailsSent++;
+      console.log(`🔒 Closed (no remarks submitted): ${report.centerCode}`);
+    }
+
+    // ── 5. AUDITOR REVIEW AUTO-CLOSE: 5 working days after center submits ──
+    let auditorReviewAutoClosed = 0;
+
+    const reviewOverdue = await AuditReport.find({
+      currentStatus: 'Approved',
+      centerHeadRemarksLocked: true,
+      centerRemarksDate: { $exists: true, $ne: '' },
+      auditorReviewDeadline: { $exists: true, $lt: now },
+      auditorClosedDate: { $in: [null, ''] }  // not yet manually closed
+    });
+
+    for (const report of reviewOverdue) {
+      report.currentStatus = 'Closed';
+      report.auditorClosedDate = now.toLocaleDateString('en-GB');
+      report.auditorClosedBy = 'Auto-closed (5 day review period expired)';
+      await report.save();
+      auditorReviewAutoClosed++;
+      console.log(`🔒 Auto-closed (review expired): ${report.centerCode}`);
+
+      // Send closed email
+      const centerUser = await User.findOne({
+        centerCode: report.centerCode.toUpperCase(),
+        role: 'Center User', isActive: true
+      });
+      if (centerUser?.email) {
+        await sendReminderEmail(report, 'closed').catch(e => console.log('Email err:', e.message));
+      }
+    }
+
+    console.log(`✅ Deadlines: auditor=${auditorClosed}, center=${centerClosed}, reminders=${remindersSent}, closedEmails=${closedEmailsSent}, autoReviewClosed=${auditorReviewAutoClosed}`);
+    res.json({ success: true, auditorClosed, centerClosed, remindersSent, closedEmailsSent, auditorReviewAutoClosed });
+
+  } catch (err) {
+    console.error('❌ Deadline check error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ========================================
 // GET CENTER USER EMAIL + CREDENTIALS
 // ========================================
 app.get('/api/center-user-email/:centerCode', async (req, res) => {
   try {
     const { centerCode } = req.params;
-    console.log(`\n📧 ========== FETCH CENTER USER EMAIL ==========`);
-    console.log(`📧 Center Code: ${centerCode}`);
-
-    // Us center ka Center User dhundho
     const centerUser = await User.findOne({
       centerCode: centerCode.toUpperCase(),
       role: 'Center User',
       isActive: true
     });
-
-    if (!centerUser) {
-      console.log(`⚠️ No Center User found for centerCode: ${centerCode}`);
-      return res.json({ success: false, email: '', username: '', firstname: '' });
-    }
-
-    console.log(`✅ Found center user: ${centerUser.username} - ${centerUser.email}`);
+    if (!centerUser) return res.json({ success: false, email: '', username: '', firstname: '' });
     res.json({
       success: true,
       email: centerUser.email || '',
@@ -1609,9 +2140,93 @@ app.get('/api/center-user-email/:centerCode', async (req, res) => {
       firstname: centerUser.firstname || '',
       password: centerUser.password || ''
     });
-
   } catch (err) {
-    console.error('❌ Error fetching center user email:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// CLOSE REPORT (Auditor manually closes after reviewing remarks)
+// ========================================
+app.post('/api/audit-reports/:id/close-report', async (req, res) => {
+  try {
+    const { closedBy } = req.body;
+    const report = await AuditReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    report.currentStatus = 'Closed';
+    report.auditorClosedDate = new Date().toLocaleDateString('en-GB');
+    report.auditorClosedBy = closedBy || 'Auditor';
+    report.reminderClosedSent = true;
+    report.remindersSent = [0, 1, 2, 4];
+    report.auditorRemindersSent = [0, 1, 3, 5, 10]; // Cancel all auditor reminders too
+    await report.save();
+
+    console.log(`🔒 Report manually closed: ${report.centerCode} by ${closedBy}`);
+
+    // Send closed email to center user
+    const centerUser = await User.findOne({
+      centerCode: report.centerCode.toUpperCase(),
+      role: 'Center User',
+      isActive: true
+    });
+
+    if (centerUser?.email) {
+      const loginUrl = 'https://audit-tool-liard.vercel.app';
+      const chName = report.centerHeadName || centerUser.firstname || 'Sir/Madam';
+
+      const html = `
+<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
+<div style="max-width:700px;margin:0 auto;background:white;">
+  <div style="background:linear-gradient(135deg,#667eea,#764ba2);padding:25px;text-align:center;">
+    <h1 style="color:white;margin:0;font-size:24px;">🔒 Audit Report Closed</h1>
+    <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;">${report.centerName} (${report.centerCode})</p>
+  </div>
+  <div style="padding:30px;">
+    <p style="font-size:16px;color:#333;">Dear <strong>${chName}</strong>,</p>
+    <div style="background:#f8f9fa;border-left:4px solid #6c757d;padding:20px;border-radius:8px;margin:20px 0;">
+      <h3 style="margin:0 0 10px;color:#495057;">🔒 Your audit report has been reviewed and closed</h3>
+      <p style="margin:0;color:#555;font-size:15px;line-height:1.6;">
+        The auditor team has reviewed your remarks and officially closed this audit report.
+        <br/><br/>
+        <strong>Report:</strong> ${report.centerName}<br/>
+        <strong>Audit Score:</strong> ${report.grandTotal}/100<br/>
+        <strong>Closed On:</strong> ${report.auditorClosedDate}<br/>
+        <strong>Closed By:</strong> ${report.auditorClosedBy}
+      </p>
+    </div>
+    <div style="background:#e8f5e9;border:1px solid #4caf50;padding:15px;border-radius:8px;margin:15px 0;">
+      <p style="margin:0;color:#2e7d32;font-size:14px;">
+        ✅ <strong>Your remarks have been recorded</strong> and are part of the final audit documentation.
+      </p>
+    </div>
+    <p style="color:#555;font-size:14px;margin-top:15px;">
+      The timeline limit for this audit cycle has been completed. For any queries, please contact the <strong>Auditor Team</strong>.
+    </p>
+    <p style="font-size:14px;color:#666;margin-top:25px;">Best Regards,<br/><strong>NIIT Audit Team</strong></p>
+  </div>
+  <div style="background:#f5f5f5;padding:15px;text-align:center;border-top:1px solid #ddd;">
+    <p style="margin:0;color:#999;font-size:12px;">This is an automated email from NIIT Audit System.</p>
+  </div>
+</div></body></html>`;
+
+      try {
+        await transporter.sendMail({
+          from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+          to: centerUser.email,
+          subject: `🔒 Audit Report Closed - ${report.centerName}`,
+          html
+        });
+        console.log(`✅ Closed email sent to ${centerUser.email}`);
+      } catch(emailErr) {
+        console.log('⚠️ Closed email failed:', emailErr.message);
+      }
+    }
+
+    res.json({ success: true, message: 'Report closed successfully', report });
+  } catch (err) {
+    console.error('❌ Close report error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1631,4 +2246,191 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/audit-reports`);  
   console.log(`   POST /api/save-audit-report`);
   console.log(`\n========================================\n`);
+
+  // ========================================
+  // ⏰ AUTOMATIC DAILY DEADLINE CHECK
+  // Runs every day at 9:00 AM IST
+  // ========================================
+  const runDailyCheck = async () => {
+    try {
+      console.log('\n⏰ ========== DAILY DEADLINE CHECK ==========');
+      console.log('⏰ Time:', new Date().toLocaleString('en-IN'));
+
+      const now = new Date(); now.setHours(0,0,0,0);
+      let auditorClosed = 0, centerClosed = 0, remindersSentCount = 0, closedEmailsSentCount = 0;
+
+      // 1. AUDITOR DEADLINE: Close Not Submitted reports
+      const auditorOverdue = await AuditReport.find({
+        currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
+        auditorDeadline: { $lt: now },
+        autoClosedBy: { $not: { $regex: 'auditor_deadline' } }
+      });
+      for (const report of auditorOverdue) {
+        report.currentStatus = 'Closed';
+        report.autoClosedBy = 'auditor_deadline';
+        report.autoClosedDate = now.toLocaleDateString('en-GB');
+        await report.save();
+        auditorClosed++;
+        console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
+      }
+
+      // 2. CENTER REMARKS DEADLINE: Lock remarks
+      const centerOverdue = await AuditReport.find({
+        currentStatus: 'Approved',
+        emailSent: true,
+        centerDeadline: { $lt: now },
+        centerHeadRemarksLocked: false,
+        centerRemarksDate: { $in: [null, ''] }
+      });
+      for (const report of centerOverdue) {
+        report.centerHeadRemarksLocked = true;
+        if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
+        report.autoClosedDate = now.toLocaleDateString('en-GB');
+        await report.save();
+        centerClosed++;
+        console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+      }
+
+      // 3. REMINDER EMAILS
+      const activeReports = await AuditReport.find({
+        currentStatus: 'Approved',
+        emailSent: true,
+        centerHeadRemarksLocked: false,
+        centerRemarksDate: { $in: [null, ''] },
+        centerDeadline: { $exists: true, $ne: null, $gte: now }
+      });
+
+      for (const report of activeReports) {
+        if (!report.centerDeadline) continue;
+        const deadline = new Date(report.centerDeadline); deadline.setHours(0,0,0,0);
+        let rem = 0;
+        let d = new Date(now);
+        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
+
+        const thresholds = [4, 2, 1, 0];
+        const remindersSentArr = report.remindersSent || [];
+
+        for (const threshold of thresholds) {
+          if (rem === threshold && !remindersSentArr.includes(threshold)) {
+            const sent = await sendReminderEmail(report, threshold);
+            if (sent) {
+              report.remindersSent = [...remindersSentArr, threshold];
+              await report.save();
+              remindersSentCount++;
+            }
+            break;
+          }
+        }
+      }
+
+      // 4. CLOSED EMAILS
+      const overdueReports = await AuditReport.find({
+        currentStatus: 'Approved',
+        emailSent: true,
+        centerDeadline: { $lt: now },
+        centerHeadRemarksLocked: false,
+        centerRemarksDate: { $in: [null, ''] },
+        reminderClosedSent: { $ne: true }
+      });
+      for (const report of overdueReports) {
+        report.centerHeadRemarksLocked = true;
+        const sent = await sendReminderEmail(report, 'closed');
+        if (sent) { report.reminderClosedSent = true; }
+        await report.save();
+        closedEmailsSentCount++;
+      }
+
+      // 5. AUDITOR REVIEW DEADLINE: Auto-close if not reviewed in 5 days
+      const reviewOverdue = await AuditReport.find({
+        currentStatus: 'Approved',
+        auditorReviewDeadline: { $exists: true, $lt: now },
+        auditorClosedDate: { $in: [null, ''] }
+      });
+      for (const report of reviewOverdue) {
+        report.currentStatus = 'Closed';
+        report.auditorClosedDate = now.toLocaleDateString('en-GB');
+        report.auditorClosedBy = 'Auto-closed (review deadline)';
+        await sendReminderEmail(report, 'closed');
+        await report.save();
+        console.log(`🔒 Review deadline auto-closed: ${report.centerCode}`);
+      }
+
+      // 6. AUDITOR SUBMISSION REMINDERS (15 working days)
+      // Thresholds: 10, 5, 3, 1, 0 days left
+      const auditorActiveReports = await AuditReport.find({
+        currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
+        auditorDeadline: { $exists: true, $ne: null, $gte: now },
+        auditedBy: { $exists: true, $ne: '' }
+      });
+
+      let auditorRemindersSentCount = 0;
+      for (const report of auditorActiveReports) {
+        if (!report.auditorDeadline) continue;
+
+        // Calculate remaining working days
+        const deadline = new Date(report.auditorDeadline); deadline.setHours(0,0,0,0);
+        let rem = 0;
+        let d = new Date(now);
+        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
+
+        const thresholds = [10, 5, 3, 1, 0];
+        const sentArr = report.auditorRemindersSent || [];
+
+        for (const threshold of thresholds) {
+          if (rem === threshold && !sentArr.includes(threshold)) {
+            const sent = await sendAuditorReminderEmail(report, threshold);
+            if (sent) {
+              report.auditorRemindersSent = [...sentArr, threshold];
+              await report.save();
+              auditorRemindersSentCount++;
+            }
+            break;
+          }
+        }
+      }
+
+      // 7. AUDITOR AUTO-CLOSED EMAIL
+      const auditorAutoClose = await AuditReport.find({
+        currentStatus: 'Closed',
+        autoClosedBy: { $regex: 'auditor_deadline' },
+        auditorAutoClosedEmailSent: { $ne: true },
+        auditedBy: { $exists: true, $ne: '' }
+      });
+      for (const report of auditorAutoClose) {
+        const sent = await sendAuditorReminderEmail(report, 'auto_closed');
+        if (sent) {
+          report.auditorAutoClosedEmailSent = true;
+          await report.save();
+        }
+      }
+
+      console.log(`✅ Daily check done:`);
+      console.log(`   Auditor closed: ${auditorClosed}`);
+      console.log(`   Center locked: ${centerClosed}`);
+      console.log(`   Reminders sent: ${remindersSentCount}`);
+      console.log(`   Closed emails: ${closedEmailsSentCount}`);
+      console.log('⏰ ==========================================\n');
+
+    } catch (err) {
+      console.error('❌ Daily check error:', err.message);
+    }
+  };
+
+  // Run once on server start (after 5 sec delay)
+  setTimeout(runDailyCheck, 5000);
+
+  // Then run every 24 hours at 9 AM IST (UTC+5:30 = 3:30 AM UTC)
+  const now = new Date();
+  const next9AM = new Date();
+  next9AM.setHours(9, 0, 0, 0); // 9 AM local
+  if (now >= next9AM) next9AM.setDate(next9AM.getDate() + 1); // kal 9 AM
+  const msUntil9AM = next9AM - now;
+
+  setTimeout(() => {
+    runDailyCheck(); // First run at 9 AM
+    setInterval(runDailyCheck, 24 * 60 * 60 * 1000); // Phir har 24 hours
+  }, msUntil9AM);
+
+  console.log(`⏰ Daily deadline check scheduled at 9:00 AM`);
+  console.log(`⏰ Next run in: ${Math.round(msUntil9AM / 1000 / 60)} minutes\n`);
 });

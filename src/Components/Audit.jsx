@@ -26,9 +26,8 @@ const AuditManagement = () => {
   const [fyDateRange, setFyDateRange] = useState({ min: '', max: '' });
 
 const [endDate, setEndDate] = useState('');
-const [auditorsList, setAuditorsList] = useState(['Jatin', 'Rythem', 'Preeti']);
-const [showAddAuditor, setShowAddAuditor] = useState(false);
-const [newAuditorName, setNewAuditorName] = useState('');
+const [auditorsList, setAuditorsList] = useState([]); // {firstname, email, username} from DB
+const [auditorsLoading, setAuditorsLoading] = useState(false);
 const [auditPeriodFrom, setAuditPeriodFrom] = useState('');
 const [auditPeriodTo, setAuditPeriodTo] = useState('');
   const [emailData, setEmailData] = useState({
@@ -191,6 +190,25 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     }
   };
 
+  // Load Audit Users from DB for auditor dropdown
+  const loadAuditors = async () => {
+    try {
+      setAuditorsLoading(true);
+      const res = await fetch(`${API_URL}/api/users`);
+      if (!res.ok) throw new Error('Failed to load users');
+      const users = await res.json();
+      // Sirf Audit User aur Admin role wale
+      const auditors = users.filter(u => u.Role === 'Audit User' || u.Role === 'Admin');
+      setAuditorsList(auditors);
+      console.log('✅ Auditors loaded:', auditors.length);
+    } catch (err) {
+      console.error('❌ Error loading auditors:', err);
+      setAuditorsList([]);
+    } finally {
+      setAuditorsLoading(false);
+    }
+  };
+
   // Load saved reports from MongoDB
   const loadSavedReports = async () => {
     try {
@@ -266,6 +284,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     
     if (option === 'create') {
       loadCenters();
+      loadAuditors();
     } else if (option === 'view' || option === 'history') {
       loadSavedReports();
     }
@@ -802,9 +821,135 @@ If you have any suggestions or thoughts related to the audit for further improve
     }
   };
 
+  // ========================================
+  // ⏰ WORKING DAYS & DEADLINE HELPERS
+  // ========================================
+  const HOLIDAYS = {
+    2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
+           '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
+    2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
+           '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
+           '2026-11-24','2026-12-25']
+  };
+
+  const isWorkingDay = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    if (day === 0 || day === 6) return false;
+    const ds = d.toISOString().split('T')[0];
+    return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+  };
+
+  const getRemainingWorkingDays = (deadlineDate) => {
+    if (!deadlineDate) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
+    let count = 0;
+    let d = new Date(today);
+    if (today > deadline) {
+      while (d > deadline) { d.setDate(d.getDate()-1); if (isWorkingDay(d)) count++; }
+      return -count;
+    }
+    while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) count++; }
+    return count;
+  };
+
+  const getAuditorDeadlineBadge = (report) => {
+    // Closed
+    if (report.currentStatus === 'Closed')
+      return { text: '🔒 Closed', color: '#6c757d', bg: '#f8f9fa', border: '#dee2e6', sub: report.autoClosedDate ? `on ${report.autoClosedDate}` : '' };
+
+    // Submitted / Approved — show how many working days auditor took
+    if (['Pending with Supervisor','Approved'].includes(report.currentStatus)) {
+      if (report.createdAt && report.auditorDeadline) {
+        // Days taken = deadline - remaining (i.e. total 15 - days left when submitted)
+        // Simpler: count working days from createdAt to submittedDate
+        const start = new Date(report.createdAt);
+        const endStr = report.submittedDate; // "DD/MM/YYYY, HH:MM:SS" or similar
+        if (endStr) {
+          // Parse submittedDate (en-GB format: "DD/MM/YYYY, HH:MM:SS")
+          let submitDate;
+          try {
+            const parts = endStr.split(',')[0].split('/');
+            if (parts.length === 3) {
+              submitDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            }
+          } catch(e) { submitDate = null; }
+          
+          if (submitDate && !isNaN(submitDate)) {
+            // Count working days between createdAt and submittedDate
+            let days = 0;
+            let d = new Date(start); d.setHours(0,0,0,0);
+            const end = new Date(submitDate); end.setHours(0,0,0,0);
+            while (d < end) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) days++; }
+            const color = days <= 10 ? '#2e7d32' : days <= 15 ? '#e65100' : '#dc3545';
+            const bg = days <= 10 ? '#e8f5e9' : days <= 15 ? '#fff3e0' : '#ffebee';
+            const border = days <= 10 ? '#4caf50' : days <= 15 ? '#ff9800' : '#dc3545';
+            return { text: `✅ Done in ${days}d`, color, bg, border, sub: report.submittedDate?.split(',')[0] || '' };
+          }
+        }
+        return { text: '✅ Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: '' };
+      }
+      return { text: '✅ Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: '' };
+    }
+
+    // Not yet submitted — show countdown
+    if (!report.auditorDeadline && !report.auditorDeadlineString) return null;
+    const rem = getRemainingWorkingDays(report.auditorDeadline || report.auditorDeadlineString);
+    if (rem === null) return null;
+    if (rem < 0)   return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: `deadline: ${report.auditorDeadlineString||''}` };
+    if (rem === 0) return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+    if (rem <= 3)  return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: `by ${report.auditorDeadlineString||''}` };
+    return               { text: `📅 ${rem}d left`,               color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: `by ${report.auditorDeadlineString||''}` };
+  };
+
+  const getCenterDeadlineBadge = (report) => {
+    if (!report.emailSent) return null;
+
+    // Remarks submit ho gayi — kitne din mein kiya
+    if (report.centerHeadRemarksLocked && report.centerRemarksDate && report.emailSentDate) {
+      let emailDate = null;
+      try {
+        const parts = report.emailSentDate.split(',')[0].trim().split('/');
+        if (parts.length === 3) emailDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      } catch(e) {}
+      let remarksDate = null;
+      try {
+        const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
+        if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      } catch(e) {}
+      if (emailDate && remarksDate && !isNaN(emailDate) && !isNaN(remarksDate)) {
+        let days = 0;
+        let d = new Date(emailDate); d.setHours(0,0,0,0);
+        const end = new Date(remarksDate); end.setHours(0,0,0,0);
+        while (d < end) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) days++; }
+        const color = days <= 5 ? '#2e7d32' : days <= 7 ? '#e65100' : '#dc3545';
+        const bg    = days <= 5 ? '#e8f5e9' : days <= 7 ? '#fff3e0' : '#ffebee';
+        const border= days <= 5 ? '#4caf50' : days <= 7 ? '#ff9800' : '#dc3545';
+        return { text: `✅ Done in ${days}d`, color, bg, border, sub: report.centerRemarksDate?.split(',')[0] || '' };
+      }
+      return { text: '✅ Remarks Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: report.centerRemarksDate?.split(',')[0] || '' };
+    }
+
+    // Countdown
+    if (!report.centerDeadline) return null;
+    const rem = getRemainingWorkingDays(report.centerDeadline);
+    if (rem === null) return null;
+    if (rem < 0)   return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+    if (rem === 0) return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+    if (rem <= 2)  return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: `by ${report.centerDeadlineString||''}` };
+    return               { text: `✅ ${rem}d left`,               color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: `by ${report.centerDeadlineString||''}` };
+  };
+
+  const checkDeadlines = async () => {
+    try { await fetch(`${API_URL}/api/audit-reports/check-deadlines`, { method: 'POST' }); }
+    catch (e) { /* silent */ }
+  };
+  // ========================================
+
   useEffect(() => {
     if (activeOption === 'view') {
-      loadSavedReports();
+      checkDeadlines().then(() => loadSavedReports());
     }
   }, [activeOption]);
 
@@ -1089,69 +1234,34 @@ const isWithinDateRange = (reportDate, start, end) => {
                 }}>{selectedCenter.centerType || 'CDC'}</span></div>
                 <div><strong>Location:</strong> {selectedCenter.location || selectedCenter.geolocation || '-'}</div>
                 
-                {/* AUDITED BY DROPDOWN */}
+                {/* AUDITED BY DROPDOWN — from Users DB */}
 <div style={{position: 'relative'}}>
   <strong>Audited By:</strong>
-  <select
-    value={selectedCenter.auditedBy || ''}
-    onChange={(e) => {
-      if (e.target.value === '__add_new__') {
-        setShowAddAuditor(true);
-      } else {
-        setSelectedCenter({...selectedCenter, auditedBy: e.target.value});
-      }
-    }}
-    style={{
-      marginLeft: '8px', padding: '5px 10px',
-      border: '2px solid #667eea', borderRadius: '6px',
-      cursor: 'pointer', fontSize: '13px', color: '#333'
-    }}
-  >
-    <option value="">-- Select --</option>
-    {auditorsList.map(a => (
-      <option key={a} value={a}>{a}</option>
-    ))}
-    <option value="__add_new__">➕ Add New</option>
-  </select>
-
-  {showAddAuditor && (
-    <div style={{
-      position: 'absolute', top: '110%', left: 0,
-      background: 'white', border: '2px solid #667eea',
-      borderRadius: '8px', padding: '12px', zIndex: 999,
-      boxShadow: '0 8px 20px rgba(0,0,0,0.15)', minWidth: '250px'
-    }}>
-      <p style={{margin: '0 0 8px', fontWeight: 'bold', color: '#667eea', fontSize: '13px'}}>
-        ➕ Add New Auditor
-      </p>
-      <div style={{display: 'flex', gap: '8px'}}>
-        <input
-          type="text"
-          placeholder="Auditor name..."
-          value={newAuditorName}
-          onChange={(e) => setNewAuditorName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && newAuditorName.trim()) {
-              setAuditorsList(prev => [...prev, newAuditorName.trim()]);
-              setSelectedCenter({...selectedCenter, auditedBy: newAuditorName.trim()});
-              setNewAuditorName('');
-              setShowAddAuditor(false);
-            }
-          }}
-          style={{flex: 1, padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px'}}
-        />
-        <button onClick={() => {
-          if (newAuditorName.trim()) {
-            setAuditorsList(prev => [...prev, newAuditorName.trim()]);
-            setSelectedCenter({...selectedCenter, auditedBy: newAuditorName.trim()});
-            setNewAuditorName('');
-            setShowAddAuditor(false);
-          }
-        }} style={{padding: '8px 14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>✓</button>
-        <button onClick={() => {setShowAddAuditor(false); setNewAuditorName('');}}
-          style={{padding: '8px 12px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>✕</button>
-      </div>
-    </div>
+  {auditorsLoading ? (
+    <span style={{marginLeft: '8px', fontSize: '12px', color: '#999'}}>Loading...</span>
+  ) : (
+    <select
+      value={selectedCenter.auditedBy || ''}
+      onChange={(e) => setSelectedCenter({...selectedCenter, auditedBy: e.target.value})}
+      style={{
+        marginLeft: '8px', padding: '5px 10px',
+        border: selectedCenter.auditedBy ? '2px solid #4caf50' : '2px solid #667eea',
+        borderRadius: '6px', cursor: 'pointer', fontSize: '13px', color: '#333',
+        background: selectedCenter.auditedBy ? '#f1f8e9' : 'white'
+      }}
+    >
+      <option value="">-- Select Auditor --</option>
+      {auditorsList.map(a => (
+        <option key={a.username} value={a.firstname}>
+          {a.firstname} {a.lastname || ''} ({a.email})
+        </option>
+      ))}
+    </select>
+  )}
+  {selectedCenter.auditedBy && (
+    <span style={{marginLeft: '8px', fontSize: '11px', color: '#2e7d32', fontWeight: 'bold'}}>
+      ✅ {auditorsList.find(a => a.firstname === selectedCenter.auditedBy)?.email || ''}
+    </span>
   )}
 </div>
               </div>
@@ -1949,10 +2059,13 @@ const isWithinDateRange = (reportDate, start, end) => {
                     <th>AUDIT<br/>STATUS</th>
                     <th style={{ minWidth: '180px' }}>REMARKS<br/>(EDITABLE)</th>
                     <th>ACTIONS</th>
+                    <th style={{ minWidth: '110px', background: '#fff8e1' }}>AUDITOR<br/>DEADLINE<br/><span style={{fontSize:'10px',fontWeight:'normal'}}>(15 days)</span></th>
                     <th>CURRENT<br/>STATUS</th>
                     <th>APPROVED<br/>BY</th>
                     <th style={{ minWidth: '120px' }}>SEND<br/>REPORT</th>
+                    <th style={{ minWidth: '110px', background: '#e8f5e9' }}>CENTER<br/>DEADLINE<br/><span style={{fontSize:'10px',fontWeight:'normal'}}>(7 days)</span></th>
                     <th style={{ minWidth: '120px', background: '#e8f5e9' }}>CENTER HEAD<br/>REMARKS</th>
+                    <th style={{ minWidth: '130px', background: '#fce4ec' }}>CLOSE<br/>REPORT</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1982,10 +2095,13 @@ const isWithinDateRange = (reportDate, start, end) => {
   })
                     .map((report, index) => {
                     const canSubmit = report.currentStatus === 'Not Submitted' || 
-                                      report.currentStatus.startsWith('Rejected');
+                                      report.currentStatus.startsWith('Rejected') ||
+                                      report.currentStatus === 'Sent Back';
                     const isRejected = report.currentStatus.startsWith('Rejected');
+                    const isClosed = report.currentStatus === 'Closed';
                     const isApprovedOrPending = report.currentStatus === 'Pending with Supervisor' || 
-                                                report.currentStatus === 'Approved';
+                                                report.currentStatus === 'Approved' ||
+                                                report.currentStatus === 'Closed';
 
                     // Get info for each area (dynamic max scores)
                     const foMax = report.placementApplicable === 'no' ? 35 : 30;
@@ -2189,6 +2305,27 @@ const isWithinDateRange = (reportDate, start, end) => {
                             )}
                           </div>
                         </td>
+
+                        {/* ⏰ AUDITOR DEADLINE — 15 working days */}
+                        <td style={{ textAlign: 'center', padding: '8px', background: '#fffde7' }}>
+                          {(() => {
+                            const badge = getAuditorDeadlineBadge(report);
+                            if (!badge) return <span style={{ color: '#999', fontSize: '11px' }}>—</span>;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                                <span style={{
+                                  padding: '4px 8px', borderRadius: '10px', fontSize: '11px',
+                                  fontWeight: 'bold', color: badge.color, background: badge.bg,
+                                  border: `1px solid ${badge.border}`, whiteSpace: 'nowrap'
+                                }}>{badge.text}</span>
+                                {badge.sub && (
+                                  <span style={{ fontSize: '10px', color: '#888' }}>{badge.sub}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+
                         <td style={{ textAlign: 'center' }}>
                           {report.currentStatus === 'Approved' && (
                             <span style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '12px' }}>
@@ -2206,6 +2343,15 @@ const isWithinDateRange = (reportDate, start, end) => {
                               title={report.currentStatus}
                             >
                               ❌ Rejected
+                            </span>
+                          )}
+                          {isClosed && (
+                            <span style={{
+                              color: '#6c757d', fontWeight: 'bold', fontSize: '12px',
+                              background: '#f8f9fa', padding: '3px 8px',
+                              borderRadius: '8px', border: '1px solid #dee2e6'
+                            }}>
+                              🔒 Closed
                             </span>
                           )}
                           {report.currentStatus === 'Not Submitted' && (
@@ -2303,39 +2449,141 @@ const isWithinDateRange = (reportDate, start, end) => {
                             </span>
                           )}
                         </td>
+                        {/* ⏰ CENTER DEADLINE — 7 working days */}
+                        <td style={{ textAlign: 'center', padding: '8px', background: '#e8f5e9' }}>
+                          {(() => {
+                            const badge = getCenterDeadlineBadge(report);
+                            if (!badge) return <span style={{ color: '#999', fontSize: '11px' }}>—</span>;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                                <span style={{
+                                  padding: '4px 8px', borderRadius: '10px', fontSize: '11px',
+                                  fontWeight: 'bold', color: badge.color, background: badge.bg,
+                                  border: `1px solid ${badge.border}`, whiteSpace: 'nowrap'
+                                }}>{badge.text}</span>
+                                {report.centerDeadlineString && (
+                                  <span style={{ fontSize: '10px', color: '#888' }}>by {report.centerDeadlineString}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        {/* CENTER HEAD REMARKS */}
                         <td style={{ textAlign: 'center', padding: '8px', background: '#f1f8e9' }}>
-                          {(report.emailSent === true && report.currentStatus === 'Approved') ? (
-                            <button
-                              onClick={async () => {
-  // Fresh data fetch karo MongoDB se
-  const res = await fetch(`${API_URL}/api/audit-reports`);
-  const allReports = await res.json();
-  const freshReport = allReports.find(r => r._id === report._id);
-  setSelectedReportForRemarks(freshReport || report);
-  setShowCenterRemarksModal(true);
-}}
-
-
-                              style={{
-                                background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-                                color: 'white',
-                                border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                boxShadow: '0 2px 8px rgba(17, 153, 142, 0.3)'
-                              }}
-                            >
-                              📊 View Full Report
-                            </button>
+                          {(report.emailSent === true && ['Approved', 'Closed'].includes(report.currentStatus)) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                              <button
+                                onClick={async () => {
+                                  const res = await fetch(`${API_URL}/api/audit-reports`);
+                                  const allReports = await res.json();
+                                  const freshReport = allReports.find(r => r._id === report._id);
+                                  setSelectedReportForRemarks(freshReport || report);
+                                  setShowCenterRemarksModal(true);
+                                }}
+                                style={{
+                                  background: report.currentStatus === 'Closed'
+                                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                                    : 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '8px 12px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  boxShadow: '0 2px 8px rgba(17, 153, 142, 0.3)'
+                                }}
+                              >
+                                📊 View Full Report
+                              </button>
+                              {report.currentStatus === 'Closed' && (
+                                <span style={{ fontSize: '10px', color: '#6c757d' }}>🔒 Read only</span>
+                              )}
+                              {report.currentStatus === 'Approved' && !report.centerRemarksDate && (
+                                <span style={{ fontSize: '10px', color: '#e65100' }}>No remarks yet</span>
+                              )}
+                            </div>
                           ) : (
                             <span style={{ color: '#999', fontSize: '11px', fontStyle: 'italic' }}>
                               —
                             </span>
                           )}
                         </td>
+
+                        {/* 🔒 CLOSE REPORT CELL */}
+                        <td style={{ textAlign: 'center', padding: '8px', background: '#fce4ec' }}>
+                          {report.currentStatus === 'Closed' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                              <span style={{
+                                padding: '5px 10px', borderRadius: '10px', fontSize: '11px',
+                                fontWeight: 'bold', color: '#6c757d', background: '#f8f9fa',
+                                border: '1px solid #dee2e6'
+                              }}>🔒 Closed</span>
+                              {report.auditorClosedDate && (
+                                <span style={{ fontSize: '10px', color: '#888' }}>{report.auditorClosedDate}</span>
+                              )}
+                              {report.auditorClosedBy && (
+                                <span style={{ fontSize: '10px', color: '#aaa', fontStyle: 'italic' }}>{report.auditorClosedBy}</span>
+                              )}
+                            </div>
+                          ) : report.centerRemarksDate ? (
+                            // Center ne remarks submit ki hain - auditor close kar sakta hai
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm(`Close this report for ${report.centerName}?
+
+Center Head has submitted remarks.
+This will send a "Report Closed" email to the center.`)) {
+                                    try {
+                                      const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/close-report`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ closedBy: loggedUser.firstname || loggedUser.username })
+                                      });
+                                      if (res.ok) {
+                                        alert('✅ Report closed successfully! Closed email sent to center.');
+                                        loadSavedReports();
+                                      } else {
+                                        alert('❌ Failed to close report');
+                                      }
+                                    } catch(err) {
+                                      alert('❌ Error: ' + err.message);
+                                    }
+                                  }
+                                }}
+                                style={{
+                                  padding: '7px 14px',
+                                  background: 'linear-gradient(135deg, #e91e63 0%, #c2185b 100%)',
+                                  color: 'white', border: 'none', borderRadius: '6px',
+                                  cursor: 'pointer', fontSize: '12px', fontWeight: 'bold',
+                                  boxShadow: '0 2px 8px rgba(233,30,99,0.3)'
+                                }}
+                              >
+                                🔒 Close Report
+                              </button>
+                              {report.auditorReviewDeadlineString && (() => {
+                                const today = new Date(); today.setHours(0,0,0,0);
+                                const dl = new Date(report.auditorReviewDeadline); dl.setHours(0,0,0,0);
+                                const diff = Math.ceil((dl - today) / (1000*60*60*24));
+                                const rem = getRemainingWorkingDays(report.auditorReviewDeadline);
+                                const color = rem <= 1 ? '#dc3545' : rem <= 3 ? '#e65100' : '#2e7d32';
+                                return (
+                                  <span style={{ fontSize: '10px', color, fontWeight: 'bold' }}>
+                                    {rem <= 0 ? '🚨 Auto-close today' : `⏰ ${rem}d to review`}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            // Center ne remarks nahi bhari abhi tak
+                            <span style={{ color: '#94a3b8', fontSize: '10px', fontStyle: 'italic' }}>
+                              Awaiting remarks
+                            </span>
+                          )}
+                        </td>
+
                       </tr>
                     );
                   })}
