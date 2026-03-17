@@ -16,7 +16,7 @@ const gstStateMap = {
   '38': 'Ladakh'
 };
 
-const CenterManagement = () => {
+const CenterManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newCenter, setNewCenter] = useState({
@@ -34,6 +34,7 @@ const CenterManagement = () => {
 
   });
   const [editingId, setEditingId] = useState(null);
+  const [originalCenter, setOriginalCenter] = useState(null); // Track original before edit
 
   useEffect(() => {
     loadCenters();
@@ -81,12 +82,19 @@ const code = newCenter.centerCode.trim().toUpperCase();
         body: JSON.stringify({
           ...newCenter,
           centerCode: newCenter.centerCode.trim(),
-          centerName: newCenter.centerName.trim()
+          centerName: newCenter.centerName.trim(),
+          createdByRole: auditUserMode ? 'Audit User' : 'Admin',
+          createdBy: auditUserMode ? createdBy : 'Admin'
         })
       });
 
       if (response.ok) {
-        alert('✅ Center added successfully!');
+        const result = await response.json();
+        if (result.pendingApproval) {
+          alert('✅ Center request submitted! Waiting for Admin approval.');
+        } else {
+          alert('✅ Center added successfully!');
+        }
         setNewCenter({
           centerCode: '',
           centerName: '',
@@ -165,18 +173,60 @@ const code = newCenter.centerCode.trim().toUpperCase();
     try {
       console.log('📝 Updating center:', center);
       console.log('🎯 Center Type being sent:', center.centerType);
+
+      // Audit User ke liye - sirf changed fields track karo
+      let updateData = center;
+      console.log('🔍 Original center:', originalCenter);
+      console.log('🔍 Updated center:', center);
+      if (auditUserMode && originalCenter) {
+        // Find what actually changed
+        const changedFields = {};
+        const trackFields = ['centerName', 'projectName', 'zmName', 'regionHeadName', 
+                             'areaClusterManager', 'centerHeadName', 'centerType', 'location'];
+        trackFields.forEach(field => {
+          if (center[field] !== originalCenter[field]) {
+            changedFields[field] = { old: originalCenter[field], new: center[field] };
+          }
+        });
+
+        // If no changes detected, warn user
+        if (Object.keys(changedFields).length === 0) {
+          alert('⚠️ No changes detected! Please modify at least one field before submitting.');
+          return;
+        }
+
+        updateData = {
+          ...center,
+          editRequestBy: createdBy,
+          editRequestDate: new Date().toLocaleDateString('en-GB'),
+          editApprovalStatus: 'pending',
+          changedFields: changedFields
+        };
+      } else if (auditUserMode && !originalCenter) {
+        // originalCenter missing - still submit as pending without diff
+        updateData = {
+          ...center,
+          editRequestBy: createdBy,
+          editRequestDate: new Date().toLocaleDateString('en-GB'),
+          editApprovalStatus: 'pending',
+          changedFields: {}
+        };
+      }
       
       const response = await fetch(`${API_URL}/api/centers/${center._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(center)
+        body: JSON.stringify(updateData)
       });
 
       if (response.ok) {
         const updatedData = await response.json();
         console.log('✅ Updated center received:', updatedData);
-        console.log('✅ Center Type after update:', updatedData.centerType);
-        alert('✅ Center updated successfully!');
+        if (auditUserMode) {
+          alert('✅ Edit request submitted! Admin approval required before changes apply.');
+        } else {
+          alert('✅ Center updated successfully!');
+        }
         setEditingId(null);
         loadCenters();
       } else {
@@ -344,7 +394,15 @@ const code = newCenter.centerCode.trim().toUpperCase();
               <tbody>
                 {centers.map((center) => (
                   <tr key={center._id} style={{borderBottom: '1px solid #eee'}}>
-                    <td style={{padding: '12px', fontWeight: 'bold', color: '#667eea'}}>{center.centerCode}</td>
+                    <td style={{padding: '12px', fontWeight: 'bold', color: '#667eea'}}>
+                      {center.centerCode}
+                      {center.approvalStatus === 'pending' && (
+                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>⏳ New Pending</span>
+                      )}
+                      {center.editApprovalStatus === 'pending' && (
+                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#e3f2fd', color: '#1565c0', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #2196f3' }}>✏️ Edit Pending</span>
+                      )}
+                    </td>
                     <td style={{padding: '12px'}}>
                       {editingId === center._id ? (
                         <input
@@ -496,10 +554,14 @@ const code = newCenter.centerCode.trim().toUpperCase();
                               marginRight: '5px'
                             }}
                           >
-                            ✔ Save
+                            {auditUserMode ? '📤 Submit for Approval' : '✔ Save'}
                           </button>
                           <button
-                            onClick={() => {setEditingId(null); loadCenters();}}
+                            onClick={() => {
+                              setEditingId(null);
+                              setOriginalCenter(null);
+                              loadCenters();
+                            }}
                             style={{
                               padding: '6px 12px',
                               background: '#999',
@@ -515,7 +577,11 @@ const code = newCenter.centerCode.trim().toUpperCase();
                       ) : (
                         <>
                           <button
-                            onClick={() => setEditingId(center._id)}
+                            onClick={() => {
+                              setEditingId(center._id);
+                              // Deep copy original center data before any edits
+                              setOriginalCenter(JSON.parse(JSON.stringify(center)));
+                            }}
                             style={{
                               padding: '6px 12px',
                               background: '#2196f3',
@@ -528,19 +594,21 @@ const code = newCenter.centerCode.trim().toUpperCase();
                           >
                             ✏️ Edit
                           </button>
-                          <button
-                            onClick={() => handleDelete(center._id)}
-                            style={{
-                              padding: '6px 12px',
-                              background: '#f44336',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            🗑️ Delete
-                          </button>
+                          {!auditUserMode && (
+                            <button
+                              onClick={() => handleDelete(center._id)}
+                              style={{
+                                padding: '6px 12px',
+                                background: '#f44336',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              🗑️ Delete
+                            </button>
+                          )}
                         </>
                       )}
                     </td>

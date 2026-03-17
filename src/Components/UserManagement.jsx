@@ -4,7 +4,7 @@ import { useUsers } from '../contexts/UsersContext';
 import { API_URL } from '../config';
 import './UserManagement.css';
 
-const UserManagement = () => {
+const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
   const [activeOption, setActiveOption] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -232,27 +232,32 @@ const UserManagement = () => {
         console.log('📤 Sending update to backend:', {
           userId: user._id,
           Role: updateData.Role,
-          centerCode: updateData.centerCode
+          centerCode: updateData.centerCode,
+          auditUserMode: auditUserMode,
+          modifiedByRole: auditUserMode ? 'Audit User' : 'Admin'
         });
         
         const res = await fetch(`${API_URL}/api/users/${user._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updateData)
+          body: JSON.stringify({
+            ...updateData,
+            modifiedByRole: auditUserMode ? 'Audit User' : 'Admin',
+            modifiedBy: auditUserMode ? createdBy : 'Admin'
+          })
         });
         
         console.log('📥 Response status:', res.status);
         
         if (res.ok) {
           const result = await res.json();
-          console.log('✅ User updated successfully!');
-          console.log('📋 Updated user data:', {
-            username: result.user?.username,
-            Role: result.user?.role || result.user?.Role,
-            centerCode: result.user?.centerCode
-          });
+          console.log('✅ User update request sent!');
           
-          showMessage('✅ Updated!', 'success');
+          if (result.pendingApproval) {
+            showMessage('✅ Modify request submitted! Waiting for Admin approval.', 'success');
+          } else {
+            showMessage('✅ Updated!', 'success');
+          }
           await loadUsersData();
         } else {
           console.log('❌ Update failed');
@@ -538,7 +543,7 @@ const UserManagement = () => {
       {/* VIEW USERS */}
       {activeOption === 'view' && (
         <div className="view-user">
-          <h3>👁️ Users List ({tableUsers.length})</h3>
+          <h3>👁️ Users List ({auditUserMode ? tableUsers.filter(u => u.Role === 'Center User' || u.role === 'center user').length : tableUsers.length})</h3>
           
           <div className="table-container">
             <table>
@@ -556,7 +561,9 @@ const UserManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {tableUsers.map((u, i) => (
+                {tableUsers
+                  .filter(u => !auditUserMode || u.Role === 'Center User' || u.role === 'center user')
+                  .map((u, i) => (
                   <tr key={u._id || i}>
                     <td>{i + 1}</td>
                     <td><span className="username-badge">{u.username}</span></td>
@@ -581,7 +588,16 @@ const UserManagement = () => {
                         {u.centerCode || '-'}
                       </span>
                     </td>
-                    <td><span className={`role-badge ${u.Role?.toLowerCase()}`}>{u.Role}</span></td>
+                    <td>
+                      <span className={`role-badge ${(u.Role || u.role || '').toLowerCase().replace(' ', '-')}`}>
+                        {u.Role || u.role || '-'}
+                      </span>
+                      {(u.approvalStatus === 'pending' || u.modifyApprovalStatus === 'pending') && (
+                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>
+                          ⏳ Pending
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -600,11 +616,13 @@ const UserManagement = () => {
               <label>Select User to Modify:</label>
               <select value={selectedUser || ''} onChange={handleSelectUser}>
                 <option value="">-- Select User --</option>
-                {globalUsers.map(u => (
-                  <option key={u._id || u.username} value={u.username}>
-                    {u.username} ({u.firstname} {u.lastname})
-                  </option>
-                ))}
+                {globalUsers
+                  .filter(u => !auditUserMode || u.Role === 'Center User' || u.role === 'center user')
+                  .map(u => (
+                    <option key={u._id || u.username} value={u.username}>
+                      {u.username} ({u.firstname} {u.lastname})
+                    </option>
+                  ))}
               </select>
             </div>
 

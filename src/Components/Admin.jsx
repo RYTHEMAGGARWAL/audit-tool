@@ -6,6 +6,8 @@ import Audit from './Audit';
 import CenterManagement from './CenterManagement';
 import PendingApprovals from './PendingApprovals';
 import EditRequestsApproval from './EditRequestsApproval';
+import ApprovalRequests from './ApprovalRequests';
+import MyRequests from './MyRequests';
 import { API_URL } from '../config';
 import './Admin.css';
 
@@ -15,20 +17,39 @@ const Admin = () => {
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
   
   // Set default tab based on role
+  const isAdmin = loggedUser.Role === 'Admin';
+  const isAuditUser = loggedUser.Role === 'Audit User';
+  const isLegacyUser = loggedUser.Role === 'User';
+
   const [activeTab, setActiveTab] = useState(
-    loggedUser.Role === 'User' ? 'Audit' : 'User Management'
+    isAdmin ? 'User Management' :
+    isAuditUser ? 'Audit' :
+    'Audit'
   );
+
+  const [approvalCount, setApprovalCount] = useState(0);
 
   const [pendingCount, setPendingCount] = useState(0);
   const [editRequestCount, setEditRequestCount] = useState(0);
 
   // Load pending count for Admin
   useEffect(() => {
-    if (loggedUser.Role === 'Admin') {
+    if (isAdmin) {
       loadPendingCount();
       loadEditRequestCount();
+      loadApprovalCount();
     }
-  }, [loggedUser.Role]);
+  }, []);
+
+  const loadApprovalCount = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/pending-approvals/count`);
+      if (res.ok) {
+        const data = await res.json();
+        setApprovalCount(data.count || 0);
+      }
+    } catch(e) {}
+  };
 
   // ========================================
   // LOAD PENDING COUNT FROM MONGODB
@@ -70,8 +91,8 @@ const Admin = () => {
       return;
     }
 
-    // Allow both Admin and User roles
-    if (loggedUser.Role !== 'Admin' && loggedUser.Role !== 'User') {
+    // Allow Admin, Audit User, and legacy User roles
+    if (!['Admin', 'Audit User', 'User'].includes(loggedUser.Role)) {
       alert('Unauthorized! Redirecting to login.');
       navigate('/');
     }
@@ -83,7 +104,7 @@ const Admin = () => {
     <div className="admin-container">
       <header className="admin-header">
         <h1>
-          {loggedUser.Role === 'Admin' ? 'Admin Dashboard' : 'User Dashboard'} - Welcome, {loggedUser.firstname}
+          {isAdmin ? 'Admin Dashboard' : isAuditUser ? 'Audit Dashboard' : 'User Dashboard'} - Welcome, {loggedUser.firstname}
         </h1>
         <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>
           Logout
@@ -92,121 +113,109 @@ const Admin = () => {
 
       {/* Show tabs based on user role */}
       <div className="tabs">
-        {/* Admin sees 3 tabs */}
-        {loggedUser.Role === 'Admin' && (
+
+        {/* ── ADMIN TABS ── */}
+        {isAdmin && (
           <>
-            <button 
-              className={activeTab === 'User Management' ? 'active' : ''} 
-              onClick={() => setActiveTab('User Management')}
-            >
+            <button className={activeTab === 'User Management' ? 'active' : ''} onClick={() => setActiveTab('User Management')}>
               👥 User Management
             </button>
-            <button 
-              className={activeTab === 'Center Management' ? 'active' : ''} 
-              onClick={() => setActiveTab('Center Management')}
-            >
+            <button className={activeTab === 'Center Management' ? 'active' : ''} onClick={() => setActiveTab('Center Management')}>
               🏢 Center Management
             </button>
-            <button 
-              className={activeTab === 'Audit' ? 'active' : ''} 
-              onClick={() => setActiveTab('Audit')}
-            >
+            <button className={activeTab === 'Audit' ? 'active' : ''} onClick={() => setActiveTab('Audit')}>
               📋 Audit
             </button>
-            <button 
-              className={activeTab === 'Pending Approvals' ? 'active' : ''} 
-              onClick={() => {
-                setActiveTab('Pending Approvals');
-                loadPendingCount();
-      loadEditRequestCount(); // Refresh count when tab clicked
-              }}
-              style={{
-                position: 'relative',
-                paddingRight: pendingCount > 0 ? '45px' : '20px'
-              }}
+            <button
+              className={activeTab === 'Pending Approvals' ? 'active' : ''}
+              onClick={() => { setActiveTab('Pending Approvals'); loadPendingCount(); loadEditRequestCount(); }}
+              style={{ position: 'relative', paddingRight: pendingCount > 0 ? '45px' : '20px' }}
             >
               ⏳ Pending Approvals
               {pendingCount > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '50%',
-                  right: '10px',
-                  transform: 'translateY(-50%)',
-                  background: '#ff5722',
-                  color: 'white',
-                  borderRadius: '50%',
-                  width: '24px',
-                  height: '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 2px 8px rgba(255, 87, 34, 0.4)'
-                }}>
+                <span style={{ position: 'absolute', top: '50%', right: '10px', transform: 'translateY(-50%)', background: '#ff5722', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold' }}>
                   {pendingCount}
                 </span>
               )}
             </button>
-            <button 
-              className={activeTab === 'Edit Requests' ? 'active' : ''} 
-              onClick={() => {
-                setActiveTab('Edit Requests');
-                loadEditRequestCount();
-              }}
-              style={{
-                position: 'relative',
-                paddingRight: editRequestCount > 0 ? '45px' : '20px'
-              }}
+            <button
+              className={activeTab === 'Edit Requests' ? 'active' : ''}
+              onClick={() => { setActiveTab('Edit Requests'); loadEditRequestCount(); }}
+              style={{ position: 'relative', paddingRight: editRequestCount > 0 ? '45px' : '20px' }}
             >
               🔓 Edit Requests
               {editRequestCount > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '50%',
-                  right: '10px',
-                  transform: 'translateY(-50%)',
-                  background: '#ff9800',
-                  color: 'white',
-                  borderRadius: '50%',
-                  width: '24px',
-                  height: '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 2px 8px rgba(255, 152, 0, 0.4)'
-                }}>
+                <span style={{ position: 'absolute', top: '50%', right: '10px', transform: 'translateY(-50%)', background: '#ff9800', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold' }}>
                   {editRequestCount}
+                </span>
+              )}
+            </button>
+            {/* Approval requests badge */}
+            <button
+              className={activeTab === 'Approval Requests' ? 'active' : ''}
+              onClick={() => { setActiveTab('Approval Requests'); loadApprovalCount(); }}
+              style={{ position: 'relative', paddingRight: approvalCount > 0 ? '45px' : '20px' }}
+            >
+              ✅ Approval Requests
+              {approvalCount > 0 && (
+                <span style={{ position: 'absolute', top: '50%', right: '10px', transform: 'translateY(-50%)', background: '#e91e63', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold' }}>
+                  {approvalCount}
                 </span>
               )}
             </button>
           </>
         )}
 
-        {/* User sees only Audit tab */}
-        {loggedUser.Role === 'User' && (
-          <button className="active">
-            📋 Audit Management
-          </button>
+        {/* ── AUDIT USER TABS ── */}
+        {isAuditUser && (
+          <>
+            <button className={activeTab === 'Audit' ? 'active' : ''} onClick={() => setActiveTab('Audit')}>
+              📋 Audit Management
+            </button>
+            <button className={activeTab === 'Center Management' ? 'active' : ''} onClick={() => setActiveTab('Center Management')}>
+              🏢 Center Management
+            </button>
+            <button className={activeTab === 'User Management' ? 'active' : ''} onClick={() => setActiveTab('User Management')}>
+              👤 Create Center User
+            </button>
+            <button className={activeTab === 'My Requests' ? 'active' : ''} onClick={() => setActiveTab('My Requests')}>
+              📨 My Requests
+            </button>
+          </>
+        )}
+
+        {/* ── LEGACY USER TABS ── */}
+        {isLegacyUser && (
+          <button className="active">📋 Audit Management</button>
         )}
       </div>
 
       <main className="admin-content">
-        {/* Admin can access all 3 sections */}
-        {loggedUser.Role === 'Admin' && (
+
+        {/* ── ADMIN CONTENT ── */}
+        {isAdmin && (
           <>
-            {activeTab === 'User Management' && <UserManagement />}
+            {activeTab === 'User Management' && <UserManagement auditUserMode={false} createdBy={loggedUser.firstname} />}
             {activeTab === 'Center Management' && <CenterManagement />}
             {activeTab === 'Audit' && <Audit />}
             {activeTab === 'Pending Approvals' && <PendingApprovals onApprovalUpdate={loadPendingCount} />}
             {activeTab === 'Edit Requests' && <EditRequestsApproval onApprovalUpdate={loadEditRequestCount} />}
+            {activeTab === 'Approval Requests' && <ApprovalRequests onUpdate={loadApprovalCount} />}
           </>
         )}
 
-        {/* User can only access Audit */}
-        {loggedUser.Role === 'User' && <Audit />}
+        {/* ── AUDIT USER CONTENT ── */}
+        {isAuditUser && (
+          <>
+            {activeTab === 'Audit' && <Audit />}
+            {activeTab === 'Center Management' && <CenterManagement auditUserMode={true} createdBy={loggedUser.firstname} />}
+            {activeTab === 'User Management' && <UserManagement auditUserMode={true} createdBy={loggedUser.firstname} />}
+            {activeTab === 'My Requests' && <MyRequests createdBy={loggedUser.firstname} />}
+          </>
+        )}
+
+        {/* ── LEGACY USER CONTENT ── */}
+        {isLegacyUser && <Audit />}
       </main>
     </div>
   );

@@ -72,7 +72,15 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['Admin', 'Audit User', 'Center User'], default: 'Audit User' },
   isActive: { type: Boolean, default: true },
   resetOTP: { type: String, default: null },
-  resetOTPExpires: { type: Date, default: null }
+  resetOTPExpires: { type: Date, default: null },
+  // Approval fields (for Audit User created users)
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
+  approvalRequestedBy: { type: String, default: '' },
+  approvalDate: { type: String, default: '' },
+  // Modify approval fields
+  modifyApprovalStatus: { type: String, enum: ['pending', 'approved', 'none'], default: 'none' },
+  modifiedBy: { type: String, default: '' },
+  pendingModifyData: { type: Object, default: null }
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
@@ -94,7 +102,21 @@ const centerSchema = new mongoose.Schema({
   // Legacy fields (for backward compatibility)
   chName: { type: String, trim: true, default: '' },
   geolocation: { type: String, trim: true, default: '' },
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+  // Approval fields
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
+  approvalRequestedBy: { type: String, default: '' },
+  approvalDate: { type: String, default: '' },
+  // Modify approval fields
+  modifyApprovalStatus: { type: String, enum: ['pending', 'approved', 'none'], default: 'none' },
+  modifiedBy: { type: String, default: '' },
+  pendingModifyData: { type: Object, default: null },
+  // Edit approval fields
+  editApprovalStatus: { type: String, enum: ['pending', 'approved', 'none'], default: 'none' },
+  editRequestBy: { type: String, default: '' },
+  editRequestDate: { type: String, default: '' },
+  pendingEditData: { type: Object, default: null },
+  changedFields: { type: Object, default: null }  // {fieldName: {old, new}}
 }, { timestamps: true });
 
 const Center = mongoose.model('Center', centerSchema);
@@ -388,7 +410,7 @@ app.post('/api/users', async (req, res) => {
       email: email.toLowerCase(),
       mobile,
       centerCode: centerCode || '',
-      role: Role || 'User'
+      role: Role || 'Center User'  // Default to Center User
     };
     
     console.log('📦 Creating user with data:', {
@@ -397,14 +419,26 @@ app.post('/api/users', async (req, res) => {
       centerCode: userData.centerCode
     });
     
+    // Agar Audit User ne banaya toh pending approval
+    if (req.body.createdByRole === 'Audit User') {
+      userData.approvalStatus = 'pending';
+      userData.isActive = false; // Admin approve kare tabhi active
+      userData.approvalRequestedBy = req.body.createdBy || 'Audit User';
+    }
+
     const user = new User(userData);
     await user.save();
     
     console.log('✅ User saved to database!');
     console.log('💾 Saved user centerCode:', `"${user.centerCode}"`);
+    console.log('💾 Approval status:', userData.approvalStatus);
     console.log('========================================\n');
     
-    res.status(201).json({ success: true, user });
+    res.status(201).json({ 
+      success: true, 
+      user,
+      pendingApproval: userData.approvalStatus === 'pending'
+    });
   } catch (err) {
     console.error('❌ Error creating user:', err);
     res.status(500).json({ error: err.message });
@@ -414,16 +448,28 @@ app.post('/api/users', async (req, res) => {
 // Update user
 app.put('/api/users/:id', async (req, res) => {
   try {
-    const updateData = {
-      ...req.body,
-      role: req.body.Role
-    };
-    
-    // Include centerCode if provided
+    // Audit User modify - store as pending
+    if (req.body.modifiedByRole === 'Audit User') {
+      const { modifiedByRole, modifiedBy, ...pendingData } = req.body;
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: {
+            modifyApprovalStatus: 'pending',
+            modifiedBy: modifiedBy || '',
+            pendingModifyData: pendingData
+          }
+        },
+        { new: true }
+      );
+      return res.json({ success: true, user, pendingApproval: true });
+    }
+
+    // Admin direct update
+    const updateData = { ...req.body, role: req.body.Role };
     if (req.body.centerCode !== undefined) {
       updateData.centerCode = req.body.centerCode || '';
     }
-    
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json({ success: true, user });
   } catch (err) {
@@ -477,6 +523,33 @@ app.post('/api/update-users', async (req, res) => {
 
 // Get all centers
 // ✅ FIXED VERSION
+// Get MY requests (for Audit User - includes pending/inactive)
+app.get('/api/my-requests/:createdBy', async (req, res) => {
+  try {
+    const name = req.params.createdBy;
+    
+    // My center requests (new + edit)
+    const centers = await Center.find({
+      $or: [
+        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
+        { editRequestBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    // My user requests (new + modify)
+    const users = await User.find({
+      $or: [
+        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
+        { modifiedBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    res.json({ centers, users });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/centers', async (req, res) => {
   try {
     const centers = await Center.find({ isActive: true }).sort({ centerCode: 1 });
@@ -506,14 +579,37 @@ app.get('/api/centers', async (req, res) => {
 // PUT update center
 app.put('/api/centers/:id', async (req, res) => {
   try {
+    const updateData = req.body;
+
+    // Audit User edit request - store as pending, don't apply immediately
+    if (updateData.editApprovalStatus === 'pending') {
+      const { editRequestBy, editRequestDate, editApprovalStatus, changedFields, _id, __v, createdAt, updatedAt, ...actualEditData } = updateData;
+      console.log('📝 Changed fields received:', JSON.stringify(changedFields));
+      const updated = await Center.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: {
+            editApprovalStatus: 'pending',
+            editRequestBy: editRequestBy || '',
+            editRequestDate: editRequestDate || '',
+            pendingEditData: actualEditData,
+            changedFields: changedFields || null
+          }
+        },
+        { new: true }
+      );
+      if (!updated) return res.status(404).json({ error: 'Center not found' });
+      console.log(`✅ Center edit request stored: ${updated.centerCode}`);
+      return res.json({ success: true, center: updated, pendingApproval: true });
+    }
+
+    // Admin direct update
     const updatedCenter = await Center.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
-    if (!updatedCenter) {
-      return res.status(404).json({ error: 'Center not found' });
-    }
+    if (!updatedCenter) return res.status(404).json({ error: 'Center not found' });
     console.log(`✅ Center updated: ${updatedCenter.centerCode}`);
     res.json(updatedCenter);
   } catch (err) {
@@ -540,12 +636,26 @@ app.delete('/api/centers/:id', async (req, res) => {
 // Create center
 app.post('/api/centers', async (req, res) => {
   try {
-    const center = new Center({
+    const centerData = {
       ...req.body,
       centerCode: req.body.centerCode.toUpperCase()
-    });
+    };
+
+    // Agar Audit User ne banaya toh pending approval
+    if (req.body.createdByRole === 'Audit User') {
+      centerData.approvalStatus = 'pending';
+      centerData.isActive = false; // Admin approve kare tabhi active
+      centerData.approvalRequestedBy = req.body.createdBy || 'Audit User';
+    }
+
+    const center = new Center(centerData);
     await center.save();
-    res.status(201).json({ success: true, center });
+    console.log(`✅ Center created: ${center.centerCode} | approval: ${centerData.approvalStatus}`);
+    res.status(201).json({ 
+      success: true, 
+      center,
+      pendingApproval: centerData.approvalStatus === 'pending'
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1591,6 +1701,33 @@ app.post('/api/send-audit-email', async (req, res) => {
 // ========================================
 
 // GET all centers
+// Get MY requests (for Audit User - includes pending/inactive)
+app.get('/api/my-requests/:createdBy', async (req, res) => {
+  try {
+    const name = req.params.createdBy;
+    
+    // My center requests (new + edit)
+    const centers = await Center.find({
+      $or: [
+        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
+        { editRequestBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    // My user requests (new + modify)
+    const users = await User.find({
+      $or: [
+        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
+        { modifiedBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    res.json({ centers, users });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/centers', async (req, res) => {
   try {
     const centers = await Center.find({ isActive: true }).sort({ centerCode: 1 });
@@ -2231,6 +2368,150 @@ app.post('/api/audit-reports/:id/close-report', async (req, res) => {
   }
 });
 
+
+// ========================================
+// APPROVAL ENDPOINTS
+// ========================================
+
+// Get pending count
+app.get('/api/pending-approvals/count', async (req, res) => {
+  try {
+    const userNewCount = await User.countDocuments({ approvalStatus: 'pending' });
+    const userModifyCount = await User.countDocuments({ modifyApprovalStatus: 'pending' });
+    const userCount = userNewCount + userModifyCount;
+    const centerNewCount = await Center.countDocuments({ approvalStatus: 'pending' });
+    const centerEditCount = await Center.countDocuments({ editApprovalStatus: 'pending' });
+    const total = userCount + centerNewCount + centerEditCount;
+    res.json({ count: total, userCount, centerCount: centerNewCount + centerEditCount });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get pending users (new + modify requests)
+app.get('/api/pending-approvals/users', async (req, res) => {
+  try {
+    const users = await User.find({
+      $or: [
+        { approvalStatus: 'pending' },
+        { modifyApprovalStatus: 'pending' }
+      ]
+    }).sort({ createdAt: -1 });
+    res.json(users);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get pending centers (new + edit requests)
+app.get('/api/pending-approvals/centers', async (req, res) => {
+  try {
+    const centers = await Center.find({
+      $or: [
+        { approvalStatus: 'pending' },
+        { editApprovalStatus: 'pending' }
+      ]
+    }).sort({ createdAt: -1 });
+    res.json(centers);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Approve user (new OR modify request)
+app.post('/api/pending-approvals/user/:id/approve', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.modifyApprovalStatus === 'pending' && user.pendingModifyData) {
+      // Apply pending modify data
+      const { Role, centerCode, firstname, lastname, email, mobile, password } = user.pendingModifyData;
+      if (Role) user.role = Role;
+      if (centerCode !== undefined) user.centerCode = centerCode;
+      if (firstname) user.firstname = firstname;
+      if (lastname) user.lastname = lastname;
+      if (email) user.email = email;
+      if (mobile) user.mobile = mobile;
+      if (password) user.password = password;
+      user.modifyApprovalStatus = 'approved';
+      user.pendingModifyData = null;
+      user.approvalDate = new Date().toLocaleDateString('en-GB');
+    } else {
+      user.approvalStatus = 'approved';
+      user.isActive = true;
+      user.approvalDate = new Date().toLocaleDateString('en-GB');
+    }
+    await user.save();
+    console.log(`✅ User approved: ${user.username}`);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reject user (new OR modify request)
+app.post('/api/pending-approvals/user/:id/reject', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.modifyApprovalStatus === 'pending') {
+      // Cancel modify, keep user as-is
+      user.modifyApprovalStatus = 'none';
+      user.pendingModifyData = null;
+      user.approvalDate = new Date().toLocaleDateString('en-GB');
+    } else {
+      user.approvalStatus = 'rejected';
+      user.isActive = false;
+      user.approvalDate = new Date().toLocaleDateString('en-GB');
+    }
+    await user.save();
+    console.log(`❌ User rejected: ${user.username}`);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Approve center (new OR edit request)
+app.post('/api/pending-approvals/center/:id/approve', async (req, res) => {
+  try {
+    const center = await Center.findById(req.params.id);
+    if (!center) return res.status(404).json({ error: 'Center not found' });
+
+    if (center.editApprovalStatus === 'pending' && center.pendingEditData) {
+      // Apply the pending edit data
+      Object.assign(center, center.pendingEditData);
+      center.editApprovalStatus = 'approved';
+      center.pendingEditData = null;
+      center.approvalDate = new Date().toLocaleDateString('en-GB');
+    } else {
+      // New center approval
+      center.approvalStatus = 'approved';
+      center.isActive = true;
+      center.approvalDate = new Date().toLocaleDateString('en-GB');
+    }
+    await center.save();
+    console.log(`✅ Center approved: ${center.centerCode}`);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reject center (new OR edit request)
+app.post('/api/pending-approvals/center/:id/reject', async (req, res) => {
+  try {
+    const center = await Center.findById(req.params.id);
+    if (!center) return res.status(404).json({ error: 'Center not found' });
+
+    if (center.editApprovalStatus === 'pending') {
+      // Just cancel the edit request, keep center as-is
+      center.editApprovalStatus = 'none';
+      center.pendingEditData = null;
+      center.approvalDate = new Date().toLocaleDateString('en-GB');
+    } else {
+      // Reject new center
+      center.approvalStatus = 'rejected';
+      center.isActive = false;
+      center.approvalDate = new Date().toLocaleDateString('en-GB');
+    }
+    await center.save();
+    console.log(`❌ Center rejected: ${center.centerCode}`);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ========================================
 // ========================================
 // START SERVER
 // ========================================

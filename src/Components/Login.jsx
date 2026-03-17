@@ -99,6 +99,9 @@ const Login = () => {
         } else if (role === 'center user') {
           console.log('➡️ Redirecting to /center-dashboard');
           navigate('/center-dashboard');
+        } else if (role === 'audit user') {
+          console.log('➡️ Redirecting to /admin (Audit User)');
+          navigate('/admin');
         } else {
           console.log('➡️ Redirecting to /user-dashboard');
           navigate('/user-dashboard');
@@ -129,6 +132,9 @@ const Login = () => {
       } else if (role === 'center user') {
         console.log('➡️ Redirecting to /center-dashboard');
         navigate('/center-dashboard');
+      } else if (role === 'audit user') {
+        console.log('➡️ Redirecting to /admin (Audit User)');
+        navigate('/admin');
       } else {
         console.log('➡️ Redirecting to /user-dashboard');
         navigate('/user-dashboard');
