@@ -93,17 +93,16 @@ const Login = () => {
         const role = data.user.Role?.toLowerCase();
         console.log('✅ Role (lowercase):', role);
         
+        const hierarchyRoles = ['zonal manager', 'region head', 'area cluster manager', 'operation head'];
         if (role === 'admin') {
-          console.log('➡️ Redirecting to /admin');
           navigate('/admin');
         } else if (role === 'center user') {
-          console.log('➡️ Redirecting to /center-dashboard');
           navigate('/center-dashboard');
         } else if (role === 'audit user') {
-          console.log('➡️ Redirecting to /admin (Audit User)');
           navigate('/admin');
+        } else if (hierarchyRoles.includes(role)) {
+          navigate('/hierarchy-dashboard');
         } else {
-          console.log('➡️ Redirecting to /user-dashboard');
           navigate('/user-dashboard');
         }
         return;
@@ -126,17 +125,16 @@ const Login = () => {
       const role = user.Role?.toLowerCase();
       console.log('✅ Role (lowercase):', role);
       
+      const hierarchyRoles = ['zonal manager', 'region head', 'area cluster manager', 'operation head'];
       if (role === 'admin') {
-        console.log('➡️ Redirecting to /admin');
         navigate('/admin');
       } else if (role === 'center user') {
-        console.log('➡️ Redirecting to /center-dashboard');
         navigate('/center-dashboard');
       } else if (role === 'audit user') {
-        console.log('➡️ Redirecting to /admin (Audit User)');
         navigate('/admin');
+      } else if (hierarchyRoles.includes(role)) {
+        navigate('/hierarchy-dashboard');
       } else {
-        console.log('➡️ Redirecting to /user-dashboard');
         navigate('/user-dashboard');
       }
     } else {

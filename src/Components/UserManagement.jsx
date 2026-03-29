@@ -9,7 +9,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const [activeOption, setActiveOption] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [editForm, setEditForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
-  const [newUserForm, setNewUserForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
+  const [newUserForm, setNewUserForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
   const [tableUsers, setTableUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState({ message: '', color: '' });
@@ -91,7 +91,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
 
   const resetForm = () => {
     console.log('🔄 Form reset');
-    setNewUserForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
+    setNewUserForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
     setPasswordStrength({ message: '', color: '' });
     setValidationErrors({});
   };
@@ -187,6 +187,33 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
         });
         
         showMessage('✅ User created successfully!', 'success');
+
+        // Bulk replace old name if hierarchy role and replaceOldName provided
+        const hierarchyRoles = ['Zonal Manager', 'Region Head', 'Area Cluster Manager'];
+        if (hierarchyRoles.includes(newUserForm.Role) && newUserForm.replaceOldName?.trim()) {
+          try {
+            const newFullName = `${newUserForm.firstname} ${newUserForm.lastname}`.trim();
+            const replaceRes = await fetch(`${API_URL}/api/bulk-replace-hierarchy-name`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: newUserForm.Role,
+                oldName: newUserForm.replaceOldName.trim(),
+                newName: newFullName
+              })
+            });
+            const replaceData = await replaceRes.json();
+            if (replaceData.success) {
+              showMessage(`✅ User created! ${replaceData.message}`, 'success');
+            } else {
+              showMessage('✅ User created! (Name replace failed: ' + replaceData.error + ')', 'warning');
+            }
+          } catch (replaceErr) {
+            console.error('Bulk replace error:', replaceErr);
+            showMessage('✅ User created! (Name replace failed)', 'warning');
+          }
+        }
+
         resetForm();
         await loadUsersData();
       } else {
@@ -489,6 +516,10 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
               >
                 <option value="Audit User">Audit User</option>
                 <option value="Center User">Center User</option>
+                <option value="Zonal Manager">Zonal Manager</option>
+                <option value="Region Head">Region Head</option>
+                <option value="Area Cluster Manager">Area Cluster Manager</option>
+                <option value="Operation Head">Operation Head</option>
                 <option value="Admin">Admin</option>
               </select>
             </div>
@@ -524,6 +555,26 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                 {validationErrors.centerCode && <div className="error-text">{validationErrors.centerCode}</div>}
                 <div className="helper-text" style={{ color: '#1565c0', marginTop: '8px' }}>
                   ℹ️ Center User will only see reports for: <strong>{newUserForm.centerCode || 'No center selected'}</strong>
+                </div>
+              </div>
+            )}
+
+
+            {/* Replace Old Name - for hierarchy roles */}
+            {['Zonal Manager', 'Region Head', 'Area Cluster Manager'].includes(newUserForm.Role) && (
+              <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
+                <label style={{ color: '#e65100', fontWeight: '700' }}>
+                  🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder={`Enter old ${newUserForm.Role} name to replace (e.g. "Shweta")`}
+                  value={newUserForm.replaceOldName}
+                  onChange={(e) => setNewUserForm({...newUserForm, replaceOldName: e.target.value})}
+                  style={{ width: '100%', padding: '10px 14px', border: '2px solid #ffcc02', borderRadius: '8px', fontSize: '14px', marginTop: '6px' }}
+                />
+                <div style={{ fontSize: '12px', color: '#e65100', marginTop: '6px' }}>
+                  ⚠️ Agar koi purana {newUserForm.Role} tha — uska naam yahan daalo. Naye user ka naam ({newUserForm.firstname || '?'}) saare Centers aur Audit Reports mein replace ho jaayega.
                 </div>
               </div>
             )}
@@ -725,7 +776,27 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                   </div>
                 )}
 
-                <div className="btn-group">
+    
+            {/* Replace Old Name - for hierarchy roles */}
+            {['Zonal Manager', 'Region Head', 'Area Cluster Manager'].includes(newUserForm.Role) && (
+              <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
+                <label style={{ color: '#e65100', fontWeight: '700' }}>
+                  🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder={`Enter old ${newUserForm.Role} name to replace (e.g. "Shweta")`}
+                  value={newUserForm.replaceOldName}
+                  onChange={(e) => setNewUserForm({...newUserForm, replaceOldName: e.target.value})}
+                  style={{ width: '100%', padding: '10px 14px', border: '2px solid #ffcc02', borderRadius: '8px', fontSize: '14px', marginTop: '6px' }}
+                />
+                <div style={{ fontSize: '12px', color: '#e65100', marginTop: '6px' }}>
+                  ⚠️ Agar koi purana {newUserForm.Role} tha — uska naam yahan daalo. Naye user ka naam ({newUserForm.firstname || '?'}) saare Centers aur Audit Reports mein replace ho jaayega.
+                </div>
+              </div>
+            )}
+
+            <div className="btn-group">
                   <button type="button" className="btn-green" onClick={handleUpdate} disabled={loading}>
                     {loading ? '⏳' : '✅ Update'}
                   </button>

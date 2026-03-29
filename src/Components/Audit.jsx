@@ -37,6 +37,25 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     message: ''
   });
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [toInput, setToInput] = useState('');
+  const [ccInput, setCcInput] = useState('');
+  const [toList, setToList] = useState([]);
+  const [ccList, setCcList] = useState([]);
+  const [showToSug, setShowToSug] = useState(false);
+  const [showCcSug, setShowCcSug] = useState(false);
+
+  const getSavedEmails = () => {
+    try { return JSON.parse(localStorage.getItem('savedEmailList') || '[]'); }
+    catch { return []; }
+  };
+  const saveEmail = (email) => {
+    if (!email || !email.includes('@')) return;
+    const saved = getSavedEmails();
+    if (!saved.includes(email.toLowerCase())) {
+      saved.unshift(email.toLowerCase());
+      localStorage.setItem('savedEmailList', JSON.stringify(saved.slice(0, 30)));
+    }
+  };
   
   // NEW: Track if editing existing report & store center head remarks
   const [isEditingExisting, setIsEditingExisting] = useState(false);
@@ -402,6 +421,91 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     setShowAuditTable(true);
   };
 
+  // ── EDIT REPORT from View Reports table ──
+  const handleEditReport = async (report) => {
+    // Switch to Create Report tab
+    setActiveOption('create');
+    setShowAuditTable(false);
+
+    // Build center object directly from report data (no dependency on centers array)
+    let center = centers.find(c => c.centerCode === report.centerCode);
+    if (!center) {
+      // Fallback: construct center from report fields
+      center = {
+        centerCode: report.centerCode,
+        centerName: report.centerName,
+        centerType: report.centerType || 'CDC',
+        centerHeadName: report.centerHeadName || report.chName || '',
+        projectName: report.projectName || '',
+        zmName: report.zmName || '',
+        regionHeadName: report.regionHeadName || '',
+        areaClusterManager: report.areaClusterManager || '',
+        location: report.location || '',
+        auditedBy: report.auditedBy || '',
+        auditPeriod: report.auditPeriod || '',
+      };
+    }
+
+    // auditDate from report - convert dd/mm/yyyy or string to yyyy-mm-dd for input
+    let auditDateValue = '';
+    if (report.auditDateString) {
+      // auditDateString is like "10/03/2026" (dd/mm/yyyy)
+      const parts = report.auditDateString.split('/');
+      if (parts.length === 3) {
+        auditDateValue = `${parts[2]}-${parts[1]}-${parts[0]}`; // yyyy-mm-dd
+      } else {
+        auditDateValue = report.auditDateString;
+      }
+    } else if (report.auditDate) {
+      auditDateValue = report.auditDate;
+    }
+
+    setSelectedCenter({ ...center, auditDate: auditDateValue });
+    setSelectedFinancialYear(report.financialYear || 'FY26');
+
+    // Load checkpoint data
+    try {
+      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
+      const reconstructedData = {};
+      const centerHeadRemarks = {};
+
+      checkpointIds.forEach(id => {
+        if (report[id]) {
+          reconstructedData[id] = report[id];
+          if (report[id].centerHeadRemarks) {
+            centerHeadRemarks[id] = report[id].centerHeadRemarks;
+          }
+        }
+      });
+
+      reconstructedData._placementApplicable = report.placementApplicable;
+      setAuditData(reconstructedData);
+      setCenterHeadRemarksData(centerHeadRemarks);
+      setIsEditingExisting(true);
+
+      if (report.placementApplicable) {
+        setPlacementApplicable(report.placementApplicable);
+      }
+
+      // Set audit period dates if available
+      if (report.auditPeriod) {
+        const parts = report.auditPeriod.split(' to ');
+        if (parts[0]) setAuditPeriodFrom(parts[0]);
+        if (parts[1]) setAuditPeriodTo(parts[1]);
+      }
+
+    } catch (e) {
+      console.error('Error loading report for edit:', e);
+      alert('Error loading report data.');
+      return;
+    }
+
+    setShowAuditTable(true);
+
+    // Scroll to top
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+  };
+
   const calculateScore = (cpId, totalSamples, samplesCompliant) => {
     const total = parseFloat(totalSamples) || 0;
     const compliant = parseFloat(samplesCompliant) || 0;
@@ -418,15 +522,12 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     
     if (!checkpoint) return 0;
     
-    // 🚨 BINARY CHECKPOINTS: Must be 100% compliant, else ZERO
-    // Only DP1, DP3, DP7 (NOT DP2!)
-    const binaryCheckpoints = ['DP1', 'DP3', 'DP7'];
-    if (binaryCheckpoints.includes(cpId)) {
-      // If not 100% compliant, return ZERO
-      if (percent < 100) {
-        return 0;
-      }
-      // If 100% compliant, calculate normally
+    // 🚨 BINARY CHECKPOINT: Only DP1
+    // DP1: 100% compliant → full score, warna ZERO
+    // DP3, DP7: DP1=0 toh ZERO, otherwise PROPORTIONAL (normal slab)
+    if (cpId === 'DP1') {
+      if (percent < 100) return 0;
+      // 100% → fall through to normal scoring below
     }
     
     // NORMAL SLAB-BASED SCORING
@@ -760,36 +861,34 @@ If you have any suggestions or thoughts related to the audit for further improve
     setShowEmailForm(false);
     setSelectedReportForEmail(null);
     setEmailData({ to: '', cc: '', subject: '', message: '' });
+    setToList([]); setCcList([]); setToInput(''); setCcInput('');
+    setShowToSug(false); setShowCcSug(false);
   };
 
   const handleSendEmail = async () => {
-    if (!emailData.to) {
-      alert('⚠️ Please enter recipient email address!');
-      return;
-    }
+    // Collect any typed but not yet chipped email
+    const finalToList = [...toList];
+    if (toInput.trim() && toInput.includes('@') && !finalToList.includes(toInput.trim().toLowerCase()))
+      finalToList.push(toInput.trim().toLowerCase());
+    const finalCcList = [...ccList];
+    if (ccInput.trim() && ccInput.includes('@') && !finalCcList.includes(ccInput.trim().toLowerCase()))
+      finalCcList.push(ccInput.trim().toLowerCase());
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailData.to)) {
-      alert('⚠️ Please enter a valid email address!');
+    if (finalToList.length === 0) {
+      alert('⚠️ Please enter at least one recipient email!');
       return;
     }
-
-    if (emailData.cc && !emailRegex.test(emailData.cc)) {
-      alert('⚠️ Please enter a valid CC email address!');
-      return;
-    }
+    [...finalToList, ...finalCcList].forEach(saveEmail);
 
     try {
       setSendingEmail(true);
-      
-      let finalCC = emailData.cc || '';
-      if (loggedUser.email) {
-        finalCC = finalCC ? `${finalCC}, ${loggedUser.email}` : loggedUser.email;
-      }
-      
+      const ccWithUser = [...finalCcList];
+      if (loggedUser.email && !ccWithUser.includes(loggedUser.email.toLowerCase()))
+        ccWithUser.push(loggedUser.email.toLowerCase());
+
       const response = await axios.post(`${API_URL}/api/send-audit-email`, {
-        to: emailData.to,
-        cc: finalCC || undefined,
+        to: finalToList.join(', '),
+        cc: ccWithUser.length > 0 ? ccWithUser.join(', ') : undefined,
         subject: emailData.subject,
         customMessage: emailData.message || '',  // optional extra message
         reportData: selectedReportForEmail
@@ -2038,8 +2137,8 @@ const isWithinDateRange = (reportDate, start, end) => {
               No audit reports yet. Create your first report!
             </p>
           ) : (
-            <div className="table-wrapper">
-              <table>
+            <div className="table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
+              <table style={{ minWidth: '1800px' }}>
                 <thead>
                   <tr>
                     <th style={{ position: 'sticky', left: 0, zIndex: 3, background: '#f5f5f5', minWidth: '150px' }}>CENTER<br/>NAME</th>
@@ -2264,7 +2363,32 @@ const isWithinDateRange = (reportDate, start, end) => {
                           />
                         </td>
                         <td style={{ textAlign: 'center', padding: '10px' }}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+
+                            {/* EDIT button - only when Not Submitted or Sent Back */}
+                            {canSubmit && (
+                              <button
+                                onClick={() => handleEditReport(report)}
+                                disabled={loading}
+                                style={{
+                                  background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '8px 20px',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  fontWeight: 'bold',
+                                  width: '110px',
+                                  boxShadow: '0 4px 12px rgba(245, 87, 108, 0.35)',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+
+                            {/* SUBMIT button - only when Not Submitted or Sent Back */}
                             {canSubmit && (
                               <button
                                 onClick={() => handleSubmitReport(report.centerCode)}
@@ -2273,11 +2397,12 @@ const isWithinDateRange = (reportDate, start, end) => {
                                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                                   color: 'white',
                                   border: 'none',
-                                  padding: '8px 16px',
+                                  padding: '8px 20px',
                                   borderRadius: '8px',
                                   cursor: loading ? 'not-allowed' : 'pointer',
                                   fontSize: '13px',
                                   fontWeight: 'bold',
+                                  width: '110px',
                                   boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
                                   transition: 'all 0.3s ease',
                                   opacity: loading ? 0.6 : 1
@@ -2286,23 +2411,32 @@ const isWithinDateRange = (reportDate, start, end) => {
                                 📤 Submit
                               </button>
                             )}
+
+                            {/* LOCKED state - after submit */}
                             {isApprovedOrPending && (
-                              <button
-                                disabled
-                                style={{
-                                  background: '#e0e0e0',
-                                  color: '#666',
-                                  border: 'none',
-                                  padding: '8px 16px',
-                                  borderRadius: '8px',
-                                  cursor: 'not-allowed',
-                                  fontSize: '13px',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                ✅ Submitted
-                              </button>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                                <button
+                                  disabled
+                                  style={{
+                                    background: '#e8f5e9',
+                                    color: '#2e7d32',
+                                    border: '2px solid #a5d6a7',
+                                    padding: '8px 20px',
+                                    borderRadius: '8px',
+                                    cursor: 'not-allowed',
+                                    fontSize: '13px',
+                                    fontWeight: 'bold',
+                                    width: '110px'
+                                  }}
+                                >
+                                  ✅ Submitted
+                                </button>
+                                <span style={{ fontSize: '10px', color: '#999', textAlign: 'center' }}>
+                                  🔒 Edit locked
+                                </span>
+                              </div>
                             )}
+
                           </div>
                         </td>
 
@@ -2667,67 +2801,104 @@ This will send a "Report Closed" email to the center.`)) {
             </div>
 
             <div style={{ padding: '25px' }}>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontWeight: '600',
-                  color: '#333',
-                  fontSize: '14px'
-                }}>
-                  To: <span style={{ color: '#dc3545' }}>*</span>
-                </label>
-                <input
-                  type="email"
-                  value={emailData.to}
-                  onChange={(e) => setEmailData(prev => ({ ...prev, to: e.target.value }))}
-                  placeholder="recipient@example.com"
-                  autoComplete="off"
-                  name="email-to-field"
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: '2px solid #ddd',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    transition: 'all 0.3s ease',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
-                />
-              </div>
+              {/* ── TO: multi-email chips ── */}
+              {(() => {
+                const addTo = (email) => {
+                  const e = email.trim().toLowerCase();
+                  if (e && e.includes('@') && !toList.includes(e)) { setToList(p => [...p, e]); saveEmail(e); }
+                  setToInput(''); setShowToSug(false);
+                };
+                const sug = toInput.length > 0 ? getSavedEmails().filter(s => s.includes(toInput.toLowerCase()) && !toList.includes(s)) : [];
+                return (
+                  <div style={{ marginBottom:'20px' }}>
+                    <label style={{ display:'block', marginBottom:'8px', fontWeight:'600', color:'#333', fontSize:'14px' }}>
+                      To: <span style={{ color:'#dc3545' }}>*</span>
+                      <span style={{ fontWeight:'400', color:'#888', fontSize:'12px', marginLeft:'8px' }}>Enter ya comma dabao multiple ke liye</span>
+                    </label>
+                    <div style={{ border:'2px solid #ddd', borderRadius:'8px', padding:'8px 10px', minHeight:'50px', display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', cursor:'text', position:'relative', background:'white' }}
+                      onClick={() => document.getElementById('to-inp').focus()}>
+                      {toList.map((e,i) => (
+                        <span key={i} style={{ background:'linear-gradient(135deg,#667eea,#764ba2)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
+                          {e}
+                          <span onClick={(ev) => { ev.stopPropagation(); setToList(p=>p.filter((_,j)=>j!==i)); }}
+                            style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:'.85', fontWeight:'bold' }}>×</span>
+                        </span>
+                      ))}
+                      <input id="to-inp" type="text" value={toInput} placeholder={toList.length===0?'recipient@example.com':'aur add karo...'}
+                        onChange={e => { setToInput(e.target.value); setShowToSug(true); }}
+                        onKeyDown={e => {
+                          if (e.key==='Enter'||e.key===',') { e.preventDefault(); addTo(toInput); }
+                          if (e.key==='Backspace'&&!toInput&&toList.length>0) setToList(p=>p.slice(0,-1));
+                        }}
+                        onFocus={() => setShowToSug(true)}
+                        onBlur={() => setTimeout(() => { if(toInput.trim()) addTo(toInput); setShowToSug(false); }, 180)}
+                        style={{ border:'none', outline:'none', fontSize:'14px', flex:'1', minWidth:'160px', padding:'4px 2px' }} />
+                      {showToSug && sug.length > 0 && (
+                        <div style={{ position:'absolute', top:'100%', left:0, right:0, marginTop:'4px', background:'white', border:'2px solid #667eea', borderRadius:'8px', zIndex:9999, boxShadow:'0 8px 24px rgba(102,126,234,.25)', maxHeight:'180px', overflowY:'auto' }}>
+                          <div style={{ padding:'6px 14px', fontSize:'11px', color:'#667eea', fontWeight:'700', borderBottom:'1px solid #eee' }}>📧 Saved Emails</div>
+                          {sug.map((s,i) => (
+                            <div key={i} onMouseDown={() => addTo(s)}
+                              style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }}
+                              onMouseEnter={e => e.currentTarget.style.background='#f0f4ff'}
+                              onMouseLeave={e => e.currentTarget.style.background='white'}>
+                              📧 {s}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontWeight: '600',
-                  color: '#333',
-                  fontSize: '14px'
-                }}>
-                  Cc: <span style={{ color: '#999', fontWeight: 'normal' }}>(optional)</span>
-                </label>
-                <input
-                  type="email"
-                  value={emailData.cc}
-                  onChange={(e) => setEmailData(prev => ({ ...prev, cc: e.target.value }))}
-                  placeholder="cc@example.com"
-                  autoComplete="off"
-                  name="email-cc-field"
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: '2px solid #ddd',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    transition: 'all 0.3s ease',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
-                />
-              </div>
+              {/* ── CC: multi-email chips ── */}
+              {(() => {
+                const addCc = (email) => {
+                  const e = email.trim().toLowerCase();
+                  if (e && e.includes('@') && !ccList.includes(e)) { setCcList(p => [...p, e]); saveEmail(e); }
+                  setCcInput(''); setShowCcSug(false);
+                };
+                const sug = ccInput.length > 0 ? getSavedEmails().filter(s => s.includes(ccInput.toLowerCase()) && !ccList.includes(s)) : [];
+                return (
+                  <div style={{ marginBottom:'20px' }}>
+                    <label style={{ display:'block', marginBottom:'8px', fontWeight:'600', color:'#333', fontSize:'14px' }}>
+                      Cc: <span style={{ fontWeight:'400', color:'#888', fontSize:'12px', marginLeft:'4px' }}>(optional — auditor auto-add hoga)</span>
+                    </label>
+                    <div style={{ border:'2px solid #ddd', borderRadius:'8px', padding:'8px 10px', minHeight:'50px', display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', cursor:'text', position:'relative', background:'white' }}
+                      onClick={() => document.getElementById('cc-inp').focus()}>
+                      {ccList.map((e,i) => (
+                        <span key={i} style={{ background:'linear-gradient(135deg,#11998e,#38ef7d)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
+                          {e}
+                          <span onClick={(ev) => { ev.stopPropagation(); setCcList(p=>p.filter((_,j)=>j!==i)); }}
+                            style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:'.85', fontWeight:'bold' }}>×</span>
+                        </span>
+                      ))}
+                      <input id="cc-inp" type="text" value={ccInput} placeholder={ccList.length===0?'cc@example.com':'aur add karo...'}
+                        onChange={e => { setCcInput(e.target.value); setShowCcSug(true); }}
+                        onKeyDown={e => {
+                          if (e.key==='Enter'||e.key===',') { e.preventDefault(); addCc(ccInput); }
+                          if (e.key==='Backspace'&&!ccInput&&ccList.length>0) setCcList(p=>p.slice(0,-1));
+                        }}
+                        onFocus={() => setShowCcSug(true)}
+                        onBlur={() => setTimeout(() => { if(ccInput.trim()) addCc(ccInput); setShowCcSug(false); }, 180)}
+                        style={{ border:'none', outline:'none', fontSize:'14px', flex:'1', minWidth:'160px', padding:'4px 2px' }} />
+                      {showCcSug && sug.length > 0 && (
+                        <div style={{ position:'absolute', top:'100%', left:0, right:0, marginTop:'4px', background:'white', border:'2px solid #11998e', borderRadius:'8px', zIndex:9999, boxShadow:'0 8px 24px rgba(17,153,142,.25)', maxHeight:'180px', overflowY:'auto' }}>
+                          <div style={{ padding:'6px 14px', fontSize:'11px', color:'#11998e', fontWeight:'700', borderBottom:'1px solid #eee' }}>📧 Saved Emails</div>
+                          {sug.map((s,i) => (
+                            <div key={i} onMouseDown={() => addCc(s)}
+                              style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }}
+                              onMouseEnter={e => e.currentTarget.style.background='#f0fff8'}
+                              onMouseLeave={e => e.currentTarget.style.background='white'}>
+                              📧 {s}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={{

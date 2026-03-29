@@ -5,6 +5,7 @@ import Login from './Components/Login';
 import Admin from './Components/Admin';
 import UserDashboard from './Components/UserDashboard';
 import CenterDashboard from './Components/CenterDashboard';
+import HierarchyDashboard from './Components/HierarchyDashboard';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
             <Route path="/admin" element={<Admin />} />
             <Route path="/user-dashboard" element={<UserDashboard />} />
             <Route path="/center-dashboard" element={<CenterDashboard />} />
+            <Route path="/hierarchy-dashboard" element={<HierarchyDashboard />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>

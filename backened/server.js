@@ -69,7 +69,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   mobile: { type: String, trim: true, default: '' },
   centerCode: { type: String, trim: true, default: '' },
-  role: { type: String, enum: ['Admin', 'Audit User', 'Center User'], default: 'Audit User' },
+  role: { type: String, enum: ['Admin', 'Audit User', 'Center User', 'Zonal Manager', 'Region Head', 'Area Cluster Manager', 'Operation Head'], default: 'Audit User' },
   isActive: { type: Boolean, default: true },
   resetOTP: { type: String, default: null },
   resetOTPExpires: { type: Date, default: null },
@@ -699,6 +699,125 @@ app.get('/api/audit-reports', async (req, res) => {
     const reports = await AuditReport.find().sort({ createdAt: -1 });
     res.json(reports);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+// ========================================
+// BULK REPLACE HIERARCHY NAME
+// Centers + AuditReports dono update
+// POST /api/bulk-replace-hierarchy-name
+// body: { role, oldName, newName }
+// ========================================
+app.post('/api/bulk-replace-hierarchy-name', async (req, res) => {
+  try {
+    const { role, oldName, newName } = req.body;
+
+    if (!role || !oldName || !newName) {
+      return res.status(400).json({ error: 'role, oldName, newName required' });
+    }
+
+    // Map role to field name
+    const roleFieldMap = {
+      'Zonal Manager':          { centerField: 'zmName',               reportField: 'zmName' },
+      'Region Head':            { centerField: 'regionHeadName',       reportField: 'regionHeadName' },
+      'Area Cluster Manager':   { centerField: 'areaClusterManager',   reportField: 'areaClusterManager' },
+    };
+
+    const fields = roleFieldMap[role];
+    if (!fields) {
+      return res.status(400).json({ error: 'Invalid role for bulk replace' });
+    }
+
+    const regex = new RegExp(`^${oldName.trim()}$`, 'i');
+
+    // Update Centers
+    const centerResult = await Center.updateMany(
+      { [fields.centerField]: { $regex: regex } },
+      { $set: { [fields.centerField]: newName.trim() } }
+    );
+
+    // Update AuditReports
+    const reportResult = await AuditReport.updateMany(
+      { [fields.reportField]: { $regex: regex } },
+      { $set: { [fields.reportField]: newName.trim() } }
+    );
+
+    console.log(`✅ Bulk replace: "${oldName}" → "${newName}" (${role})`);
+    console.log(`   Centers updated: ${centerResult.modifiedCount}`);
+    console.log(`   Reports updated: ${reportResult.modifiedCount}`);
+
+    res.json({
+      success: true,
+      centersUpdated: centerResult.modifiedCount,
+      reportsUpdated: reportResult.modifiedCount,
+      message: `Replaced "${oldName}" with "${newName}" in ${centerResult.modifiedCount} centers and ${reportResult.modifiedCount} audit reports.`
+    });
+
+  } catch (err) {
+    console.error('❌ Bulk replace error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// HIERARCHY REPORTS - ZM, RH, ACM, OpHead
+// ========================================
+// GET /api/hierarchy-reports?role=Zonal Manager&name=Sumit Kumar&fy=FY26&status=Approved
+app.get('/api/hierarchy-reports', async (req, res) => {
+  try {
+    const { role, name, fy, status, centerType } = req.query;
+
+    console.log(`\n🏢 ========== HIERARCHY REPORTS ==========`);
+    console.log(`Role: ${role}, Name: ${name}, FY: ${fy}`);
+
+    let filter = {};
+
+    // Financial Year filter
+    if (fy && fy !== 'All') filter.financialYear = fy;
+    // Status filter
+    if (status && status !== 'All') filter.currentStatus = status;
+    // Center Type filter
+    if (centerType && centerType !== 'All') filter.centerType = centerType;
+
+    // Role-based name matching
+    // name = fullname "shweta agg", firstname = just "shweta"
+    // Center fields may have only firstname, so we try BOTH firstname and fullname
+    const firstname = req.query.firstname || '';  // passed separately from frontend
+    
+    const buildNameFilter = (field) => {
+      const patterns = [];
+      if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
+      if (firstname && firstname.trim() && firstname.trim() !== name.trim()) {
+        patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
+      }
+      return patterns.length === 1 ? patterns[0] : { $or: patterns };
+    };
+
+    if (role === 'Operation Head') {
+      // sees everything
+    } else if (role === 'Zonal Manager' && (name || firstname)) {
+      Object.assign(filter, buildNameFilter('zmName'));
+    } else if (role === 'Region Head' && (name || firstname)) {
+      Object.assign(filter, buildNameFilter('regionHeadName'));
+    } else if (role === 'Area Cluster Manager' && (name || firstname)) {
+      Object.assign(filter, buildNameFilter('areaClusterManager'));
+    } else if (role !== 'Operation Head') {
+      return res.status(400).json({ error: 'Invalid role or missing name' });
+    }
+
+    console.log('Filter:', JSON.stringify(filter));
+
+    const reports = await AuditReport.find(filter)
+      .select('centerCode centerName centerType zmName regionHeadName areaClusterManager financialYear grandTotal currentStatus auditDateString auditStatus projectName location auditedBy auditPeriod centerHeadName chName frontOfficeScore deliveryProcessScore placementScore managementScore placementApplicable remarksText centerRemarks FO1 FO2 FO3 FO4 FO5 DP1 DP2 DP3 DP4 DP5 DP6 DP7 DP8 DP9 DP10 DP11 PP1 PP2 PP3 PP4 MP1 MP2 MP3 MP4 MP5 MP6 MP7')
+      .sort({ auditDateString: -1 });
+
+    console.log(`Found ${reports.length} reports`);
+    res.json(reports);
+  } catch (err) {
+    console.error('Hierarchy reports error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

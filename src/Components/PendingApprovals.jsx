@@ -269,8 +269,8 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
             Loading pending reports...
           </p>
         ) : pendingReports.length === 0 ? null : (
-          <div className="table-wrapper" style={{ marginTop: '20px' }}>
-            <table>
+          <div className="table-wrapper" style={{ marginTop: '20px', overflowX: 'auto', overflowY: 'auto', maxHeight: '75vh' }}>
+            <table style={{ minWidth: '1600px' }}>
               <thead>
                 <tr>
                   <th>CENTER<br/>NAME</th>

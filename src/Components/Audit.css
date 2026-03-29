@@ -783,3 +783,82 @@ select:focus-visible {
     border: 1px solid #000;
   }
 }
+
+/* ── EDITABLE AUDIT TABLE - Better sizing ── */
+.editable-table .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.editable-table table {
+  min-width: 1800px;
+}
+
+.editable-table thead th {
+  padding: 16px 14px;
+  font-size: 13px;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.editable-table tbody td {
+  padding: 14px 12px;
+  vertical-align: middle;
+}
+
+.editable-table tbody tr {
+  min-height: 80px;
+}
+
+/* Area header row bigger */
+.editable-table tbody tr td[colspan] {
+  padding: 14px 18px;
+  font-size: 15px;
+}
+
+/* Number inputs - no arrows */
+.editable-table input[type="number"]::-webkit-outer-spin-button,
+.editable-table input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.editable-table input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.editable-table input {
+  padding: 12px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  width: 100%;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.editable-table input:focus {
+  border-color: #667eea;
+  outline: none;
+  background: #f0f4ff;
+}
+
+.editable-table textarea {
+  padding: 12px;
+  font-size: 14px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  line-height: 1.6;
+  font-family: 'Segoe UI', sans-serif;
+  transition: border-color 0.2s;
+}
+
+.editable-table textarea:focus {
+  border-color: #667eea;
+  outline: none;
+  background: #f0f4ff;
+}
