@@ -506,8 +506,8 @@ const PlacementDashboard = () => {
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                     <thead>
                       <tr style={{ background: 'linear-gradient(135deg, #1a237e, #3949ab)' }}>
-                        {['#', 'Center Code', 'Center Name', 'Type', 'FY', 'Score', 'PP Score', 'Status', 'PP Remarks', 'Action'].map(h => (
-                          <th key={h} style={{ padding: '12px 14px', color: 'white', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'left' }}>{h}</th>
+                        {['S.No.', 'Center Code', 'Center Name', 'Type', 'FY', 'Score', 'PP Score', 'Status', 'PP Remarks', 'Action'].map(h => (
+                          <th key={h} style={{ padding: '12px 14px', color: 'black', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'left' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>

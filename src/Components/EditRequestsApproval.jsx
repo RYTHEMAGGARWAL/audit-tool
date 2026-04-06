@@ -219,47 +219,47 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1400px' }}>
             <thead>
               <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: 0, zIndex: 3, background: '#667eea' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: 0, zIndex: 3, background: '#667eea' }}>
                   CENTER<br/>CODE
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: '100px', zIndex: 3, background: '#667eea' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px', position: 'sticky', left: '100px', zIndex: 3, background: '#667eea' }}>
                   CENTER<br/>NAME
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   PROJECT<br/>NAME
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   ZM<br/>NAME
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   REGION<br/>HEAD
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   AREA/CLUSTER<br/>MANAGER
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   CENTER<br/>HEAD
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
                   CENTER<br/>TYPE
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   LOCATION
                 </th>
                 
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   FINANCIAL<br/>YEAR
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   REQUESTED<br/>BY
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'left', fontWeight: 600, fontSize: '12px' }}>
                   REQUEST<br/>DATE
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
                   REQUEST<br/>TYPE
                 </th>
-                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                <th style={{ padding: '12px 8px', color: 'black', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
                   ACTIONS
                 </th>
               </tr>
