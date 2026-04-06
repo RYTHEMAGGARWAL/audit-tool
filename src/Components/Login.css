@@ -363,7 +363,7 @@
    FOOTER TEXT (Optional)
    ======================================== */
 .login-box::after {
-  content: '© 2025 National Institute of Technology';
+  content: '© 2025 NIIT Foundation. All rights reserved.';
   display: block;
   margin-top: 30px;
   color: #95a5a6;

@@ -18,6 +18,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [viewSearch, setViewSearch] = useState('');
+  const [modifySearch, setModifySearch] = useState('');
   const [centers, setCenters] = useState([]);
 
   // Load centers
@@ -189,7 +191,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
         showMessage('✅ User created successfully!', 'success');
 
         // Bulk replace old name if hierarchy role and replaceOldName provided
-        const hierarchyRoles = ['Zonal Manager', 'Region Head', 'Area Cluster Manager'];
+        const hierarchyRoles = ['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'];
         if (hierarchyRoles.includes(newUserForm.Role) && newUserForm.replaceOldName?.trim()) {
           try {
             const newFullName = `${newUserForm.firstname} ${newUserForm.lastname}`.trim();
@@ -518,8 +520,12 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                 <option value="Center User">Center User</option>
                 <option value="Zonal Manager">Zonal Manager</option>
                 <option value="Region Head">Region Head</option>
-                <option value="Area Cluster Manager">Area Cluster Manager</option>
+                <option value="Area Manager">Area Manager</option>
+                <option value="Cluster Manager">Cluster Manager</option>
                 <option value="Operation Head">Operation Head</option>
+                <option value="Placement Coordinator">Placement Coordinator</option>
+                <option value="Senior Manager Placement">Senior Manager Placement</option>
+                <option value="National Head Placement">National Head Placement</option>
                 <option value="Admin">Admin</option>
               </select>
             </div>
@@ -561,7 +567,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
 
 
             {/* Replace Old Name - for hierarchy roles */}
-            {['Zonal Manager', 'Region Head', 'Area Cluster Manager'].includes(newUserForm.Role) && (
+            {['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'].includes(newUserForm.Role) && (
               <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
                 <label style={{ color: '#e65100', fontWeight: '700' }}>
                   🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
@@ -595,6 +601,23 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
       {activeOption === 'view' && (
         <div className="view-user">
           <h3>👁️ Users List ({auditUserMode ? tableUsers.filter(u => u.Role === 'Center User' || u.role === 'center user').length : tableUsers.length})</h3>
+
+          {/* Search Bar */}
+          <div style={{ marginBottom: '16px', position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Search by name, username, email, role, center code..."
+              value={viewSearch}
+              onChange={e => setViewSearch(e.target.value)}
+              style={{ width: '100%', padding: '12px 40px 12px 16px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+            />
+            {viewSearch && (
+              <button onClick={() => setViewSearch('')}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>
+                ✕
+              </button>
+            )}
+          </div>
           
           <div className="table-container">
             <table>
@@ -614,6 +637,19 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
               <tbody>
                 {tableUsers
                   .filter(u => !auditUserMode || u.Role === 'Center User' || u.role === 'center user')
+                  .filter(u => {
+                    if (!viewSearch) return true;
+                    const q = viewSearch.toLowerCase();
+                    return (
+                      u.username?.toLowerCase().includes(q) ||
+                      u.firstname?.toLowerCase().includes(q) ||
+                      u.lastname?.toLowerCase().includes(q) ||
+                      u.email?.toLowerCase().includes(q) ||
+                      u.mobile?.includes(q) ||
+                      u.centerCode?.toLowerCase().includes(q) ||
+                      (u.Role || u.role || '').toLowerCase().includes(q)
+                    );
+                  })
                   .map((u, i) => (
                   <tr key={u._id || i}>
                     <td>{i + 1}</td>
@@ -640,7 +676,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                       </span>
                     </td>
                     <td>
-                      <span className={`role-badge ${(u.Role || u.role || '').toLowerCase().replace(' ', '-')}`}>
+                      <span className={`role-badge ${(u.Role || u.role || '').toLowerCase().replace(/ /g, '-')}`}>
                         {u.Role || u.role || '-'}
                       </span>
                       {(u.approvalStatus === 'pending' || u.modifyApprovalStatus === 'pending') && (
@@ -665,16 +701,74 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
           <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <div className="field-box">
               <label>Select User to Modify:</label>
-              <select value={selectedUser || ''} onChange={handleSelectUser}>
-                <option value="">-- Select User --</option>
-                {globalUsers
-                  .filter(u => !auditUserMode || u.Role === 'Center User' || u.role === 'center user')
-                  .map(u => (
-                    <option key={u._id || u.username} value={u.username}>
-                      {u.username} ({u.firstname} {u.lastname})
-                    </option>
-                  ))}
-              </select>
+              {/* Search filter for modify dropdown */}
+              {/* Search input */}
+              <div style={{ position: 'relative', marginBottom: '10px' }}>
+                <input
+                  type="text"
+                  placeholder="Name, username, email ya role type karo..."
+                  value={modifySearch}
+                  onChange={e => setModifySearch(e.target.value)}
+                  style={{ width: '100%', padding: '12px 40px 12px 14px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f8f9ff' }}
+                />
+                {modifySearch && (
+                  <button onClick={() => setModifySearch('')}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>✕</button>
+                )}
+              </div>
+
+              {/* Filtered user cards */}
+              <div style={{ maxHeight: '280px', overflowY: 'auto', border: '2px solid #e0e0e0', borderRadius: '10px', background: 'white' }}>
+                {(() => {
+                  const filtered = globalUsers.filter(u => {
+                    if (auditUserMode && u.Role !== 'Center User' && u.role !== 'center user') return false;
+                    if (!modifySearch) return true;
+                    const q = modifySearch.toLowerCase();
+                    return u.username?.toLowerCase().includes(q) || u.firstname?.toLowerCase().includes(q) || u.lastname?.toLowerCase().includes(q) || (u.Role||u.role||'').toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+                  });
+                  if (filtered.length === 0) return (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '14px' }}>😕 Koi user nahi mila</div>
+                  );
+                  return filtered.map(u => {
+                    const role = u.Role || u.role || 'User';
+                    const isSelected = selectedUser === u.username;
+                    const roleColor = role === 'Admin' ? '#f5576c' : role === 'Audit User' ? '#4facfe' : role === 'Center User' ? '#11998e' : '#667eea';
+                    return (
+                      <div key={u._id || u.username}
+                        onClick={() => handleSelectUser({ target: { value: u.username } })}
+                        style={{
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #f0f0f0',
+                          background: isSelected ? 'linear-gradient(135deg, #667eea15, #764ba215)' : 'white',
+                          borderLeft: isSelected ? '4px solid #667eea' : '4px solid transparent',
+                          transition: 'all 0.15s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8f9ff'; }}
+                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'white'; }}
+                      >
+                        <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: `linear-gradient(135deg, ${roleColor}, ${roleColor}99)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '15px', flexShrink: 0 }}>
+                          {(u.firstname || u.username || '?')[0].toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', fontSize: '14px', color: '#1a237e' }}>
+                            {u.firstname} {u.lastname}
+                            <span style={{ fontWeight: '400', color: '#667eea', fontSize: '13px', marginLeft: '6px' }}>@{u.username}</span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>{u.email || '-'}</div>
+                        </div>
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: `${roleColor}20`, color: roleColor, border: `1px solid ${roleColor}40`, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {role}
+                        </span>
+                        {isSelected && <span style={{ color: '#667eea', fontSize: '18px', flexShrink: 0 }}>✓</span>}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             </div>
 
             {selectedUser && (
@@ -738,6 +832,14 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                   >
                     <option value="Audit User">Audit User</option>
                     <option value="Center User">Center User</option>
+                    <option value="Zonal Manager">Zonal Manager</option>
+                    <option value="Region Head">Region Head</option>
+                    <option value="Area Manager">Area Manager</option>
+                    <option value="Cluster Manager">Cluster Manager</option>
+                    <option value="Operation Head">Operation Head</option>
+                    <option value="Placement Coordinator">Placement Coordinator</option>
+                    <option value="Senior Manager Placement">Senior Manager Placement</option>
+                    <option value="National Head Placement">National Head Placement</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
@@ -778,7 +880,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
 
     
             {/* Replace Old Name - for hierarchy roles */}
-            {['Zonal Manager', 'Region Head', 'Area Cluster Manager'].includes(newUserForm.Role) && (
+            {['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'].includes(newUserForm.Role) && (
               <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
                 <label style={{ color: '#e65100', fontWeight: '700' }}>
                   🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>

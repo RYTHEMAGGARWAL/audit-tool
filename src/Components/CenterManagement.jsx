@@ -25,15 +25,19 @@ const CenterManagement = ({ auditUserMode = false, createdBy = '' }) => {
     projectName: '',
     zmName: '',
     regionHeadName: '',
-    areaClusterManager: '',
+    areaClusterManager: '', // legacy
+    areaManager: '',
+    clusterManager: '',
+    placementApplicable: '',
+    placementCoordinator: '',
+    seniorManagerPlacement: '',
+    nationalHeadPlacement: '',
     centerHeadName: '',
     centerType: '',
     location: '',
-    
-   
-
   });
   const [editingId, setEditingId] = useState(null);
+  const [centerSearch, setCenterSearch] = useState('');
   const [originalCenter, setOriginalCenter] = useState(null); // Track original before edit
 
   useEffect(() => {
@@ -102,11 +106,15 @@ const code = newCenter.centerCode.trim().toUpperCase();
           zmName: '',
           regionHeadName: '',
           areaClusterManager: '',
+          areaManager: '',
+          clusterManager: '',
+          placementApplicable: '',
+          placementCoordinator: '',
+          seniorManagerPlacement: '',
+          nationalHeadPlacement: '',
           centerHeadName: '',
           centerType: '',
           location: '',
-         
-       
         });
         loadCenters();
       } else {
@@ -175,14 +183,24 @@ const code = newCenter.centerCode.trim().toUpperCase();
       console.log('🎯 Center Type being sent:', center.centerType);
 
       // Audit User ke liye - sirf changed fields track karo
-      let updateData = center;
+      // Ensure all fields are included (including new ones that may be missing from old data)
+      const centerWithAllFields = {
+        ...center,
+        areaManager: center.areaManager !== undefined ? center.areaManager : (center.areaClusterManager || ''),
+        clusterManager: center.clusterManager !== undefined ? center.clusterManager : '',
+        placementApplicable: center.placementApplicable || '',
+        placementCoordinator: center.placementCoordinator || '',
+        seniorManagerPlacement: center.seniorManagerPlacement || '',
+        nationalHeadPlacement: center.nationalHeadPlacement || '',
+      };
+      let updateData = centerWithAllFields;
       console.log('🔍 Original center:', originalCenter);
-      console.log('🔍 Updated center:', center);
+      console.log('🔍 Updated center:', centerWithAllFields);
       if (auditUserMode && originalCenter) {
         // Find what actually changed
         const changedFields = {};
         const trackFields = ['centerName', 'projectName', 'zmName', 'regionHeadName', 
-                             'areaClusterManager', 'centerHeadName', 'centerType', 'location'];
+                             'areaManager', 'clusterManager', 'centerHeadName', 'centerType', 'location'];
         trackFields.forEach(field => {
           if (center[field] !== originalCenter[field]) {
             changedFields[field] = { old: originalCenter[field], new: center[field] };
@@ -291,58 +309,64 @@ const code = newCenter.centerCode.trim().toUpperCase();
           />
         </div>
 
-        {/* Row 2: ZM Name, Region Head, Area/Cluster Manager */}
+        {/* Row 2: ZM, Region Head, Area Manager */}
         <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
-          <input
-            type="text"
-            placeholder="ZM Name"
-            value={newCenter.zmName}
+          <input type="text" placeholder="ZM Name" value={newCenter.zmName}
             onChange={(e) => setNewCenter({...newCenter, zmName: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
-          <input
-            type="text"
-            placeholder="Region Head Name"
-            value={newCenter.regionHeadName}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
+          <input type="text" placeholder="Region Head Name" value={newCenter.regionHeadName}
             onChange={(e) => setNewCenter({...newCenter, regionHeadName: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
-          <input
-            type="text"
-            placeholder="Area/Cluster Manager"
-            value={newCenter.areaClusterManager}
-            onChange={(e) => setNewCenter({...newCenter, areaClusterManager: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
+          <input type="text" placeholder="Area Manager Name" value={newCenter.areaManager}
+            onChange={(e) => setNewCenter({...newCenter, areaManager: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
         </div>
 
-        {/* Row 3: Center Head, Center Type, Location */}
+        {/* Row 3: Cluster Manager, Center Head, Center Type */}
         <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
-          <input
-            type="text"
-            placeholder="Center Head Name"
-            value={newCenter.centerHeadName}
+          <input type="text" placeholder="Cluster Manager Name" value={newCenter.clusterManager}
+            onChange={(e) => setNewCenter({...newCenter, clusterManager: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
+          <input type="text" placeholder="Center Head Name" value={newCenter.centerHeadName}
             onChange={(e) => setNewCenter({...newCenter, centerHeadName: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
-          <select
-            value={newCenter.centerType}
-            onChange={(e) => setNewCenter({...newCenter, centerType: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer',color: newCenter.centerType ? '#333' : '#999'}}
-          >
-          <option value="" disabled>-- Select Center Type --</option>
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
+          <select value={newCenter.centerType} onChange={(e) => setNewCenter({...newCenter, centerType: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer', color: newCenter.centerType ? '#333' : '#999'}}>
+            <option value="" disabled>-- Select Center Type --</option>
             <option value="CDC">CDC</option>
             <option value="SDC">SDC</option>
             <option value="DTV">DTV</option>
           </select>
-          <input
-            type="text"
-            placeholder="Location"
-            value={newCenter.location}
-            onChange={(e) => setNewCenter({...newCenter, location: e.target.value})}
-            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}}
-          />
         </div>
+
+        {/* Row 4: Location, Placement Applicable */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px'}}>
+          <input type="text" placeholder="Location" value={newCenter.location}
+            onChange={(e) => setNewCenter({...newCenter, location: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px'}} />
+          <select value={newCenter.placementApplicable} onChange={(e) => setNewCenter({...newCenter, placementApplicable: e.target.value})}
+            style={{padding: '10px', border: '2px solid #ddd', borderRadius: '6px', cursor: 'pointer', color: newCenter.placementApplicable ? '#333' : '#999'}}>
+            <option value="" disabled>-- Placement Applicable? --</option>
+            <option value="yes">✅ Yes</option>
+            <option value="no">❌ No</option>
+          </select>
+          <div />
+        </div>
+
+        {/* Row 5: Placement fields - only if yes */}
+        {newCenter.placementApplicable === 'yes' && (
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px', background: '#fff8f0', padding: '12px', borderRadius: '8px', border: '1px solid #ffcc80'}}>
+            <input type="text" placeholder="📋 Placement Coordinator" value={newCenter.placementCoordinator}
+              onChange={(e) => setNewCenter({...newCenter, placementCoordinator: e.target.value})}
+              style={{padding: '10px', border: '2px solid #ffcc80', borderRadius: '6px', background: 'white'}} />
+            <input type="text" placeholder="🏆 Senior Manager Placement" value={newCenter.seniorManagerPlacement}
+              onChange={(e) => setNewCenter({...newCenter, seniorManagerPlacement: e.target.value})}
+              style={{padding: '10px', border: '2px solid #ffcc80', borderRadius: '6px', background: 'white'}} />
+            <input type="text" placeholder="🎯 National Head Placement" value={newCenter.nationalHeadPlacement}
+              onChange={(e) => setNewCenter({...newCenter, nationalHeadPlacement: e.target.value})}
+              style={{padding: '10px', border: '2px solid #ffcc80', borderRadius: '6px', background: 'white'}} />
+          </div>
+        )}
 
         
 
@@ -366,7 +390,22 @@ const code = newCenter.centerCode.trim().toUpperCase();
 
       {/* Centers Table */}
       <div style={{background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'}}>
-        <h3 style={{marginBottom: '20px'}}>📋 All Centers (Total: {centers.length})</h3>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px'}}>
+          <h3 style={{margin: 0}}>📋 All Centers (Total: {centers.filter(ct => {
+            if (!centerSearch) return true;
+            const q = centerSearch.toLowerCase();
+            return ct.centerCode?.toLowerCase().includes(q) || ct.centerName?.toLowerCase().includes(q) || ct.zmName?.toLowerCase().includes(q) || ct.regionHeadName?.toLowerCase().includes(q) || ct.areaManager?.toLowerCase().includes(q) || ct.clusterManager?.toLowerCase().includes(q) || ct.centerHeadName?.toLowerCase().includes(q) || ct.location?.toLowerCase().includes(q) || ct.centerType?.toLowerCase().includes(q) || ct.projectName?.toLowerCase().includes(q);
+          }).length})</h3>
+          <div style={{position: 'relative', minWidth: '280px'}}>
+            <input type="text" placeholder="🔍 Search centers..." value={centerSearch}
+              onChange={e => setCenterSearch(e.target.value)}
+              style={{width: '100%', padding: '10px 36px 10px 14px', border: '2px solid #667eea', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box'}} />
+            {centerSearch && (
+              <button onClick={() => setCenterSearch('')}
+                style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#999'}}>✕</button>
+            )}
+          </div>
+        </div>
         
         {centers.length === 0 ? (
           <p style={{textAlign: 'center', color: '#999', padding: '40px'}}>
@@ -382,17 +421,23 @@ const code = newCenter.centerCode.trim().toUpperCase();
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>PROJECT</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>ZM NAME</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>REGION HEAD</th>
-                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AREA/CLUSTER MGR</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>AREA MANAGER</th>
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CLUSTER MANAGER</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER HEAD</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>CENTER TYPE</th>
                   <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>LOCATION</th>
                   
                   
+                  <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd'}}>PLACEMENT</th>
                   <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd'}}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {centers.map((center) => (
+                {centers.filter(ct => {
+                    if (!centerSearch) return true;
+                    const q = centerSearch.toLowerCase();
+                    return ct.centerCode?.toLowerCase().includes(q) || ct.centerName?.toLowerCase().includes(q) || ct.zmName?.toLowerCase().includes(q) || ct.regionHeadName?.toLowerCase().includes(q) || ct.areaManager?.toLowerCase().includes(q) || ct.clusterManager?.toLowerCase().includes(q) || ct.centerHeadName?.toLowerCase().includes(q) || ct.location?.toLowerCase().includes(q) || ct.centerType?.toLowerCase().includes(q) || ct.projectName?.toLowerCase().includes(q);
+                  }).map((center) => (
                   <tr key={center._id} style={{borderBottom: '1px solid #eee'}}>
                     <td style={{padding: '12px', fontWeight: 'bold', color: '#667eea'}}>
                       {center.centerCode}
@@ -467,16 +512,31 @@ const code = newCenter.centerCode.trim().toUpperCase();
                       {editingId === center._id ? (
                         <input
                           type="text"
-                          value={center.areaClusterManager || ''}
+                          value={center.areaManager || ''}
                           onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, areaClusterManager: e.target.value} : c
+                            const updated = centers.map(c =>
+                              c._id === center._id ? {...c, areaManager: e.target.value} : c
                             );
                             setCenters(updated);
                           }}
                           style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
                         />
-                      ) : (center.areaClusterManager || '-')}
+                      ) : (center.areaManager || center.areaClusterManager || '-')}
+                    </td>
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <input
+                          type="text"
+                          value={center.clusterManager || ''}
+                          onChange={(e) => {
+                            const updated = centers.map(c =>
+                              c._id === center._id ? {...c, clusterManager: e.target.value} : c
+                            );
+                            setCenters(updated);
+                          }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
+                        />
+                      ) : (center.clusterManager || '-')}
                     </td>
                     <td style={{padding: '12px'}}>
                       {editingId === center._id ? (
@@ -539,6 +599,44 @@ const code = newCenter.centerCode.trim().toUpperCase();
                     </td>
                     
                     
+                    <td style={{padding: '12px'}}>
+                      {editingId === center._id ? (
+                        <select
+                          value={center.placementApplicable || ''}
+                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, placementApplicable: e.target.value} : ct); setCenters(updated); }}
+                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}>
+                          <option value="">-- Select --</option>
+                          <option value="yes">✅ Yes</option>
+                          <option value="no">❌ No</option>
+                        </select>
+                      ) : center.placementApplicable === 'yes' ? (
+                        <div>
+                          <span style={{color:'#2e7d32', fontWeight:'bold', display:'block', marginBottom:'4px'}}>✅ Yes</span>
+                          {center.placementCoordinator && <div style={{fontSize:'11px', color:'#555', marginBottom:'2px'}}>📋 <strong>Coord:</strong> {center.placementCoordinator}</div>}
+                          {center.seniorManagerPlacement && <div style={{fontSize:'11px', color:'#555', marginBottom:'2px'}}>🏆 <strong>SMP:</strong> {center.seniorManagerPlacement}</div>}
+                          {center.nationalHeadPlacement && <div style={{fontSize:'11px', color:'#555'}}>🎯 <strong>NHP:</strong> {center.nationalHeadPlacement}</div>}
+                        </div>
+                      ) : center.placementApplicable === 'no' ? (
+                        <span style={{color:'#c62828', fontWeight:'bold'}}>❌ No</span>
+                      ) : '-'}
+                    </td>
+                    {/* Placement person fields in edit mode */}
+                    {editingId === center._id && center.placementApplicable === 'yes' && (
+                      <td colSpan={1} style={{padding: '12px'}}>
+                        <input type="text" placeholder="Placement Coordinator"
+                          value={center.placementCoordinator || ''}
+                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, placementCoordinator: e.target.value} : ct); setCenters(updated); }}
+                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px'}} />
+                        <input type="text" placeholder="Senior Manager Placement"
+                          value={center.seniorManagerPlacement || ''}
+                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, seniorManagerPlacement: e.target.value} : ct); setCenters(updated); }}
+                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px'}} />
+                        <input type="text" placeholder="National Head Placement"
+                          value={center.nationalHeadPlacement || ''}
+                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, nationalHeadPlacement: e.target.value} : ct); setCenters(updated); }}
+                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%'}} />
+                      </td>
+                    )}
                     <td style={{padding: '12px', textAlign: 'center'}}>
                       {editingId === center._id ? (
                         <>
@@ -578,9 +676,20 @@ const code = newCenter.centerCode.trim().toUpperCase();
                         <>
                           <button
                             onClick={() => {
+                              // Ensure all new fields exist before editing
+                              const centerWithAllFields = {
+                                ...center,
+                                areaManager: center.areaManager || center.areaClusterManager || '',
+                                clusterManager: center.clusterManager || '',
+                                placementApplicable: center.placementApplicable || '',
+                                placementCoordinator: center.placementCoordinator || '',
+                                seniorManagerPlacement: center.seniorManagerPlacement || '',
+                                nationalHeadPlacement: center.nationalHeadPlacement || '',
+                              };
+                              // Update this center in state with all fields
+                              setCenters(prev => prev.map(ct => ct._id === center._id ? centerWithAllFields : ct));
                               setEditingId(center._id);
-                              // Deep copy original center data before any edits
-                              setOriginalCenter(JSON.parse(JSON.stringify(center)));
+                              setOriginalCenter(JSON.parse(JSON.stringify(centerWithAllFields)));
                             }}
                             style={{
                               padding: '6px 12px',

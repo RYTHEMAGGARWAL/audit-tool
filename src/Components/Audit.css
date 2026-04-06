@@ -7,10 +7,12 @@
 }
 
 .management-section {
-  padding: 25px;
+  padding: 15px 10px;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .management-section h2 {
@@ -117,10 +119,12 @@
 .view-user,
 .modify-user {
   background: white;
-  padding: 35px;
+  padding: 20px 15px;
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   animation: fadeInUp 0.5s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .create-user h3,
@@ -785,13 +789,22 @@ select:focus-visible {
 }
 
 /* ── EDITABLE AUDIT TABLE - Better sizing ── */
+.editable-table {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 .editable-table .table-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
+  margin: 0;
 }
 
 .editable-table table {
-  min-width: 1800px;
+  min-width: 1600px;
+  width: 100%;
 }
 
 .editable-table thead th {

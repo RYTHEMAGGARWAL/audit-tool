@@ -112,8 +112,47 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
     }
   };
 
-  const handleViewReport = (report) => {
-    setSelectedReport(report);
+  const handleApprovePlacement = async (reportId, centerCode) => {
+    if (window.confirm(`Approve PLACEMENT edit request for ${centerCode}?\n\nPlacement Coordinator can edit ONE MORE TIME only.`)) {
+      try {
+        const res = await fetch(`${API_URL}/api/audit-reports/${reportId}/approve-placement-edit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminName: loggedUser.firstname })
+        });
+        if (res.ok) {
+          alert('✅ Placement edit approved!');
+          loadEditRequests();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert('❌ ' + (err.error || 'Failed'));
+        }
+      } catch (err) { alert('❌ Error: ' + err.message); }
+    }
+  };
+
+  const handleViewReport = async (report) => {
+    try {
+      const cRes = await fetch(`${API_URL}/api/centers`);
+      if (cRes.ok) {
+        const centers = await cRes.json();
+        const cData = centers.find(ct => ct.centerCode === report.centerCode);
+        if (cData) {
+          setSelectedReport({
+            ...report,
+            areaManager: cData.areaManager || report.areaManager || cData.areaClusterManager || report.areaClusterManager || '',
+            clusterManager: cData.clusterManager || report.clusterManager || '',
+            placementCoordinator: cData.placementCoordinator || report.placementCoordinator || '',
+            seniorManagerPlacement: cData.seniorManagerPlacement || report.seniorManagerPlacement || '',
+            nationalHeadPlacement: cData.nationalHeadPlacement || report.nationalHeadPlacement || '',
+            placementApplicable: cData.placementApplicable || report.placementApplicable || 'yes',
+            zmName: cData.zmName || report.zmName || '',
+            regionHeadName: cData.regionHeadName || report.regionHeadName || '',
+            centerHeadName: cData.centerHeadName || report.centerHeadName || '',
+          });
+        } else setSelectedReport(report);
+      } else setSelectedReport(report);
+    } catch(e) { setSelectedReport(report); }
     setShowModal(true);
   };
 
@@ -218,6 +257,9 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                   REQUEST<br/>DATE
                 </th>
                 <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                  REQUEST<br/>TYPE
+                </th>
+                <th style={{ padding: '12px 8px', color: 'white', textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
                   ACTIONS
                 </th>
               </tr>
@@ -247,7 +289,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                     {req.regionHeadName || '-'}
                   </td>
                   <td style={{ padding: '12px 8px', fontSize: '13px' }}>
-                    {req.areaClusterManager || '-'}
+                    {req.areaManager || req.areaClusterManager || '-'}
                   </td>
                   <td style={{ padding: '12px 8px', fontSize: '13px' }}>
                     {req.centerHeadName || '-'}
@@ -278,31 +320,37 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                     {req.centerHeadEditRequestDate}
                   </td>
                   <td style={{ padding: '12px 8px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => handleViewReport(req)}
-                      style={{
-                        padding: '8px 20px',
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: 'bold',
-                        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.transform = 'translateY(-2px)';
-                        e.target.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.4)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.transform = 'translateY(0)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
-                      }}
-                    >
-                      📊 View Report
-                    </button>
+                    {req.centerHeadEditRequest && (
+                      <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: '#fff3e0', color: '#e65100', border: '1px solid #ff9800', marginBottom: req.placementEditRequest ? '4px' : 0 }}>
+                        🏠 Center Head
+                      </span>
+                    )}
+                    {req.centerHeadEditRequest && req.placementEditRequest && <br/>}
+                    {req.placementEditRequest && (
+                      <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: '#e8f5e9', color: '#2e7d32', border: '1px solid #4caf50' }}>
+                        📋 Placement
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
+                      {req.centerHeadEditRequest && (
+                        <button onClick={() => handleApprove(req._id, req.centerCode)}
+                          style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #ff9800, #e65100)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          ✅ Approve CH
+                        </button>
+                      )}
+                      {req.placementEditRequest && (
+                        <button onClick={() => handleApprovePlacement(req._id, req.centerCode)}
+                          style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #4caf50, #2e7d32)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          ✅ Approve PP
+                        </button>
+                      )}
+                      <button onClick={() => handleViewReport(req)}
+                        style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>
+                        📊 View
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -384,6 +432,11 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                   <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReport.centerCode}</span></div>
                   <div><strong>Center Name:</strong> {selectedReport.centerName}</div>
                   <div><strong>Project:</strong> {selectedReport.projectName || '-'}</div>
+                  <div><strong>ZM Name:</strong> {selectedReport.zmName || '-'}</div>
+                  <div><strong>Region Head:</strong> {selectedReport.regionHeadName || '-'}</div>
+                  <div><strong>Area Manager:</strong> {selectedReport.areaManager || selectedReport.areaClusterManager || '-'}</div>
+                  <div><strong>Cluster Manager:</strong> {selectedReport.clusterManager || '-'}</div>
+                  <div><strong>Center Head:</strong> {selectedReport.centerHeadName || '-'}</div>
                   <div><strong>Center Type:</strong> <span style={{
                     padding: '2px 6px',
                     borderRadius: '6px',
@@ -392,8 +445,20 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                     background: selectedReport.centerType === 'CDC' ? '#e3f2fd' : selectedReport.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
                     color: selectedReport.centerType === 'CDC' ? '#1976d2' : selectedReport.centerType === 'SDC' ? '#e65100' : '#2e7d32'
                   }}>{selectedReport.centerType || 'CDC'}</span></div>
+                  <div><strong>Location:</strong> {selectedReport.location || '-'}</div>
                   <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{selectedReport.financialYear || 'FY26'}</span></div>
                   <div><strong>Audit Date:</strong> {selectedReport.auditDateString || selectedReport.auditDate || '-'}</div>
+                  <div><strong>Audited By:</strong> {selectedReport.auditedBy || '-'}</div>
+                  <div><strong>Audit Period:</strong> {selectedReport.auditPeriod || '-'}</div>
+                  {selectedReport.placementApplicable === 'yes' && selectedReport.placementCoordinator && (
+                    <div><strong>Placement Coordinator:</strong> {selectedReport.placementCoordinator}</div>
+                  )}
+                  {selectedReport.placementApplicable === 'yes' && selectedReport.seniorManagerPlacement && (
+                    <div><strong>Sr. Manager Placement:</strong> {selectedReport.seniorManagerPlacement}</div>
+                  )}
+                  {selectedReport.placementApplicable === 'yes' && selectedReport.nationalHeadPlacement && (
+                    <div><strong>National Head Placement:</strong> {selectedReport.nationalHeadPlacement}</div>
+                  )}
                 </div>
               </div>
 
@@ -461,17 +526,23 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                 </div>
               </div>
 
-              <div style={{
-                background: '#fff3e0',
-                padding: '15px 20px',
-                borderRadius: '10px',
-                marginBottom: '20px',
-                border: '2px solid #ff9800'
-              }}>
+              <div style={{ background: '#fff3e0', padding: '15px 20px', borderRadius: '10px', marginBottom: '20px', border: '2px solid #ff9800' }}>
                 <h4 style={{ margin: '0 0 10px 0', color: '#e65100', fontSize: '14px' }}>🔓 Edit Request Details</h4>
-                <div style={{ fontSize: '13px' }}>
-                  <div style={{marginBottom: '5px'}}><strong>Requested By:</strong> {selectedReport.centerHeadEditRequestBy || '-'}</div>
-                  <div><strong>Request Date:</strong> {selectedReport.centerHeadEditRequestDate || '-'}</div>
+                <div style={{ fontSize: '13px', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
+                  {selectedReport.centerHeadEditRequest && (
+                    <div style={{ background: '#fff8f0', padding: '10px 14px', borderRadius: '8px', border: '1px solid #ffcc80' }}>
+                      <div style={{ fontWeight: '700', color: '#e65100', marginBottom: '6px' }}>🏠 Center Head Request</div>
+                      <div><strong>By:</strong> {selectedReport.centerHeadEditRequestBy || '-'}</div>
+                      <div><strong>Date:</strong> {selectedReport.centerHeadEditRequestDate || '-'}</div>
+                    </div>
+                  )}
+                  {selectedReport.placementEditRequest && (
+                    <div style={{ background: '#f1f8e9', padding: '10px 14px', borderRadius: '8px', border: '1px solid #a5d6a7' }}>
+                      <div style={{ fontWeight: '700', color: '#2e7d32', marginBottom: '6px' }}>📋 Placement Request</div>
+                      <div><strong>By:</strong> {selectedReport.placementEditRequestBy || '-'}</div>
+                      <div><strong>Date:</strong> {selectedReport.placementEditRequestDate || '-'}</div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -501,7 +572,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
               <button
                 onClick={() => {
                   setShowModal(false);
-                  setSelectedRemarks(null);
+                  setSelectedReport(null);
                 }}
                 style={{
                   background: '#6b7280',
@@ -517,25 +588,22 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
                 ← Close
               </button>
               
-              <button
-                onClick={() => {
-                  handleApprove(selectedReport._id, selectedReport.centerCode);
-                  setShowModal(false);
-                }}
-                style={{
-                  background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px 35px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '15px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)'
-                }}
-              >
-                ✅ Approve Edit Request
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {selectedReport.centerHeadEditRequest && (
+                  <button
+                    onClick={() => { handleApprove(selectedReport._id, selectedReport.centerCode); setShowModal(false); setSelectedReport(null); }}
+                    style={{ background: 'linear-gradient(135deg, #ff9800, #e65100)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                    ✅ Approve Center Head
+                  </button>
+                )}
+                {selectedReport.placementEditRequest && (
+                  <button
+                    onClick={() => { handleApprovePlacement(selectedReport._id, selectedReport.centerCode); setShowModal(false); setSelectedReport(null); }}
+                    style={{ background: 'linear-gradient(135deg, #4caf50, #2e7d32)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                    ✅ Approve Placement
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

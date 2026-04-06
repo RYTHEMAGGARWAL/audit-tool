@@ -334,6 +334,39 @@
   background: linear-gradient(135deg, #11998e, #38ef7d);
 }
 
+.role-badge.zonal-manager {
+  background: linear-gradient(135deg, #f7971e, #ffd200);
+  color: #333;
+}
+
+.role-badge.region-head {
+  background: linear-gradient(135deg, #c471ed, #f64f59);
+}
+
+.role-badge.area-manager {
+  background: linear-gradient(135deg, #1a78c2, #4facfe);
+}
+
+.role-badge.cluster-manager {
+  background: linear-gradient(135deg, #0f9b58, #00bf8f);
+}
+
+.role-badge.operation-head {
+  background: linear-gradient(135deg, #373b44, #4286f4);
+}
+
+.role-badge.placement-coordinator {
+  background: linear-gradient(135deg, #e96c1a, #f7971e);
+}
+
+.role-badge.senior-manager-placement {
+  background: linear-gradient(135deg, #8e2de2, #4a00e0);
+}
+
+.role-badge.national-head-placement {
+  background: linear-gradient(135deg, #c0392b, #8e44ad);
+}
+
 /* Edit Section */
 .edit-section {
   background: #f8f9fa;

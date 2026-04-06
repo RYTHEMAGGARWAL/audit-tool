@@ -274,10 +274,7 @@ const Login = () => {
       <div className="login-box">
         {!showForgotPassword ? (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
-              <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '70px', objectFit: 'contain', marginBottom: '12px' }} />
-              <h2 style={{ marginBottom: 0 }}>Audit Management System</h2>
-            </div>
+            <h2>🔐 NIIT FOUNDATION</h2>
             <p className="subtitle">Login to continue</p>
             
             <form onSubmit={handleLogin}>
@@ -325,10 +322,7 @@ const Login = () => {
           </>
         ) : (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
-              <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '55px', objectFit: 'contain', marginBottom: '10px' }} />
-              <h2 style={{ marginBottom: 0 }}>Reset Password</h2>
-            </div>
+            <h2>🔑 Reset Password</h2>
             
             {forgotStep === 1 && (
               <form onSubmit={handleSendOTP}>

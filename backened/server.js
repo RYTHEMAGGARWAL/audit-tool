@@ -69,7 +69,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   mobile: { type: String, trim: true, default: '' },
   centerCode: { type: String, trim: true, default: '' },
-  role: { type: String, enum: ['Admin', 'Audit User', 'Center User', 'Zonal Manager', 'Region Head', 'Area Cluster Manager', 'Operation Head'], default: 'Audit User' },
+  role: { type: String, enum: ['Admin', 'Audit User', 'Center User', 'Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Operation Head', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'], default: 'Audit User' },
   isActive: { type: Boolean, default: true },
   resetOTP: { type: String, default: null },
   resetOTPExpires: { type: Date, default: null },
@@ -93,6 +93,12 @@ const centerSchema = new mongoose.Schema({
   zmName: { type: String, trim: true, default: '' },
   regionHeadName: { type: String, trim: true, default: '' },
   areaClusterManager: { type: String, trim: true, default: '' },
+  areaManager: { type: String, trim: true, default: '' },
+  clusterManager: { type: String, trim: true, default: '' },
+  placementCoordinator: { type: String, trim: true, default: '' },
+  seniorManagerPlacement: { type: String, trim: true, default: '' },
+  nationalHeadPlacement: { type: String, trim: true, default: '' },
+  placementApplicable: { type: String, enum: ['yes', 'no', ''], default: '' },
   centerHeadName: { type: String, trim: true, default: '' },
   centerType: { type: String, enum: ['CDC', 'SDC', 'DTV'], default: 'CDC', trim: true },
   location: { type: String, trim: true, default: '' },
@@ -151,10 +157,15 @@ auditPeriod: { type: String, trim: true, default: '' },
   auditDateString: { type: String, default: '' },
   financialYear: { type: String, default: 'FY26' },
   projectName: { type: String, trim: true, default: '' },
-zmName: { type: String, trim: true, default: '' },
-regionHeadName: { type: String, trim: true, default: '' },
-areaClusterManager: { type: String, trim: true, default: '' },
-location: { type: String, trim: true, default: '' },
+  zmName: { type: String, trim: true, default: '' },
+  regionHeadName: { type: String, trim: true, default: '' },
+  areaClusterManager: { type: String, trim: true, default: '' },
+  areaManager: { type: String, trim: true, default: '' },
+  clusterManager: { type: String, trim: true, default: '' },
+  placementCoordinator: { type: String, trim: true, default: '' },
+  seniorManagerPlacement: { type: String, trim: true, default: '' },
+  nationalHeadPlacement: { type: String, trim: true, default: '' },
+  location: { type: String, trim: true, default: '' },
   // Checkpoints
   FO1: { type: checkpointDataSchema, default: () => ({}) },
   FO2: { type: checkpointDataSchema, default: () => ({}) },
@@ -189,11 +200,25 @@ location: { type: String, trim: true, default: '' },
   approvedBy: { type: String, default: '' },
   submittedDate: { type: String, default: '' },
   remarksText: { type: String, default: '' },
+  // Audit overall status (score-based: Compliant / Amber / Non-Compliant)
+  auditStatus: { type: String, default: '' },
+  // ── Placement Coordinator Remarks ──
+  placementRemarksSubmitted:   { type: Boolean, default: false },
+  placementRemarksLocked:      { type: Boolean, default: false },
+  placementRemarksEditedOnce:  { type: Boolean, default: false },
+  placementRemarksDate:        { type: String,  default: '' },
+  placementRemarksSubmittedBy: { type: String,  default: '' },
+  // Placement edit request (Coordinator → Admin)
+  placementEditRequest:        { type: Boolean, default: false },
+  placementEditRequestBy:      { type: String,  default: '' },
+  placementEditRequestDate:    { type: String,  default: '' },
   // Center User Remarks
   centerRemarks: { type: String, default: '' },
   centerRemarksBy: { type: String, default: '' },
   centerRemarksDate: { type: String, default: '' },
-  // LOCKED REMARKS SYSTEM - NEW FIELDS
+  // Checkpoint-level remarks saved as a single object (faster reload)
+  centerHeadCheckpointRemarks: { type: Object, default: {} },
+  // LOCKED REMARKS SYSTEM
   centerHeadRemarksLocked: { type: Boolean, default: false },
   centerHeadEditRequest: { type: Boolean, default: false },
   centerHeadEditRequestDate: { type: String, default: '' },
@@ -203,7 +228,16 @@ location: { type: String, trim: true, default: '' },
   emailSent: { type: Boolean, default: false },
   emailSentDate: { type: String, default: '' },
   emailSentTo: { type: String, default: '' },
-  // Reminder tracking: array of days at which reminder was sent e.g. [3, 5, 6, 7]
+  // Center remarks deadline (7 working days from emailSentDate)
+  centerDeadline: { type: Date, default: null },
+  centerDeadlineString: { type: String, default: '' },
+  // Auditor submission deadline (15 working days from audit creation)
+  auditorDeadline: { type: Date, default: null },
+  auditorDeadlineString: { type: String, default: '' },
+  // Auto-close tracking
+  autoClosedBy: { type: String, default: '' },
+  autoClosedDate: { type: String, default: '' },
+  // Reminder tracking
   remindersSent: { type: [Number], default: [] },
   reminderClosedSent: { type: Boolean, default: false },
   // Auditor reminders
@@ -426,6 +460,7 @@ app.post('/api/users', async (req, res) => {
       userData.approvalRequestedBy = req.body.createdBy || 'Audit User';
     }
 
+    // Check if username exists (including inactive users)
     const user = new User(userData);
     await user.save();
     
@@ -517,6 +552,45 @@ app.post('/api/update-users', async (req, res) => {
   }
 });
 
+
+// ========================================
+// GET HIERARCHY EMAILS by name matching
+// POST /api/hierarchy-emails
+// body: { zmName, regionHeadName, areaClusterManager }
+// ========================================
+app.post('/api/hierarchy-emails', async (req, res) => {
+  try {
+    const { zmName, regionHeadName, areaClusterManager } = req.body;
+    const emails = [];
+
+    const findEmail = async (name, role) => {
+      if (!name || name === '-') return;
+      const regex = new RegExp(name.trim().split(' ')[0], 'i'); // match first name
+      const user = await User.findOne({
+        role: role,
+        isActive: true,
+        $or: [
+          { firstname: regex },
+          { username: regex }
+        ]
+      });
+      if (user && user.email) {
+        emails.push(user.email);
+        console.log(`✅ Found ${role}: ${user.email}`);
+      }
+    };
+
+    await findEmail(zmName, 'Zonal Manager');
+    await findEmail(regionHeadName, 'Region Head');
+    await findEmail(areaClusterManager, 'Area Cluster Manager');
+
+    res.json({ success: true, emails: [...new Set(emails)] }); // dedupe
+  } catch (err) {
+    console.error('❌ Hierarchy emails error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ========================================
 // CENTERS ROUTES
 // ========================================
@@ -552,7 +626,9 @@ app.get('/api/my-requests/:createdBy', async (req, res) => {
 
 app.get('/api/centers', async (req, res) => {
   try {
-    const centers = await Center.find({ isActive: true }).sort({ centerCode: 1 });
+    const centers = await Center.find({
+      $or: [{ isActive: true }, { approvalStatus: 'pending', isActive: false }]
+    }).sort({ centerCode: 1 });
     const formatted = centers.map(c => ({
       _id: c._id,
       centerCode: c.centerCode,
@@ -561,14 +637,22 @@ app.get('/api/centers', async (req, res) => {
       zmName: c.zmName || '',
       regionHeadName: c.regionHeadName || '',
       areaClusterManager: c.areaClusterManager || '',
+      areaManager: c.areaManager || c.areaClusterManager || '',
+      clusterManager: c.clusterManager || '',
+      placementCoordinator: c.placementCoordinator || '',
+      seniorManagerPlacement: c.seniorManagerPlacement || '',
+      nationalHeadPlacement: c.nationalHeadPlacement || '',
+      placementApplicable: c.placementApplicable || '',
       centerHeadName: c.centerHeadName || '',
-      centerType: c.centerType || 'CDC',  // ← ADD THIS!
+      centerType: c.centerType || 'CDC',
       location: c.location || c.geolocation || '',
       zonalHeadName: c.zonalHeadName || '',
       auditedBy: c.auditedBy || '',
       auditPeriod: c.auditPeriod || '',
       chName: c.chName || '',
-      geolocation: c.geolocation || ''
+      geolocation: c.geolocation || '',
+      approvalStatus: c.approvalStatus || 'approved',
+      editApprovalStatus: c.editApprovalStatus || ''
     }));
     console.log(`📍 Centers fetched: ${centers.length}`);
     res.json(formatted);
@@ -603,11 +687,12 @@ app.put('/api/centers/:id', async (req, res) => {
       return res.json({ success: true, center: updated, pendingApproval: true });
     }
 
-    // Admin direct update
+    // Admin direct update - remove immutable fields
+    const { _id, __v, createdAt, updatedAt, ...cleanData } = updateData;
     const updatedCenter = await Center.findByIdAndUpdate(
       req.params.id,
-      updateData,
-      { new: true, runValidators: true }
+      { $set: cleanData },
+      { new: true, runValidators: false }
     );
     if (!updatedCenter) return res.status(404).json({ error: 'Center not found' });
     console.log(`✅ Center updated: ${updatedCenter.centerCode}`);
@@ -699,125 +784,6 @@ app.get('/api/audit-reports', async (req, res) => {
     const reports = await AuditReport.find().sort({ createdAt: -1 });
     res.json(reports);
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-
-// ========================================
-// BULK REPLACE HIERARCHY NAME
-// Centers + AuditReports dono update
-// POST /api/bulk-replace-hierarchy-name
-// body: { role, oldName, newName }
-// ========================================
-app.post('/api/bulk-replace-hierarchy-name', async (req, res) => {
-  try {
-    const { role, oldName, newName } = req.body;
-
-    if (!role || !oldName || !newName) {
-      return res.status(400).json({ error: 'role, oldName, newName required' });
-    }
-
-    // Map role to field name
-    const roleFieldMap = {
-      'Zonal Manager':          { centerField: 'zmName',               reportField: 'zmName' },
-      'Region Head':            { centerField: 'regionHeadName',       reportField: 'regionHeadName' },
-      'Area Cluster Manager':   { centerField: 'areaClusterManager',   reportField: 'areaClusterManager' },
-    };
-
-    const fields = roleFieldMap[role];
-    if (!fields) {
-      return res.status(400).json({ error: 'Invalid role for bulk replace' });
-    }
-
-    const regex = new RegExp(`^${oldName.trim()}$`, 'i');
-
-    // Update Centers
-    const centerResult = await Center.updateMany(
-      { [fields.centerField]: { $regex: regex } },
-      { $set: { [fields.centerField]: newName.trim() } }
-    );
-
-    // Update AuditReports
-    const reportResult = await AuditReport.updateMany(
-      { [fields.reportField]: { $regex: regex } },
-      { $set: { [fields.reportField]: newName.trim() } }
-    );
-
-    console.log(`✅ Bulk replace: "${oldName}" → "${newName}" (${role})`);
-    console.log(`   Centers updated: ${centerResult.modifiedCount}`);
-    console.log(`   Reports updated: ${reportResult.modifiedCount}`);
-
-    res.json({
-      success: true,
-      centersUpdated: centerResult.modifiedCount,
-      reportsUpdated: reportResult.modifiedCount,
-      message: `Replaced "${oldName}" with "${newName}" in ${centerResult.modifiedCount} centers and ${reportResult.modifiedCount} audit reports.`
-    });
-
-  } catch (err) {
-    console.error('❌ Bulk replace error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ========================================
-// HIERARCHY REPORTS - ZM, RH, ACM, OpHead
-// ========================================
-// GET /api/hierarchy-reports?role=Zonal Manager&name=Sumit Kumar&fy=FY26&status=Approved
-app.get('/api/hierarchy-reports', async (req, res) => {
-  try {
-    const { role, name, fy, status, centerType } = req.query;
-
-    console.log(`\n🏢 ========== HIERARCHY REPORTS ==========`);
-    console.log(`Role: ${role}, Name: ${name}, FY: ${fy}`);
-
-    let filter = {};
-
-    // Financial Year filter
-    if (fy && fy !== 'All') filter.financialYear = fy;
-    // Status filter
-    if (status && status !== 'All') filter.currentStatus = status;
-    // Center Type filter
-    if (centerType && centerType !== 'All') filter.centerType = centerType;
-
-    // Role-based name matching
-    // name = fullname "shweta agg", firstname = just "shweta"
-    // Center fields may have only firstname, so we try BOTH firstname and fullname
-    const firstname = req.query.firstname || '';  // passed separately from frontend
-    
-    const buildNameFilter = (field) => {
-      const patterns = [];
-      if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
-      if (firstname && firstname.trim() && firstname.trim() !== name.trim()) {
-        patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
-      }
-      return patterns.length === 1 ? patterns[0] : { $or: patterns };
-    };
-
-    if (role === 'Operation Head') {
-      // sees everything
-    } else if (role === 'Zonal Manager' && (name || firstname)) {
-      Object.assign(filter, buildNameFilter('zmName'));
-    } else if (role === 'Region Head' && (name || firstname)) {
-      Object.assign(filter, buildNameFilter('regionHeadName'));
-    } else if (role === 'Area Cluster Manager' && (name || firstname)) {
-      Object.assign(filter, buildNameFilter('areaClusterManager'));
-    } else if (role !== 'Operation Head') {
-      return res.status(400).json({ error: 'Invalid role or missing name' });
-    }
-
-    console.log('Filter:', JSON.stringify(filter));
-
-    const reports = await AuditReport.find(filter)
-      .select('centerCode centerName centerType zmName regionHeadName areaClusterManager financialYear grandTotal currentStatus auditDateString auditStatus projectName location auditedBy auditPeriod centerHeadName chName frontOfficeScore deliveryProcessScore placementScore managementScore placementApplicable remarksText centerRemarks FO1 FO2 FO3 FO4 FO5 DP1 DP2 DP3 DP4 DP5 DP6 DP7 DP8 DP9 DP10 DP11 PP1 PP2 PP3 PP4 MP1 MP2 MP3 MP4 MP5 MP6 MP7')
-      .sort({ auditDateString: -1 });
-
-    console.log(`Found ${reports.length} reports`);
-    res.json(reports);
-  } catch (err) {
-    console.error('Hierarchy reports error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -962,6 +928,11 @@ ${managementTable}
       zmName: centerData?.zmName || data.zmName || '',
       regionHeadName: centerData?.regionHeadName || data.regionHeadName || '',
       areaClusterManager: centerData?.areaClusterManager || data.areaClusterManager || '',
+      areaManager: centerData?.areaManager || data.areaManager || '',
+      clusterManager: centerData?.clusterManager || data.clusterManager || '',
+      placementCoordinator: centerData?.placementCoordinator || data.placementCoordinator || '',
+      seniorManagerPlacement: centerData?.seniorManagerPlacement || data.seniorManagerPlacement || '',
+      nationalHeadPlacement: centerData?.nationalHeadPlacement || data.nationalHeadPlacement || '',
       centerHeadName: centerData?.centerHeadName || data.centerHeadName || '',
       centerType: centerData?.centerType || data.centerType || 'CDC',  // ✅ NOW centerData is defined!
       location: centerData?.location || data.location || '',
@@ -991,10 +962,17 @@ ${managementTable}
       submittedDate: data.submittedDate || '',
       remarksText: data.remarksText || '',
       
-      // Reset email sent status when report is edited
+      // Reset email sent status when report is edited by auditor
+      // Note: emailSent/emailSentDate are managed separately by $set,
+      // so if center already submitted, these won't be touched (they're not in updateData for that case)
       emailSent: false,
       emailSentDate: '',
       emailSentTo: '',
+      
+      // ✅ NEVER include center head lock fields in updateData — they must never be overwritten by auditor save
+      // centerHeadRemarksLocked, remarksEditedOnce, centerHeadEditRequest,
+      // centerRemarks, centerRemarksBy, centerRemarksDate, centerHeadCheckpointRemarks
+      // are all excluded from this object intentionally
       
       // ========== CHECKPOINT DATA ==========
       ...(['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7']
@@ -1009,23 +987,27 @@ ${managementTable}
     console.log('💾 Saving placementApplicable:', data.placementApplicable);
 
     // ✅ STEP 3: Save to database
+    // IMPORTANT: Use $set so center head remarks fields are NOT overwritten
     const auditPeriod = data.auditPeriod || '';
-const matchQuery = auditPeriod
-  ? { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26', auditPeriod: auditPeriod }
-  : { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' };
+    const matchQuery = auditPeriod
+      ? { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26', auditPeriod: auditPeriod }
+      : { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' };
 
-const report = await AuditReport.findOneAndUpdate(
-  matchQuery,
-  updateData,
-  { upsert: true, new: true }
-);
+    const report = await AuditReport.findOneAndUpdate(
+      matchQuery,
+      { $set: updateData },
+      { upsert: true, new: true }
+    );
 
-    // Reset center head remarks lock
-    report.centerHeadRemarksLocked = false;
-    report.centerHeadEditRequest = false;
-    report.centerHeadEditRequestDate = '';
-    report.centerHeadEditRequestBy = '';
-    await report.save();
+    // ✅ CRITICAL: Only reset edit-request flags if center head has NEVER submitted remarks
+    // Once centerRemarksDate is set (any submission happened), NEVER touch lock fields
+    if (!report.centerRemarksDate && !report.remarksEditedOnce && !report.centerHeadRemarksLocked) {
+      report.centerHeadEditRequest = false;
+      report.centerHeadEditRequestDate = '';
+      report.centerHeadEditRequestBy = '';
+      await report.save();
+    }
+    // If center head submitted even once — leave ALL lock fields untouched
     
     console.log(`✅ Report saved for ${data.centerCode}`);
     console.log(`✅ Saved centerType: ${report.centerType}`);
@@ -1144,14 +1126,11 @@ app.post('/api/audit-reports/:id/reject', async (req, res) => {
 // ============================================
 // ✅ COMPLETE FIXED ENDPOINT FOR CENTER REMARKS
 // ============================================
-// Replace the entire PUT /api/audit-reports/:id/center-remarks endpoint
-// with this code (around line 836-895 in server.js)
-
 // Center User - Save center remarks
 app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
   try {
     console.log('\n💬 ========== SAVING CENTER HEAD REMARKS ==========');
-    const { centerRemarks, centerHeadCheckpointRemarks } = req.body;
+    const { centerRemarks, centerHeadCheckpointRemarks, centerRemarksBy } = req.body;
     console.log('📋 Report ID:', req.params.id);
     console.log('📝 Total remarks:', Object.keys(centerHeadCheckpointRemarks || {}).length);
     
@@ -1161,63 +1140,90 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    // ✅ BACKEND GUARD 0: Placement applicable but coordinator hasn't submitted yet
+    // Sirf 1st submit pe check karo — agar centerRemarksDate set hai toh yeh edit hai, allow karo
+    const isEditSubmit = !!report.centerRemarksDate;
+    if (!isEditSubmit && report.placementApplicable === 'yes' && !report.placementRemarksSubmitted) {
+      console.log('🔒 BLOCKED: Placement remarks not submitted yet (1st submit)');
+      return res.status(403).json({ 
+        error: 'Placement Coordinator has not submitted remarks yet. Please wait for placement remarks before submitting.', 
+        placementPending: true 
+      });
+    }
+
+    // ✅ BACKEND GUARD 1: Permanently locked — no more edits ever
+    if (report.remarksEditedOnce) {
+      console.log('🔒 BLOCKED: Already permanently locked (remarksEditedOnce=true)');
+      return res.status(403).json({ error: 'Remarks are permanently locked. No further edits allowed.', permanentlyLocked: true });
+    }
+
+    // ✅ BACKEND GUARD 2: Locked AND edit request still pending (not approved yet)
+    if (report.centerHeadRemarksLocked && report.centerHeadEditRequest) {
+      console.log('🔒 BLOCKED: Edit request is pending admin approval');
+      return res.status(403).json({ error: 'Edit request is pending admin approval. Please wait.', requestPending: true });
+    }
+
+    // ✅ BACKEND GUARD 3: Locked but no edit request raised AND never submitted — block sneaky API calls
+    // Exception: if centerRemarksDate exists + locked=false, it means admin approved the edit → allow
+    if (report.centerHeadRemarksLocked && !report.centerHeadEditRequest && !report.centerRemarksDate) {
+      console.log('🔒 BLOCKED: Remarks locked, no approved edit request');
+      return res.status(403).json({ error: 'Remarks are locked. Please request edit permission from admin.' });
+    }
+
     // Save overall center remarks (optional field)
     if (centerRemarks !== undefined) {
       report.centerRemarks = centerRemarks;
     }
+
+    // ✅ PERMANENT LOCK LOGIC — CHECK BEFORE setting centerRemarksDate
+    // centerRemarksDate set hone se PEHLE check karo — warna hamesha true milega
+    const isSecondSubmit = !!report.centerRemarksDate; // DB mein pehle se set hai = 2nd submit
+
+    if (isSecondSubmit) {
+      report.remarksEditedOnce = true;
+      report.centerHeadRemarksLocked = true;
+      console.log('🔒 Remarks PERMANENTLY LOCKED (2nd submit)');
+    } else {
+      report.centerHeadRemarksLocked = true;
+      console.log('🔒 Remarks LOCKED (1st submit) — can request edit once');
+    }
+
+    // ✅ Save who submitted and when (AFTER isSecondSubmit check)
+    report.centerRemarksBy = centerRemarksBy || '';
     report.centerRemarksDate = new Date().toLocaleString('en-GB');
-    
-    // ✅ CRITICAL FIX: Save checkpoint remarks in BOTH places
+
+    // ✅ Save checkpoint remarks in BOTH places
     if (centerHeadCheckpointRemarks && Object.keys(centerHeadCheckpointRemarks).length > 0) {
-      
-      // METHOD 1: Save as object field (for CenterDashboard to reload)
       report.centerHeadCheckpointRemarks = centerHeadCheckpointRemarks;
       report.markModified('centerHeadCheckpointRemarks');
-      console.log('✅ Saved to centerHeadCheckpointRemarks object');
-      
-      // METHOD 2: Save to individual checkpoint objects (for Audit.jsx display)
+
       const checkpointIds = [
         'FO1','FO2','FO3','FO4','FO5',
         'DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11',
         'PP1','PP2','PP3','PP4',
         'MP1','MP2','MP3','MP4','MP5','MP6','MP7'
       ];
-      
       let savedCount = 0;
       checkpointIds.forEach(cpId => {
         if (centerHeadCheckpointRemarks[cpId]) {
-          // Get existing checkpoint data (or empty object)
           const existingCpData = report[cpId] || {};
-          
-          // Create updated checkpoint data with centerHeadRemarks
-          const updatedCpData = {
-            ...existingCpData,
-            centerHeadRemarks: centerHeadCheckpointRemarks[cpId]
-          };
-          
-          // Save back to report
-          report[cpId] = updatedCpData;
-          report.markModified(cpId);  // CRITICAL: Tell Mongoose to save this
-          
+          report[cpId] = { ...existingCpData, centerHeadRemarks: centerHeadCheckpointRemarks[cpId] };
+          report.markModified(cpId);
           savedCount++;
-          const preview = centerHeadCheckpointRemarks[cpId].substring(0, 40);
-          console.log(`  ✅ ${cpId}: "${preview}${centerHeadCheckpointRemarks[cpId].length > 40 ? '...' : ''}"`);
         }
       });
-      
-      console.log(`✅ Saved ${savedCount} checkpoint remarks to individual fields`);
+      console.log(`✅ Saved ${savedCount} checkpoint remarks`);
     }
-    
-    // Lock remarks
-    if (!report.centerHeadRemarksLocked) {
-      // First time submit
-      report.centerHeadRemarksLocked = true;
-      console.log('🔒 Remarks LOCKED (1st submit) - Center Head can request edit once');
-    } else {
-      // Second time submit (after admin approved edit) — permanent lock
-      report.remarksEditedOnce = true;
-      report.centerHeadRemarksLocked = true;
-      console.log('🔒 Remarks PERMANENTLY LOCKED (2nd submit) - No more edits allowed');
+
+    // ✅ PLACEMENT PERMANENT LOCK
+    // Jab bhi CH submit kare (1st ya 2nd) → placement bhi permanently lock
+    if (report.placementRemarksSubmitted) {
+      report.placementRemarksLocked = true;
+      report.placementRemarksEditedOnce = true;
+      report.placementEditRequest = false;
+      report.placementEditRequestBy = '';
+      report.placementEditRequestDate = '';
+      console.log('🔒 Placement PERMANENTLY LOCKED — CH submitted');
     }
 
     // Set auditor review deadline: 5 working days from now
@@ -1226,8 +1232,6 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
     report.auditorReviewDeadlineString = reviewDeadline.toLocaleDateString('en-GB');
     console.log(`📅 Auditor review deadline: ${report.auditorReviewDeadlineString}`);
 
-    
-    // Save to MongoDB
     await report.save();
 
     console.log(`✅ All remarks saved successfully for ${report.centerCode}`);
@@ -1340,6 +1344,24 @@ app.post('/api/audit-reports/:id/request-edit', async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    // ✅ GUARD: Can't request edit if permanently locked
+    if (report.remarksEditedOnce) {
+      console.log('🔒 BLOCKED: Remarks permanently locked, edit request denied');
+      return res.status(403).json({ error: 'Remarks are permanently locked. No further edit requests allowed.', permanentlyLocked: true });
+    }
+
+    // ✅ GUARD: Can't request edit if request already pending
+    if (report.centerHeadEditRequest) {
+      console.log('⏳ BLOCKED: Edit request already pending');
+      return res.status(409).json({ error: 'Edit request already pending. Please wait for admin approval.', alreadyPending: true });
+    }
+
+    // ✅ GUARD: Can only request edit if remarks are actually locked
+    if (!report.centerHeadRemarksLocked) {
+      console.log('⚠️ BLOCKED: Remarks not locked yet, no edit request needed');
+      return res.status(400).json({ error: 'Remarks are not locked. You can edit directly.' });
+    }
+
     // Set edit request flags
     report.centerHeadEditRequest = true;
     report.centerHeadEditRequestDate = new Date().toLocaleString('en-GB');
@@ -1373,6 +1395,18 @@ app.post('/api/audit-reports/:id/approve-edit', async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    // ✅ GUARD: Cannot approve edit for permanently locked report
+    if (report.remarksEditedOnce) {
+      console.log('🔒 BLOCKED: Cannot approve edit — remarks permanently locked');
+      return res.status(403).json({ error: 'Cannot approve edit. Remarks are permanently locked after 2nd submission.' });
+    }
+
+    // ✅ GUARD: No pending request to approve
+    if (!report.centerHeadEditRequest) {
+      console.log('⚠️ BLOCKED: No pending edit request found');
+      return res.status(400).json({ error: 'No pending edit request found for this report.' });
+    }
+
     // Unlock remarks temporarily and clear edit request
     report.centerHeadRemarksLocked = false;
     report.centerHeadEditRequest = false;
@@ -1397,15 +1431,27 @@ app.post('/api/audit-reports/:id/approve-edit', async (req, res) => {
 // ============================================
 app.get('/api/audit-reports/edit-requests/pending', async (req, res) => {
   try {
-    console.log('\n📋 Fetching pending edit requests...');
+    console.log('\n📋 Fetching pending edit requests (center head + placement)...');
     
-    const reports = await AuditReport.find({ 
-      centerHeadEditRequest: true 
-    }).sort({ centerHeadEditRequestDate: -1 });
+    // Fetch both center head AND placement edit requests
+    const reports = await AuditReport.find({
+      $or: [
+        { centerHeadEditRequest: true },
+        { placementEditRequest: true }
+      ]
+    }).sort({ updatedAt: -1 });
     
-    console.log(`✅ Found ${reports.length} pending edit requests`);
+    // Tag each report with requestType so frontend can differentiate
+    const tagged = reports.map(r => {
+      const obj = r.toObject();
+      if (obj.centerHeadEditRequest && obj.placementEditRequest) obj.requestType = 'both';
+      else if (obj.centerHeadEditRequest) obj.requestType = 'centerHead';
+      else obj.requestType = 'placement';
+      return obj;
+    });
     
-    res.json(reports);
+    console.log(`✅ Found ${tagged.length} pending edit requests`);
+    res.json(tagged);
   } catch (err) {
     console.error('❌ Error fetching edit requests:', err.message);
     res.status(500).json({ error: err.message });
@@ -1760,32 +1806,48 @@ async function sendAuditorReminderEmail(report, daysLeft) {
 }
 
 // ========================================
-async function sendEmailInBackground(to, cc, subject, customMessage, reportData) {
+async function sendEmailInBackground(to, cc, subject, customMessage, reportData, hierarchyEmails = []) {
   try {
     console.log('📧 Background email started...');
-    
-    const htmlBody = generateEmailHTML(reportData, customMessage || '');
-    
+
+    // Generate PDF once — use for both emails
     const pdfBuffer = await generatePDF(reportData);
     console.log('✅ PDF generated');
-    
-    const mailOptions = {
+
+    const attachment = [{
+      filename: `Audit_${reportData.centerCode}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    }];
+
+    // ── EMAIL 1: Center Head — full email with credentials + PDF ──
+    const htmlBody = generateEmailHTML(reportData, customMessage || '');
+    const mail1 = {
       from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
       to: to,
       cc: cc || undefined,
       subject: subject,
       html: htmlBody,
-      attachments: [{
-        filename: `Audit_${reportData.centerCode}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      }]
+      attachments: attachment
     };
-    
-    console.log('📧 Sending email...');
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent!', info.messageId);
-    
+    const info1 = await transporter.sendMail(mail1);
+    console.log('✅ Center Head email sent!', info1.messageId);
+
+    // ── EMAIL 2: Hierarchy (ZM/RH/ACM) — PDF only, no credentials ──
+    if (hierarchyEmails && hierarchyEmails.length > 0) {
+      const hierarchyHtml = generateEmailHTML(reportData, ''); // no custom message = no credentials
+      const mail2 = {
+        from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+        to: hierarchyEmails.join(', '),
+        subject: subject,
+        html: hierarchyHtml,
+        attachments: attachment
+      };
+      const info2 = await transporter.sendMail(mail2);
+      console.log('✅ Hierarchy email sent to:', hierarchyEmails.join(', '), info2.messageId);
+    }
+
+    // Update DB
     if (reportData._id) {
       await AuditReport.findByIdAndUpdate(reportData._id, {
         emailSent: true,
@@ -1793,7 +1855,7 @@ async function sendEmailInBackground(to, cc, subject, customMessage, reportData)
         emailSentTo: to
       });
     }
-    
+
   } catch (err) {
     console.error('❌ Email error:', err.message);
   }
@@ -1801,16 +1863,56 @@ async function sendEmailInBackground(to, cc, subject, customMessage, reportData)
 // ========================================
 app.post('/api/send-audit-email', async (req, res) => {
   try {
-    const { to, cc, subject, customMessage, reportData } = req.body;
-    
+    const { to, cc, subject, customMessage, reportData, hierarchyEmails } = req.body;
+
     console.log('\n📧 EMAIL REQUEST:', reportData.centerName);
-    
+    console.log('   To:', to);
+    console.log('   Hierarchy emails:', hierarchyEmails || []);
+
     res.json({ success: true, message: 'Email is being sent...' });
-    
-    // ✅ customMessage pass karo
-    sendEmailInBackground(to, cc, subject, customMessage || '', reportData);
-    
+
+    sendEmailInBackground(to, cc, subject, customMessage || '', reportData, hierarchyEmails || []);
+
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ========================================
+// GET HIERARCHY EMAILS by name matching
+// POST /api/hierarchy-emails
+// body: { zmName, regionHeadName, areaClusterManager }
+// ========================================
+app.post('/api/hierarchy-emails', async (req, res) => {
+  try {
+    const { zmName, regionHeadName, areaClusterManager } = req.body;
+    const emails = [];
+
+    const findEmail = async (name, role) => {
+      if (!name || name === '-') return;
+      const regex = new RegExp(name.trim().split(' ')[0], 'i'); // match first name
+      const user = await User.findOne({
+        role: role,
+        isActive: true,
+        $or: [
+          { firstname: regex },
+          { username: regex }
+        ]
+      });
+      if (user && user.email) {
+        emails.push(user.email);
+        console.log(`✅ Found ${role}: ${user.email}`);
+      }
+    };
+
+    await findEmail(zmName, 'Zonal Manager');
+    await findEmail(regionHeadName, 'Region Head');
+    await findEmail(areaClusterManager, 'Area Cluster Manager');
+
+    res.json({ success: true, emails: [...new Set(emails)] }); // dedupe
+  } catch (err) {
+    console.error('❌ Hierarchy emails error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1847,28 +1949,7 @@ app.get('/api/my-requests/:createdBy', async (req, res) => {
   }
 });
 
-app.get('/api/centers', async (req, res) => {
-  try {
-    const centers = await Center.find({ isActive: true }).sort({ centerCode: 1 });
-    console.log(`📍 Centers fetched: ${centers.length}`);
-    res.json(centers);
-  } catch (err) {
-    console.error('❌ Error fetching centers:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST create center
-app.post('/api/centers', async (req, res) => {
-  try {
-    const center = new Center(req.body);
-    await center.save();
-    console.log(`✅ Center created: ${center.centerCode}`);
-    res.json(center);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Duplicate endpoints removed
 
 // ========================================
 // HEALTH CHECK
@@ -2634,6 +2715,179 @@ app.post('/api/pending-approvals/center/:id/reject', async (req, res) => {
 // ========================================
 // START SERVER
 // ========================================
+
+// ========================================
+// HIERARCHY REPORTS - GET /api/hierarchy-reports
+// ========================================
+app.get('/api/hierarchy-reports', async (req, res) => {
+  try {
+    const { role, name, firstname, fy, status, centerType } = req.query;
+    let filter = {};
+    if (fy && fy !== 'All') filter.financialYear = fy;
+    if (status && status !== 'All') filter.currentStatus = status;
+    if (centerType && centerType !== 'All') filter.centerType = centerType;
+
+    const buildNameFilter = (field) => {
+      const patterns = [];
+      if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
+      if (firstname && firstname.trim() && firstname.trim() !== name?.trim())
+        patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
+      return patterns.length === 1 ? patterns[0] : { $or: patterns };
+    };
+
+    if (role === 'Operation Head') {}
+    else if (role === 'Zonal Manager' && (name || firstname)) Object.assign(filter, buildNameFilter('zmName'));
+    else if (role === 'Region Head' && (name || firstname)) Object.assign(filter, buildNameFilter('regionHeadName'));
+    else if ((role === 'Area Manager' || role === 'Cluster Manager') && (name || firstname)) {
+      const f1 = buildNameFilter('areaClusterManager');
+      const f2 = buildNameFilter(role === 'Area Manager' ? 'areaManager' : 'clusterManager');
+      filter.$or = [...(f1.$or||[f1]), ...(f2.$or||[f2])];
+    }
+    else if (role === 'Placement Coordinator' && (name || firstname)) Object.assign(filter, buildNameFilter('placementCoordinator'));
+    else if (role === 'Senior Manager Placement' && (name || firstname)) Object.assign(filter, buildNameFilter('seniorManagerPlacement'));
+    else if (role === 'National Head Placement' && (name || firstname)) Object.assign(filter, buildNameFilter('nationalHeadPlacement'));
+    else if (role !== 'Operation Head') return res.status(400).json({ error: 'Invalid role or missing name' });
+
+    const reports = await AuditReport.find(filter)
+      .select('centerCode centerName centerType zmName regionHeadName areaClusterManager areaManager clusterManager placementCoordinator seniorManagerPlacement nationalHeadPlacement financialYear grandTotal currentStatus auditDateString auditStatus projectName location auditedBy auditPeriod centerHeadName chName frontOfficeScore deliveryProcessScore placementScore managementScore placementApplicable remarksText centerRemarks centerHeadRemarksLocked submissionStatus placementRemarksSubmitted placementRemarksLocked placementRemarksEditedOnce placementRemarksDate placementEditRequest placementEditRequestBy placementEditRequestDate PP1 PP2 PP3 PP4 FO1 FO2 FO3 FO4 FO5 DP1 DP2 DP3 DP4 DP5 DP6 DP7 DP8 DP9 DP10 DP11 MP1 MP2 MP3 MP4 MP5 MP6 MP7')
+      .sort({ auditDateString: -1 });
+
+    console.log(`Found ${reports.length} hierarchy reports for ${role}`);
+    res.json(reports);
+  } catch (err) {
+    console.error('Hierarchy reports error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/audit-reports/:id/placement-remarks
+app.put('/api/audit-reports/:id/placement-remarks', async (req, res) => {
+  try {
+    const { placementRemarks, submittedBy } = req.body;
+    const report = await AuditReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    // ✅ GUARD 1: Already permanently locked (edited once OR CH submitted)
+    if (report.placementRemarksEditedOnce)
+      return res.status(403).json({ error: 'Placement remarks are permanently locked. No further edits allowed.', permanentlyLocked: true });
+
+    // ✅ GUARD 2: Center Head has submitted → placement permanently locked
+    if (report.centerRemarksDate)
+      return res.status(403).json({ error: 'Center Head has submitted. Placement remarks are permanently locked.', centerHeadLocked: true });
+
+    // ✅ GUARD 3: Locked + edit request still pending
+    if (report.placementRemarksLocked && report.placementEditRequest)
+      return res.status(403).json({ error: 'Edit request pending admin approval.', requestPending: true });
+
+    // ✅ GUARD 4: Locked + no approved edit request (sneaky direct call)
+    if (report.placementRemarksLocked && !report.placementEditRequest && report.placementRemarksDate)
+      return res.status(403).json({ error: 'Remarks locked. Request edit permission from admin.' });
+
+    // Save PP remarks
+    ['PP1','PP2','PP3','PP4'].forEach(ppId => {
+      if (placementRemarks?.[ppId] !== undefined) {
+        const ex = report[ppId] ? (report[ppId].toObject ? report[ppId].toObject() : {...report[ppId]}) : {};
+        report[ppId] = { ...ex, centerHeadRemarks: placementRemarks[ppId] };
+        report.markModified(ppId);
+      }
+    });
+
+    report.placementRemarksSubmittedBy = submittedBy || '';
+
+    // ✅ Use placementRemarksDate to detect 1st vs 2nd submit (same fix as center-remarks)
+    const isSecondSubmit = !!report.placementRemarksDate;
+    report.placementRemarksDate = new Date().toLocaleString('en-GB');
+
+    if (isSecondSubmit) {
+      // 2nd submit → permanently locked
+      report.placementRemarksEditedOnce = true;
+      report.placementRemarksLocked = true;
+      report.placementEditRequest = false;
+      report.placementEditRequestBy = '';
+      report.placementEditRequestDate = '';
+      console.log('🔒 Placement remarks PERMANENTLY LOCKED (2nd submit)');
+    } else {
+      // 1st submit → locked, can request 1 edit
+      report.placementRemarksSubmitted = true;
+      report.placementRemarksLocked = true;
+      console.log('🔒 Placement remarks LOCKED (1st submit)');
+    }
+
+    await report.save();
+    res.json({
+      success: true,
+      locked: report.placementRemarksLocked,
+      editedOnce: report.placementRemarksEditedOnce,
+      submitted: report.placementRemarksSubmitted
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/audit-reports/:id/request-placement-edit
+app.post('/api/audit-reports/:id/request-placement-edit', async (req, res) => {
+  try {
+    const { coordinatorName } = req.body;
+    const report = await AuditReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    if (report.placementRemarksEditedOnce)
+      return res.status(403).json({ error: 'Permanently locked. No edit requests allowed.', permanentlyLocked: true });
+    if (report.centerRemarksDate)
+      return res.status(403).json({ error: 'Center Head has submitted. Cannot request edit.', centerHeadLocked: true });
+    if (report.placementEditRequest)
+      return res.status(409).json({ error: 'Edit request already pending.', alreadyPending: true });
+    if (!report.placementRemarksLocked)
+      return res.status(400).json({ error: 'Remarks not locked. You can edit directly.' });
+
+    report.placementEditRequest = true;
+    report.placementEditRequestBy = coordinatorName || '';
+    report.placementEditRequestDate = new Date().toLocaleString('en-GB');
+    await report.save();
+
+    res.json({ success: true, message: 'Edit request sent to admin' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/audit-reports/:id/approve-placement-edit
+app.post('/api/audit-reports/:id/approve-placement-edit', async (req, res) => {
+  try {
+    const { adminName } = req.body;
+    const report = await AuditReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    if (report.placementRemarksEditedOnce)
+      return res.status(403).json({ error: 'Cannot approve. Permanently locked.' });
+    if (!report.placementEditRequest)
+      return res.status(400).json({ error: 'No pending edit request found.' });
+
+    report.placementRemarksLocked = false;
+    report.placementEditRequest = false;
+    report.placementEditRequestBy = '';
+    report.placementEditRequestDate = '';
+    await report.save();
+
+    res.json({ success: true, message: 'Placement edit approved', report });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/audit-reports/:id/placement-status
+app.get('/api/audit-reports/:id/placement-status', async (req, res) => {
+  try {
+    const report = await AuditReport.findById(req.params.id)
+      .select('PP1 PP2 PP3 PP4 placementRemarksSubmitted placementRemarksLocked placementRemarksEditedOnce placementRemarksDate placementRemarksSubmittedBy placementEditRequest placementEditRequestBy placementEditRequestDate centerHeadRemarksLocked centerRemarksDate centerCode centerName placementApplicable');
+    if (!report) return res.status(404).json({ error: 'Not found' });
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 ========================================`);
   console.log(`🚀 NIIT Audit System - MongoDB Server`);

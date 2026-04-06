@@ -153,8 +153,72 @@ const generateEmailSubject = (reportData) => {
 
 const generatePDFHTML = () => ''; // unused, pdfGenerator.js handles PDF
 
+// Email for Placement Coordinator - same template, PP focused note
+const generatePlacementEmailHTML = (reportData) => {
+  const summaryTable = generateSummaryTableHTML(reportData);
+  const pp = parseFloat(reportData.placementScore) || 0;
+  const ppStatus = getStatusText(pp, 15);
+  const ppColor = getStatusColor(pp, 15);
+  const loginUrl = 'https://audit-tool-liard.vercel.app';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0; padding:0; font-family:Arial, sans-serif; background-color:#f5f5f5;">
+  <div style="max-width:800px; margin:0 auto; background-color:#ffffff;">
+    <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding:30px; text-align:center;">
+      <h1 style="color:white; margin:0; font-size:28px;">📋 Audit Report</h1>
+      <p style="color:rgba(255,255,255,0.9); margin:10px 0 0; font-size:16px;">
+        ${reportData.centerName} (${reportData.centerCode})
+      </p>
+    </div>
+    <div style="padding:30px;">
+      <p style="font-size:16px; color:#333; margin-bottom:20px;">Dear ${reportData.placementCoordinator || 'Placement Coordinator'},</p>
+      <p style="font-size:15px; color:#555; line-height:1.6;">
+        Please find below the audit report summary for <strong>${reportData.centerName}</strong>.
+        As the Placement Coordinator, please review the <strong>Placement Process</strong> section and submit your remarks.
+      </p>
+      <div style="margin:25px 0; overflow-x:auto;">${summaryTable}</div>
+      <div style="background:#fff8f0; padding:15px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #ff9800;">
+        <p style="margin:0; color:#e65100; font-size:14px; font-weight:bold;">
+          🏆 Placement Process Score: <span style="color:${ppColor}">${pp.toFixed(2)} / 15 — ${ppStatus}</span>
+        </p>
+        <p style="margin:8px 0 0; color:#666; font-size:13px;">
+          Please login to submit your remarks for PP1–PP4 checkpoints.
+        </p>
+      </div>
+      <div style="background:#e3f2fd; padding:15px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #2196f3;">
+        <p style="margin:0; color:#1565c0; font-size:14px;">
+          🔗 <strong>Login here to submit your placement remarks:</strong><br/>
+          <a href="${loginUrl}" style="color:#1565c0;">${loginUrl}</a>
+        </p>
+      </div>
+      <div style="background:#fff3e0; padding:15px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #ff9800;">
+        <p style="margin:0; color:#e65100; font-size:14px;">
+          📎 <strong>Attachment:</strong> Full detailed audit report is attached as PDF for your reference.
+        </p>
+      </div>
+      <p style="font-size:14px; color:#666; margin-top:30px; line-height:1.6;">
+        Best Regards,<br/><strong>NIIT Audit Team</strong>
+      </p>
+    </div>
+    <div style="background:#f5f5f5; padding:20px; text-align:center; border-top:1px solid #ddd;">
+      <p style="margin:0; color:#999; font-size:12px;">
+        This is an automated email from NIIT Audit System. Please do not reply directly to this email.
+      </p>
+      <p style="margin:10px 0 0; color:#999; font-size:11px;">
+        © ${new Date().getFullYear()} NIIT Limited. All rights reserved.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
 module.exports = {
   generateEmailHTML,
+  generatePlacementEmailHTML,
   generatePDFHTML,
   generateEmailSubject,
   generateSummaryTableHTML,

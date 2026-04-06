@@ -87,13 +87,19 @@ const ReportModal = ({ report, onClose }) => {
                 ['Project Name', report.projectName],
                 ['ZM Name', report.zmName],
                 ['Region Head', report.regionHeadName],
-                ['Area/Cluster Mgr', report.areaClusterManager],
+                ['Area Manager', report.areaManager || report.areaClusterManager || '-'],
+                ['Cluster Manager', report.clusterManager || '-'],
                 ['Center Head', report.centerHeadName || report.chName || '-'],
                 ['Center Type', <span style={{ background: report.centerType==='CDC'?'#e3f2fd':report.centerType==='SDC'?'#f3e5f5':'#e8f5e9', color: report.centerType==='CDC'?'#1565c0':report.centerType==='SDC'?'#6a1b9a':'#2e7d32', padding:'2px 10px', borderRadius:'12px', fontWeight:'700', fontSize:'12px' }}>{report.centerType}</span>],
                 ['Location', report.location],
                 ['Audited By', report.auditedBy],
                 ['Audit Period', report.auditPeriod],
                 ['Financial Year', <span style={{ color: '#1565c0', fontWeight: '700' }}>{report.financialYear}</span>],
+                ...(report.placementApplicable === 'yes' ? [
+                  ['Placement Coord.', report.placementCoordinator || '-'],
+                  ['Sr. Mgr Placement', report.seniorManagerPlacement || '-'],
+                  ['Natl. Head Placement', report.nationalHeadPlacement || '-'],
+                ] : []),
               ].map(([lbl, val]) => (
                 <div key={lbl} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
                   <span style={{ fontSize: '12px', color: '#555', fontWeight: '600', minWidth: '100px' }}>{lbl}:</span>
@@ -255,7 +261,7 @@ const HierarchyDashboard = () => {
 
   useEffect(() => {
     if (!loggedUser?.username) { alert('Unauthorized!'); navigate('/'); return; }
-    const allowed = ['Zonal Manager', 'Region Head', 'Area Cluster Manager', 'Operation Head'];
+    const allowed = ['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Operation Head', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'];
     if (!allowed.includes(role)) { alert('Unauthorized!'); navigate('/'); return; }
     loadReports();
   }, []);
@@ -291,7 +297,7 @@ const HierarchyDashboard = () => {
     return true;
   });
 
-  const getRoleLabel = () => ({'Zonal Manager':'🗺️ Zonal Manager','Region Head':'📍 Region Head','Area Cluster Manager':'🏘️ Area / Cluster Manager','Operation Head':'🏢 Operation Head'}[role] || role);
+  const getRoleLabel = () => ({'Zonal Manager':'🗺️ Zonal Manager','Region Head':'📍 Region Head','Area Manager':'🏘️ Area Manager','Cluster Manager':'🏘️ Cluster Manager','Operation Head':'🏢 Operation Head','Placement Coordinator':'📋 Placement Coordinator','Senior Manager Placement':'🏆 Senior Manager Placement','National Head Placement':'🎯 National Head Placement'}[role] || role);
 
   const getStatusBadge = (status) => {
     const map = {'Approved':['#e8f5e9','#2e7d32','✅ Approved'],'Pending with Supervisor':['#fff3e0','#e65100','⏳ Pending'],'Not Submitted':['#fce4ec','#c62828','📝 Not Submitted'],'Closed':['#ede7f6','#4527a0','🔒 Closed'],'Sent Back':['#e3f2fd','#1565c0','↩️ Sent Back']};
@@ -370,12 +376,15 @@ const HierarchyDashboard = () => {
         ) : (
           <table className="reports-table">
             <thead>
-              <tr>
-                <th>#</th><th>Center Code</th><th>Center Name</th><th>Type</th><th>Location</th>
-                {role === 'Operation Head' && <th>ZM</th>}
-                {(role === 'Operation Head' || role === 'Zonal Manager') && <th>Region Head</th>}
-                {(role === 'Operation Head' || role === 'Zonal Manager' || role === 'Region Head') && <th>ACM</th>}
-                <th>FY</th><th>Audit Period</th><th>Score</th><th>Audit Status</th><th>Submit Status</th><th>View</th>
+              <tr style={{ background: 'linear-gradient(135deg, #1a237e, #3949ab)' }}>
+                {['#','Center Code','Center Name','Type','Location',
+                  ...(role==='Operation Head'?['ZM']:[]),
+                  ...(role==='Operation Head'||role==='Zonal Manager'?['Region Head']:[]),
+                  ...(role==='Operation Head'||role==='Zonal Manager'||role==='Region Head'?['Area Mgr','Cluster Mgr']:[]),
+                  'FY','Audit Period','Score','Audit Status','Submit Status','Report Status','View'
+                ].map(h => (
+                  <th key={h} style={{ padding:'12px 14px', color:'white', fontWeight:'700', fontSize:'12px', textTransform:'uppercase', whiteSpace:'nowrap', letterSpacing:'0.4px', textAlign:'left' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -392,12 +401,25 @@ const HierarchyDashboard = () => {
                     <td>{r.location||'-'}</td>
                     {role==='Operation Head'&&<td>{r.zmName||'-'}</td>}
                     {(role==='Operation Head'||role==='Zonal Manager')&&<td>{r.regionHeadName||'-'}</td>}
-                    {(role==='Operation Head'||role==='Zonal Manager'||role==='Region Head')&&<td>{r.areaClusterManager||'-'}</td>}
+                    {(role==='Operation Head'||role==='Zonal Manager'||role==='Region Head')&&<td>{r.areaManager||r.areaClusterManager||'-'}</td>}
+                    {(role==='Operation Head'||role==='Zonal Manager'||role==='Region Head')&&<td>{r.clusterManager||'-'}</td>}
                     <td>{r.financialYear}</td>
                     <td>{r.auditPeriod||'-'}</td>
                     <td>{getScoreBadge(s)}</td>
                     <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600',background:ac[0],color:ac[1]}}>{al}</span></td>
                     <td>{getStatusBadge(r.currentStatus)}</td>
+                    <td>
+                      {r.remarksEditedOnce
+                        ? <span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',background:'#fce4ec',color:'#c62828',border:'1px solid #ef9a9a'}}>🔒 Perm. Locked</span>
+                        : r.centerHeadRemarksLocked && r.centerRemarksDate
+                        ? <span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',background:'#ede7f6',color:'#4527a0',border:'1px solid #7b1fa2'}}>🔒 Submitted</span>
+                        : r.centerHeadEditRequest
+                        ? <span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',background:'#dbeafe',color:'#1e40af',border:'1px solid #3b82f6'}}>✏️ Edit Req.</span>
+                        : r.centerRemarksDate
+                        ? <span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',background:'#e8f5e9',color:'#2e7d32',border:'1px solid #4caf50'}}>✅ Submitted</span>
+                        : <span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',background:'#fff8e1',color:'#f57f17',border:'1px solid #fbc02d'}}>⏳ Pending</span>
+                      }
+                    </td>
                     <td>
                       <button onClick={() => setSelectedReport(r)}
                         style={{background:'linear-gradient(135deg,#11998e,#38ef7d)',color:'white',border:'none',padding:'6px 14px',borderRadius:'6px',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>

@@ -315,19 +315,38 @@ const CenterDashboard = () => {
     }
   };
 
-  const handleViewReport = (report) => {
-    setSelectedReport(report);
+  const handleViewReport = async (report) => {
+    // ✅ Always fetch fresh data from server — stale local state causes wrong lock display
+    let freshReport = report;
+    try {
+      const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/fresh`);
+      if (res.ok) {
+        freshReport = await res.json();
+        // Also update editRequestStatus with fresh data
+        setEditRequestStatus(prev => ({
+          ...prev,
+          [freshReport._id]: {
+            locked: freshReport.centerHeadRemarksLocked || false,
+            requestPending: freshReport.centerHeadEditRequest || false,
+            editedOnce: freshReport.remarksEditedOnce || false
+          }
+        }));
+      }
+    } catch (e) {
+      console.warn('Fresh fetch failed, using cached report');
+    }
+
+    setSelectedReport(freshReport);
     
     // Load remarks from centerHeadCheckpointRemarks object
-    let existingRemarks = report.centerHeadCheckpointRemarks || {};
+    let existingRemarks = freshReport.centerHeadCheckpointRemarks || {};
     
     // If object is empty, try loading from individual checkpoint fields (backward compatibility)
     if (Object.keys(existingRemarks).length === 0) {
       const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
-      
       checkpointIds.forEach(cpId => {
-        if (report[cpId]?.centerHeadRemarks) {
-          existingRemarks[cpId] = report[cpId].centerHeadRemarks;
+        if (freshReport[cpId]?.centerHeadRemarks) {
+          existingRemarks[cpId] = freshReport[cpId].centerHeadRemarks;
         }
       });
     }
@@ -353,17 +372,48 @@ const CenterDashboard = () => {
         });
         
         if (response.ok) {
-          alert('Edit request sent to admin!');
+          alert('✅ Edit request sent to admin! You will be notified once approved.');
+          loadMyReports();
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          if (response.status === 403 && errData.permanentlyLocked) {
+            alert('🔒 Remarks are permanently locked. No further edits allowed.');
+          } else if (response.status === 409 && errData.alreadyPending) {
+            alert('⏳ Edit request already pending. Please wait for admin approval.');
+          } else if (response.status === 400) {
+            alert('ℹ️ ' + (errData.error || 'Remarks are not locked. You can edit directly.'));
+          } else {
+            alert('❌ ' + (errData.error || 'Failed to send edit request.'));
+          }
           loadMyReports();
         }
       } catch (err) {
-        alert('Error: ' + err.message);
+        alert('❌ Error: ' + err.message);
       }
     }
   };
 
   const handleSubmitObservations = async () => {
     if (!selectedReport) return;
+    
+    // Check if permanently locked (edited once already)
+    if (editRequestStatus[selectedReport._id]?.editedOnce) {
+      alert('🔒 Remarks are permanently locked. No further edits allowed.');
+      return;
+    }
+
+    // Check if locked and no edit approval given
+    if (editRequestStatus[selectedReport._id]?.locked && !editRequestStatus[selectedReport._id]?.requestPending) {
+      alert('🔒 Remarks are locked. Please request edit permission from admin.');
+      return;
+    }
+
+    // ✅ PLACEMENT CHECK: Sirf 1st submit pe — agar CH pehle submit kar chuka hai toh edit hai, block mat karo
+    const isEditSubmit = !!selectedReport.centerRemarksDate;
+    if (!isEditSubmit && selectedReport.placementApplicable === 'yes' && !selectedReport.placementRemarksSubmitted) {
+      alert('⚠️ Placement Coordinator ne abhi remarks submit nahi kiye hain.\n\nPlacement remarks submit hone ke baad hi aap submit kar sakte hain.');
+      return;
+    }
     
     if (!window.confirm('Submit your observations? This will lock your remarks until admin approves any future edit requests.')) {
       return;
@@ -383,11 +433,36 @@ const CenterDashboard = () => {
       });
       
       if (response.ok) {
+        // Immediately update local state — prevent any re-render showing submit button
+        setEditRequestStatus(prev => ({
+          ...prev,
+          [selectedReport._id]: {
+            ...prev[selectedReport._id],
+            locked: true,
+            editedOnce: prev[selectedReport._id]?.locked ? true : prev[selectedReport._id]?.editedOnce,
+            requestPending: false
+          }
+        }));
         alert('✅ Observations submitted successfully!\n\nYour remarks are now locked. Contact admin if you need to make changes.');
         setShowModal(false);
         loadMyReports();
       } else {
-        alert('❌ Failed to submit observations');
+        const errData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          if (errData.permanentlyLocked) {
+            alert('🔒 Remarks are permanently locked. No further edits allowed.');
+          } else if (errData.requestPending) {
+            alert('⏳ Edit request is pending admin approval. Please wait.');
+          } else if (errData.placementPending) {
+            alert('⚠️ Placement Coordinator ne abhi remarks submit nahi kiye.\n\nPehle placement remarks submit hon.');
+          } else {
+            alert('🔒 ' + (errData.error || 'Remarks are locked.'));
+          }
+          setShowModal(false);
+          loadMyReports();
+        } else {
+          alert('❌ Failed to submit observations');
+        }
       }
     } catch (err) {
       alert('❌ Error: ' + err.message);
@@ -456,8 +531,18 @@ const CenterDashboard = () => {
               <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
               <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
               <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
-              <div><strong>Area/Cluster Mgr:</strong> {centerData.areaClusterManager || '-'}</div>
+              <div><strong>Area Manager:</strong> {myReports[0]?.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
+              <div><strong>Cluster Manager:</strong> {myReports[0]?.clusterManager || centerData.clusterManager || '-'}</div>
               <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+              {(myReports[0]?.placementCoordinator || centerData.placementCoordinator) && (
+                <div><strong>Placement Coordinator:</strong> {myReports[0]?.placementCoordinator || centerData.placementCoordinator}</div>
+              )}
+              {(myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
+                <div><strong>Sr. Manager Placement:</strong> {myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
+              )}
+              {(myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
+                <div><strong>National Head Placement:</strong> {myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
+              )}
               <div><strong>Center Type:</strong> <span style={{
                 padding: '2px 8px',
                 borderRadius: '8px',
@@ -773,8 +858,18 @@ const CenterDashboard = () => {
                     <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
                     <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
                     <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
-                    <div><strong>Area/Cluster Manager:</strong> {centerData.areaClusterManager || '-'}</div>
+                    <div><strong>Area Manager:</strong> {selectedReport.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
+                    <div><strong>Cluster Manager:</strong> {selectedReport.clusterManager || centerData.clusterManager || '-'}</div>
                     <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+                    {(selectedReport.placementCoordinator || centerData.placementCoordinator) && (
+                      <div><strong>Placement Coordinator:</strong> {selectedReport.placementCoordinator || centerData.placementCoordinator}</div>
+                    )}
+                    {(selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
+                      <div><strong>Sr. Manager Placement:</strong> {selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
+                    )}
+                    {(selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
+                      <div><strong>National Head Placement:</strong> {selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
+                    )}
                     <div><strong>Center Type:</strong> <span style={{
                       padding: '2px 6px',
                       borderRadius: '6px',
@@ -831,7 +926,7 @@ const CenterDashboard = () => {
 
                       {checkpoints.map((cp, cpIdx) => {
                         const cpData = selectedReport[cp.id] || {};
-                        const isLocked = editRequestStatus[selectedReport._id]?.locked;
+                        const isLocked = editRequestStatus[selectedReport._id]?.locked || editRequestStatus[selectedReport._id]?.editedOnce;
 
                         return (
                           <tr key={cp.id} style={{ background: cpIdx % 2 === 0 ? 'white' : '#f9fafb' }}>
@@ -849,7 +944,7 @@ const CenterDashboard = () => {
                                 value={checkpointRemarks[cp.id] || ''}
                                 onChange={(e) => handleCheckpointRemarkChange(cp.id, e.target.value)}
                                 disabled={isLocked}
-                                placeholder={isLocked ? 'Locked' : 'Enter your remarks here...'}
+                                placeholder={isLocked ? '' : 'Enter your remarks here...'}
                                 rows={3}
                                 style={{ 
                                   width: '100%', 
@@ -885,30 +980,80 @@ const CenterDashboard = () => {
             </div>
 
             <div style={{ padding: '20px 25px', background: 'white', borderTop: '2px solid #e5e7eb' }}>
-              {editRequestStatus[selectedReport._id]?.locked ? (
-                <div>
-                  <div style={{ background: '#fef3c7', padding: '16px', borderRadius: '10px', marginBottom: '12px', textAlign: 'center', border: '2px solid #fbbf24' }}>
-                    <div style={{ fontWeight: '700', color: '#92400e' }}>Remarks Locked</div>
-                  </div>
-                  {editRequestStatus[selectedReport._id]?.requestPending ? (
-                    <div style={{ background: '#dbeafe', padding: '14px', borderRadius: '10px', textAlign: 'center', color: '#1e40af', fontWeight: '700' }}>
-                      Edit request pending
+              {(() => {
+                const st = editRequestStatus[selectedReport._id] || {};
+
+                // ── CASE 1: Permanently locked (2nd submit done) — har haal mein block ──
+                if (st.editedOnce) {
+                  return (
+                    <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '10px', textAlign: 'center', border: '2px solid #cbd5e1' }}>
+                      <div style={{ fontSize: '22px', marginBottom: '6px' }}>🔒</div>
+                      <div style={{ fontWeight: '700', color: '#64748b', fontSize: '15px' }}>Remarks Permanently Locked</div>
+                      <div style={{ color: '#94a3b8', fontSize: '13px', marginTop: '4px' }}>No further edits allowed</div>
                     </div>
-                  ) : editRequestStatus[selectedReport._id]?.editedOnce ? (
-                    <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '10px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>
-                      🔒 Remarks permanently locked — no further edits allowed
+                  );
+                }
+
+                // ── CASE 2: Locked + edit request pending admin approval ──
+                if (st.locked && st.requestPending) {
+                  return (
+                    <div>
+                      <div style={{ background: '#fef3c7', padding: '12px 16px', borderRadius: '10px', marginBottom: '10px', textAlign: 'center', border: '2px solid #fbbf24' }}>
+                        <div style={{ fontWeight: '700', color: '#92400e' }}>🔒 Remarks Locked</div>
+                      </div>
+                      <div style={{ background: '#dbeafe', padding: '14px', borderRadius: '10px', textAlign: 'center', color: '#1e40af', fontWeight: '700' }}>
+                        ⏳ Edit request pending — awaiting admin approval
+                      </div>
                     </div>
-                  ) : (
-                    <button onClick={() => { setShowModal(false); handleRequestEdit(selectedReport._id); }} style={{ width: '100%', padding: '16px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: '700' }}>
-                      ✏️ Request Edit Permission
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <button onClick={handleSubmitObservations} disabled={saving} style={{ width: '100%', padding: '18px', background: saving ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '18px', fontWeight: '700' }}>
-                  {saving ? 'Submitting...' : 'Submit All Observations'}
-                </button>
-              )}
+                  );
+                }
+
+                // ── CASE 3: Locked, no pending request → show Request Edit button ──
+                if (st.locked) {
+                  return (
+                    <div>
+                      <div style={{ background: '#fef3c7', padding: '12px 16px', borderRadius: '10px', marginBottom: '10px', textAlign: 'center', border: '2px solid #fbbf24' }}>
+                        <div style={{ fontWeight: '700', color: '#92400e' }}>🔒 Remarks Locked</div>
+                        <div style={{ color: '#b45309', fontSize: '12px', marginTop: '3px' }}>You have used 0 of your 1 allowed edit</div>
+                      </div>
+                      <button
+                        onClick={() => { setShowModal(false); handleRequestEdit(selectedReport._id); }}
+                        style={{ width: '100%', padding: '16px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '15px' }}
+                      >
+                        ✏️ Request Edit Permission
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ── CASE 4: Unlocked (either 1st time OR admin approved edit) → Submit ──
+                // ppBlocked sirf 1st submit pe — agar CH pehle submit kar chuka hai (centerRemarksDate set)
+                // toh yeh 2nd submit (edit) hai — placement block mat karo
+                const isEditSubmit = !!selectedReport.centerRemarksDate; // already submitted once
+                const ppBlocked = !isEditSubmit && selectedReport.placementApplicable === 'yes' && !selectedReport.placementRemarksSubmitted;
+                if (ppBlocked) {
+                  return (
+                    <div style={{ background: '#fff8e1', border: '2px solid #f59e0b', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', marginBottom: '6px' }}>⏳</div>
+                      <div style={{ fontWeight: '700', color: '#92400e', fontSize: '14px', marginBottom: '4px' }}>
+                        Placement Remarks Pending
+                      </div>
+                      <div style={{ color: '#b45309', fontSize: '12px' }}>
+                        Placement Coordinator ke remarks aane ke baad submit hoga
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    onClick={handleSubmitObservations}
+                    disabled={saving}
+                    style={{ width: '100%', padding: '18px', background: saving ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '18px', fontWeight: '700' }}
+                  >
+                    {saving ? 'Submitting...' : 'Submit All Observations'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

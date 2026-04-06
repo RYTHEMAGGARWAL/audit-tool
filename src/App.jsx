@@ -4,6 +4,7 @@ import { UsersProvider } from './contexts/UsersContext';
 import Login from './Components/Login';
 import Admin from './Components/Admin';
 import UserDashboard from './Components/UserDashboard';
+import PlacementDashboard from './Components/PlacementDashboard';
 import CenterDashboard from './Components/CenterDashboard';
 import HierarchyDashboard from './Components/HierarchyDashboard';
 import './App.css';
@@ -19,6 +20,7 @@ function App() {
             <Route path="/user-dashboard" element={<UserDashboard />} />
             <Route path="/center-dashboard" element={<CenterDashboard />} />
             <Route path="/hierarchy-dashboard" element={<HierarchyDashboard />} />
+             <Route path="/placement-dashboard" element={<PlacementDashboard />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>

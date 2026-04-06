@@ -200,7 +200,8 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 /* ── LOADING / EMPTY ── */
@@ -238,6 +239,7 @@
 /* ── REPORTS TABLE ── */
 .reports-table {
   width: 100%;
+  min-width: 1600px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -250,11 +252,14 @@
 .reports-table thead th {
   padding: 13px 14px;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   white-space: nowrap;
+  color: white !important;
+  background: transparent;
+  -webkit-text-fill-color: white;
 }
 
 .reports-table tbody tr { transition: background 0.15s; }

@@ -43,6 +43,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   const [ccList, setCcList] = useState([]);
   const [showToSug, setShowToSug] = useState(false);
   const [showCcSug, setShowCcSug] = useState(false);
+  const [hierarchyEmails, setHierarchyEmails] = useState([]); // ZM/RH/ACM emails
+  const [placementEmailList, setPlacementEmailList] = useState([]); // Placement Coordinator emails
+  const [hierarchyLoading, setHierarchyLoading] = useState(false);
 
   const getSavedEmails = () => {
     try { return JSON.parse(localStorage.getItem('savedEmailList') || '[]'); }
@@ -67,6 +70,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   
   // NEW: Placement Applicable state
   const [placementApplicable, setPlacementApplicable] = useState(null);
+  const [placementCoordinator, setPlacementCoordinator] = useState('');
+  const [seniorManagerPlacement, setSrmPlacement] = useState('');
+  const [nationalHeadPlacement, setNationalHeadPlacement] = useState('');
   // Financial Year & Search states
   const [selectedFinancialYear, setSelectedFinancialYear] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,36 +80,22 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   const generateFinancialYears = () => {
     const today = new Date();
     const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1; // 1-12
-    
-    // Financial Year logic: April to March
-    let fyStartYear, fyEndYear;
-    
-    if (currentMonth >= 4) {
-      // Apr-Dec: Current year to next year
-      // Example: Aug 2025 → FY26 (2025-2026)
-      fyStartYear = currentYear;
-      fyEndYear = currentYear + 1;
-    } else {
-      // Jan-Mar: Previous year to current year
-      // Example: Jan 2026 → FY26 (2025-2026)
-      fyStartYear = currentYear - 1;
-      fyEndYear = currentYear;
+    const currentMonth = today.getMonth() + 1;
+
+    // Current FY
+    let fyEndYear = currentMonth >= 4 ? currentYear + 1 : currentYear;
+
+    // Return current FY + previous FY only (2 total)
+    const fys = [];
+    for (let i = 0; i < 2; i++) {
+      const endYear = fyEndYear - i;
+      const startYear = endYear - 1;
+      fys.push({
+        code: `FY${String(endYear).slice(-2)}`,
+        label: `${startYear}-${endYear}`
+      });
     }
-    
-    const fyCode = `FY${String(fyEndYear).slice(-2)}`;
-    const fyLabel = `${fyStartYear}-${fyEndYear}`;
-    
-    console.log(`📅 Current Date: ${today.toLocaleDateString()}`);
-    console.log(`📅 Current Financial Year: ${fyCode} (${fyLabel})`);
-    
-    // Return only current financial year
-    return [
-      { 
-        code: fyCode,
-        label: fyLabel
-      }
-    ];
+    return fys;
   };
   
   const financialYears = generateFinancialYears();
@@ -298,6 +290,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     setShowAuditTable(false);
     setEditableRemarks({});
     setPlacementApplicable(null);
+    setPlacementCoordinator('');
+    setSrmPlacement('');
+    setNationalHeadPlacement('');
     setSelectedFinancialYear('');
     setSearchQuery('');
     
@@ -406,6 +401,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
         if (existingReport.placementApplicable) {
           setPlacementApplicable(existingReport.placementApplicable);
         }
+        if (existingReport.placementCoordinator) setPlacementCoordinator(existingReport.placementCoordinator);
+        if (existingReport.seniorManagerPlacement) setSrmPlacement(existingReport.seniorManagerPlacement);
+        if (existingReport.nationalHeadPlacement) setNationalHeadPlacement(existingReport.nationalHeadPlacement);
       } catch (e) {
         console.error('Error loading saved audit data:', e);
         initializeAuditData();
@@ -673,6 +671,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   ? new Date(selectedCenter.auditDate).toLocaleDateString('en-GB')
   : '',
         placementApplicable: placementApplicable === 'no' ? 'no' : 'yes',
+        placementCoordinator: placementApplicable === 'yes' ? placementCoordinator : '',
+        seniorManagerPlacement: placementApplicable === 'yes' ? seniorManagerPlacement : '',
+        nationalHeadPlacement: placementApplicable === 'yes' ? nationalHeadPlacement : '',
         ...auditData,
         submissionStatus: 'Not Submitted',
         currentStatus: 'Not Submitted',
@@ -839,21 +840,66 @@ If you have any suggestions or thoughts related to the audit for further improve
     });
     setShowEmailForm(true);
 
-    // Async: Center User ka email + credentials fetch karo
+    // Async 1: Center user email → auto-fill toList
     try {
       const res = await fetch(`${API_URL}/api/center-user-email/${report.centerCode}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.email) {
+          setToList([data.email.toLowerCase()]);
           setEmailData(prev => ({
             ...prev,
-            to: data.email,
             message: buildMessage(data.username, data.password)
           }));
         }
       }
     } catch (err) {
       console.error('❌ Error fetching center user email:', err);
+    }
+
+    // Async 2: Hierarchy emails (ZM/RH/ACM) — PDF only
+    try {
+      setHierarchyLoading(true);
+      const hRes = await fetch(`${API_URL}/api/hierarchy-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          zmName: report.zmName || '',
+          regionHeadName: report.regionHeadName || '',
+          areaClusterManager: report.areaClusterManager || '',
+          areaManager: report.areaManager || report.areaClusterManager || '',
+          clusterManager: report.clusterManager || ''
+        })
+      });
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        setHierarchyEmails(hData.emails || []);
+      }
+    } catch (err) {
+      console.error('❌ Hierarchy emails error:', err);
+    } finally {
+      setHierarchyLoading(false);
+    }
+
+    // Async 3: Placement Coordinator email — if placement applicable
+    if (report.placementApplicable !== 'no' && report.placementCoordinator) {
+      try {
+        const pRes = await fetch(`${API_URL}/api/hierarchy-emails`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            placementCoordinator: report.placementCoordinator || '',
+            seniorManagerPlacement: report.seniorManagerPlacement || '',
+            nationalHeadPlacement: report.nationalHeadPlacement || ''
+          })
+        });
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          setPlacementEmailList(pData.emails || []);
+        }
+      } catch (err) {
+        console.error('❌ Placement emails error:', err);
+      }
     }
   };
 
@@ -863,10 +909,12 @@ If you have any suggestions or thoughts related to the audit for further improve
     setEmailData({ to: '', cc: '', subject: '', message: '' });
     setToList([]); setCcList([]); setToInput(''); setCcInput('');
     setShowToSug(false); setShowCcSug(false);
+    setHierarchyEmails([]);
+    setPlacementEmailList([]);
   };
 
   const handleSendEmail = async () => {
-    // Collect any typed but not yet chipped email
+    // Collect typed but not chipped emails
     const finalToList = [...toList];
     if (toInput.trim() && toInput.includes('@') && !finalToList.includes(toInput.trim().toLowerCase()))
       finalToList.push(toInput.trim().toLowerCase());
@@ -890,8 +938,10 @@ If you have any suggestions or thoughts related to the audit for further improve
         to: finalToList.join(', '),
         cc: ccWithUser.length > 0 ? ccWithUser.join(', ') : undefined,
         subject: emailData.subject,
-        customMessage: emailData.message || '',  // optional extra message
-        reportData: selectedReportForEmail
+        customMessage: emailData.message || '',
+        reportData: selectedReportForEmail,
+        hierarchyEmails: hierarchyEmails,
+        placementEmails: placementEmailList
       }, {
         timeout: 60000
       });
@@ -1263,15 +1313,22 @@ const isWithinDateRange = (reportDate, start, end) => {
         setSelectedCenter(center);
         setShowAuditTable(false);
         setEditableRemarks({});
-        setPlacementApplicable(null);
         setSelectedFinancialYear('');
         if (center) {
           const centerType = center.centerType || 'CDC';
-          console.log('✅ Detected Center Type:', centerType);
           const autoAuditType = centerType === 'DTV' ? 'DTV' : `Skills-${centerType}`;
-          console.log('✅ Auto Audit Type:', autoAuditType);
           setAuditType(autoAuditType);
           initializeAuditData();
+
+          // Auto-fill placement fields from center data
+          // Auto-set from center — default 'yes' if not set
+          setPlacementApplicable(center.placementApplicable || 'yes');
+          if (center.placementCoordinator) setPlacementCoordinator(center.placementCoordinator);
+          else setPlacementCoordinator('');
+          if (center.seniorManagerPlacement) setSrmPlacement(center.seniorManagerPlacement);
+          else setSrmPlacement('');
+          if (center.nationalHeadPlacement) setNationalHeadPlacement(center.nationalHeadPlacement);
+          else setNationalHeadPlacement('');
         }
       }
     }}
@@ -1321,7 +1378,17 @@ const isWithinDateRange = (reportDate, start, end) => {
                 <div><strong>Project Name:</strong> {selectedCenter.projectName || '-'}</div>
                 <div><strong>ZM Name:</strong> {selectedCenter.zmName || '-'}</div>
                 <div><strong>Region Head:</strong> {selectedCenter.regionHeadName || '-'}</div>
-                <div><strong>Area/Cluster Manager:</strong> {selectedCenter.areaClusterManager || '-'}</div>
+                <div><strong>Area Manager:</strong> {selectedCenter.areaManager || selectedCenter.areaClusterManager || '-'}</div>
+                <div><strong>Cluster Manager:</strong> {selectedCenter.clusterManager || '-'}</div>
+                {placementApplicable === 'yes' && placementCoordinator && (
+                  <div><strong>Placement Coordinator:</strong> {placementCoordinator}</div>
+                )}
+                {placementApplicable === 'yes' && seniorManagerPlacement && (
+                  <div><strong>Senior Manager Placement:</strong> {seniorManagerPlacement}</div>
+                )}
+                {placementApplicable === 'yes' && nationalHeadPlacement && (
+                  <div><strong>National Head Placement:</strong> {nationalHeadPlacement}</div>
+                )}
                 <div><strong>Center Head:</strong> {selectedCenter.centerHeadName || '-'}</div>
                 <div><strong>Center Type:</strong> <span style={{
                   padding: '2px 8px',
@@ -1582,75 +1649,37 @@ const isWithinDateRange = (reportDate, start, end) => {
                 </div>
               )}
 
-              <div style={{ 
-                marginTop: '20px', 
-                padding: '20px', 
-                background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
-                borderRadius: '10px',
-                border: '2px solid #ff9800'
-              }}>
-                <h4 style={{ marginBottom: '15px', color: '#e65100', fontSize: '16px' }}>
-                  📋 Placement Applicable?
-                </h4>
-                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setPlacementApplicable('yes')}
-                    style={{
-                      padding: '12px 30px',
-                      fontSize: '15px',
-                      fontWeight: 'bold',
-                      borderRadius: '8px',
-                      border: placementApplicable === 'yes' ? '3px solid #4caf50' : '2px solid #ddd',
-                      background: placementApplicable === 'yes' 
-                        ? 'linear-gradient(135deg, #4caf50 0%, #8bc34a 100%)' 
-                        : 'white',
-                      color: placementApplicable === 'yes' ? 'white' : '#333',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                      boxShadow: placementApplicable === 'yes' 
-                        ? '0 6px 15px rgba(76, 175, 80, 0.4)' 
-                        : '0 2px 8px rgba(0,0,0,0.1)'
-                    }}
-                  >
-                    ✅ Yes
-                  </button>
-                  <button
-                    onClick={() => setPlacementApplicable('no')}
-                    style={{
-                      padding: '12px 30px',
-                      fontSize: '15px',
-                      fontWeight: 'bold',
-                      borderRadius: '8px',
-                      border: placementApplicable === 'no' ? '3px solid #f44336' : '2px solid #ddd',
-                      background: placementApplicable === 'no' 
-                        ? 'linear-gradient(135deg, #f44336 0%, #e91e63 100%)' 
-                        : 'white',
-                      color: placementApplicable === 'no' ? 'white' : '#333',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                      boxShadow: placementApplicable === 'no' 
-                        ? '0 6px 15px rgba(244, 67, 54, 0.4)' 
-                        : '0 2px 8px rgba(0,0,0,0.1)'
-                    }}
-                  >
-                    ❌ No
-                  </button>
+              {/* Placement info — auto from center, shown after audit period selected */}
+              {auditPeriodFrom && auditPeriodTo && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '14px 18px',
+                  borderRadius: '10px',
+                  border: placementApplicable === 'yes' ? '2px solid #4caf50' : placementApplicable === 'no' ? '2px solid #f44336' : '2px solid #e0e0e0',
+                  background: placementApplicable === 'yes' ? '#f1fff4' : placementApplicable === 'no' ? '#fff5f5' : '#f9f9f9',
+                  display: 'flex', alignItems: 'flex-start', gap: '14px', flexWrap: 'wrap'
+                }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#555' }}>📋 Placement:</span>{' '}
+                    {placementApplicable === 'yes' ? (
+                      <span style={{ color: '#2e7d32', fontWeight: '700' }}>✅ Applicable</span>
+                    ) : placementApplicable === 'no' ? (
+                      <span style={{ color: '#c62828', fontWeight: '700' }}>❌ Not Applicable</span>
+                    ) : (
+                      <span style={{ color: '#999', fontStyle: 'italic' }}>Not set in center</span>
+                    )}
+                  </div>
+                  {placementApplicable === 'yes' && (
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '13px', color: '#444' }}>
+                      {placementCoordinator && <span>📋 <strong>Coordinator:</strong> {placementCoordinator}</span>}
+                      {seniorManagerPlacement && <span>🏆 <strong>Sr. Manager:</strong> {seniorManagerPlacement}</span>}
+                      {nationalHeadPlacement && <span>🎯 <strong>National Head:</strong> {nationalHeadPlacement}</span>}
+                    </div>
+                  )}
                 </div>
-                {placementApplicable && (
-                  <p style={{ 
-                    marginTop: '12px', 
-                    fontSize: '14px', 
-                    color: placementApplicable === 'yes' ? '#2e7d32' : '#c62828',
-                    fontWeight: '500'
-                  }}>
-                    {placementApplicable === 'yes' 
-                      ? '✓ Placement Process area will be included in audit.' 
-                      : '✓ Placement Process area will NOT be included in audit.'}
-                  </p>
-                )}
-              </div>
+              )}
 
-              {placementApplicable && (
+              {auditPeriodFrom && auditPeriodTo && (
                 <button 
                   className="btn primary" 
                   onClick={() => {
@@ -2611,8 +2640,28 @@ const isWithinDateRange = (reportDate, start, end) => {
                                 onClick={async () => {
                                   const res = await fetch(`${API_URL}/api/audit-reports`);
                                   const allReports = await res.json();
-                                  const freshReport = allReports.find(r => r._id === report._id);
-                                  setSelectedReportForRemarks(freshReport || report);
+                                  const freshReport = allReports.find(r => r._id === report._id) || report;
+                                  // Merge with live center data for latest fields
+                                  try {
+                                    const cRes = await fetch(`${API_URL}/api/centers`);
+                                    if (cRes.ok) {
+                                      const centers = await cRes.json();
+                                      const cData = centers.find(ct => ct.centerCode === freshReport.centerCode);
+                                      if (cData) {
+                                        setSelectedReportForRemarks({
+                                          ...freshReport,
+                                          areaManager: cData.areaManager || freshReport.areaManager || cData.areaClusterManager || freshReport.areaClusterManager || '',
+                                          clusterManager: cData.clusterManager || freshReport.clusterManager || '',
+                                          placementCoordinator: cData.placementCoordinator || freshReport.placementCoordinator || '',
+                                          seniorManagerPlacement: cData.seniorManagerPlacement || freshReport.seniorManagerPlacement || '',
+                                          nationalHeadPlacement: cData.nationalHeadPlacement || freshReport.nationalHeadPlacement || '',
+                                          placementApplicable: cData.placementApplicable || freshReport.placementApplicable || 'yes',
+                                          zmName: cData.zmName || freshReport.zmName || '',
+                                          regionHeadName: cData.regionHeadName || freshReport.regionHeadName || '',
+                                        });
+                                      } else setSelectedReportForRemarks(freshReport);
+                                    } else setSelectedReportForRemarks(freshReport);
+                                  } catch(e) { setSelectedReportForRemarks(freshReport); }
                                   setShowCenterRemarksModal(true);
                                 }}
                                 style={{
@@ -2801,7 +2850,7 @@ This will send a "Report Closed" email to the center.`)) {
             </div>
 
             <div style={{ padding: '25px' }}>
-              {/* ── TO: multi-email chips ── */}
+              {/* TO chips */}
               {(() => {
                 const addTo = (email) => {
                   const e = email.trim().toLowerCase();
@@ -2813,45 +2862,36 @@ This will send a "Report Closed" email to the center.`)) {
                   <div style={{ marginBottom:'20px' }}>
                     <label style={{ display:'block', marginBottom:'8px', fontWeight:'600', color:'#333', fontSize:'14px' }}>
                       To: <span style={{ color:'#dc3545' }}>*</span>
-                      <span style={{ fontWeight:'400', color:'#888', fontSize:'12px', marginLeft:'8px' }}>Enter ya comma dabao multiple ke liye</span>
+                      <span style={{ fontWeight:'400', color:'#888', fontSize:'12px', marginLeft:'8px' }}>Enter ya comma — multiple add karo</span>
                     </label>
                     <div style={{ border:'2px solid #ddd', borderRadius:'8px', padding:'8px 10px', minHeight:'50px', display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', cursor:'text', position:'relative', background:'white' }}
                       onClick={() => document.getElementById('to-inp').focus()}>
                       {toList.map((e,i) => (
-                        <span key={i} style={{ background:'linear-gradient(135deg,#667eea,#764ba2)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
-                          {e}
+                        <span key={i} style={{ background: i===0 ? 'linear-gradient(135deg,#11998e,#38ef7d)' : 'linear-gradient(135deg,#667eea,#764ba2)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
+                          {i===0 && '🏢 '}{e}
                           <span onClick={(ev) => { ev.stopPropagation(); setToList(p=>p.filter((_,j)=>j!==i)); }}
-                            style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:'.85', fontWeight:'bold' }}>×</span>
+                            style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:.85, fontWeight:'bold' }}>×</span>
                         </span>
                       ))}
                       <input id="to-inp" type="text" value={toInput} placeholder={toList.length===0?'recipient@example.com':'aur add karo...'}
                         onChange={e => { setToInput(e.target.value); setShowToSug(true); }}
-                        onKeyDown={e => {
-                          if (e.key==='Enter'||e.key===',') { e.preventDefault(); addTo(toInput); }
-                          if (e.key==='Backspace'&&!toInput&&toList.length>0) setToList(p=>p.slice(0,-1));
-                        }}
+                        onKeyDown={e => { if(e.key==='Enter'||e.key===','){e.preventDefault();addTo(toInput);} if(e.key==='Backspace'&&!toInput&&toList.length>0)setToList(p=>p.slice(0,-1)); }}
                         onFocus={() => setShowToSug(true)}
                         onBlur={() => setTimeout(() => { if(toInput.trim()) addTo(toInput); setShowToSug(false); }, 180)}
                         style={{ border:'none', outline:'none', fontSize:'14px', flex:'1', minWidth:'160px', padding:'4px 2px' }} />
                       {showToSug && sug.length > 0 && (
                         <div style={{ position:'absolute', top:'100%', left:0, right:0, marginTop:'4px', background:'white', border:'2px solid #667eea', borderRadius:'8px', zIndex:9999, boxShadow:'0 8px 24px rgba(102,126,234,.25)', maxHeight:'180px', overflowY:'auto' }}>
                           <div style={{ padding:'6px 14px', fontSize:'11px', color:'#667eea', fontWeight:'700', borderBottom:'1px solid #eee' }}>📧 Saved Emails</div>
-                          {sug.map((s,i) => (
-                            <div key={i} onMouseDown={() => addTo(s)}
-                              style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }}
-                              onMouseEnter={e => e.currentTarget.style.background='#f0f4ff'}
-                              onMouseLeave={e => e.currentTarget.style.background='white'}>
-                              📧 {s}
-                            </div>
-                          ))}
+                          {sug.map((s,i) => (<div key={i} onMouseDown={() => addTo(s)} style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }} onMouseEnter={e=>e.currentTarget.style.background='#f0f4ff'} onMouseLeave={e=>e.currentTarget.style.background='white'}>📧 {s}</div>))}
                         </div>
                       )}
                     </div>
+                    {toList.length > 0 && <div style={{ fontSize:'11px', color:'#11998e', marginTop:'4px', fontWeight:'600' }}>🏢 Center ka email auto-filled — aur add kar sakte ho</div>}
                   </div>
                 );
               })()}
 
-              {/* ── CC: multi-email chips ── */}
+              {/* CC chips */}
               {(() => {
                 const addCc = (email) => {
                   const e = email.trim().toLowerCase();
@@ -2867,38 +2907,57 @@ This will send a "Report Closed" email to the center.`)) {
                     <div style={{ border:'2px solid #ddd', borderRadius:'8px', padding:'8px 10px', minHeight:'50px', display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', cursor:'text', position:'relative', background:'white' }}
                       onClick={() => document.getElementById('cc-inp').focus()}>
                       {ccList.map((e,i) => (
-                        <span key={i} style={{ background:'linear-gradient(135deg,#11998e,#38ef7d)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
-                          {e}
-                          <span onClick={(ev) => { ev.stopPropagation(); setCcList(p=>p.filter((_,j)=>j!==i)); }}
-                            style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:'.85', fontWeight:'bold' }}>×</span>
+                        <span key={i} style={{ background:'linear-gradient(135deg,#667eea,#764ba2)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
+                          {e}<span onClick={(ev) => { ev.stopPropagation(); setCcList(p=>p.filter((_,j)=>j!==i)); }} style={{ cursor:'pointer', fontSize:'16px', lineHeight:'1', opacity:.85, fontWeight:'bold' }}>×</span>
                         </span>
                       ))}
                       <input id="cc-inp" type="text" value={ccInput} placeholder={ccList.length===0?'cc@example.com':'aur add karo...'}
                         onChange={e => { setCcInput(e.target.value); setShowCcSug(true); }}
-                        onKeyDown={e => {
-                          if (e.key==='Enter'||e.key===',') { e.preventDefault(); addCc(ccInput); }
-                          if (e.key==='Backspace'&&!ccInput&&ccList.length>0) setCcList(p=>p.slice(0,-1));
-                        }}
+                        onKeyDown={e => { if(e.key==='Enter'||e.key===','){e.preventDefault();addCc(ccInput);} if(e.key==='Backspace'&&!ccInput&&ccList.length>0)setCcList(p=>p.slice(0,-1)); }}
                         onFocus={() => setShowCcSug(true)}
                         onBlur={() => setTimeout(() => { if(ccInput.trim()) addCc(ccInput); setShowCcSug(false); }, 180)}
                         style={{ border:'none', outline:'none', fontSize:'14px', flex:'1', minWidth:'160px', padding:'4px 2px' }} />
                       {showCcSug && sug.length > 0 && (
-                        <div style={{ position:'absolute', top:'100%', left:0, right:0, marginTop:'4px', background:'white', border:'2px solid #11998e', borderRadius:'8px', zIndex:9999, boxShadow:'0 8px 24px rgba(17,153,142,.25)', maxHeight:'180px', overflowY:'auto' }}>
-                          <div style={{ padding:'6px 14px', fontSize:'11px', color:'#11998e', fontWeight:'700', borderBottom:'1px solid #eee' }}>📧 Saved Emails</div>
-                          {sug.map((s,i) => (
-                            <div key={i} onMouseDown={() => addCc(s)}
-                              style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }}
-                              onMouseEnter={e => e.currentTarget.style.background='#f0fff8'}
-                              onMouseLeave={e => e.currentTarget.style.background='white'}>
-                              📧 {s}
-                            </div>
-                          ))}
+                        <div style={{ position:'absolute', top:'100%', left:0, right:0, marginTop:'4px', background:'white', border:'2px solid #667eea', borderRadius:'8px', zIndex:9999, boxShadow:'0 8px 24px rgba(102,126,234,.25)', maxHeight:'180px', overflowY:'auto' }}>
+                          <div style={{ padding:'6px 14px', fontSize:'11px', color:'#667eea', fontWeight:'700', borderBottom:'1px solid #eee' }}>📧 Saved Emails</div>
+                          {sug.map((s,i) => (<div key={i} onMouseDown={() => addCc(s)} style={{ padding:'10px 14px', cursor:'pointer', fontSize:'13px', borderBottom:'1px solid #f5f5f5' }} onMouseEnter={e=>e.currentTarget.style.background='#f0f4ff'} onMouseLeave={e=>e.currentTarget.style.background='white'}>📧 {s}</div>))}
                         </div>
                       )}
                     </div>
                   </div>
                 );
               })()}
+
+              {/* ── HIERARCHY EMAILS — auto-fetched ZM/RH/ACM ── */}
+              <div style={{ marginBottom:'20px', background:'#f0fff8', border:'2px solid #a5d6a7', borderRadius:'10px', padding:'14px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+                  <label style={{ fontWeight:'700', color:'#2e7d32', fontSize:'14px' }}>
+                    📨 Hierarchy ko bhi bhejo (ZM / RH / ACM)
+                  </label>
+                  <span style={{ fontSize:'12px', color:'#666' }}>PDF only — no credentials</span>
+                </div>
+
+                {hierarchyLoading ? (
+                  <div style={{ color:'#888', fontSize:'13px' }}>⏳ Fetching hierarchy emails...</div>
+                ) : hierarchyEmails.length === 0 ? (
+                  <div style={{ color:'#999', fontSize:'13px', fontStyle:'italic' }}>
+                    ℹ️ ZM/RH/ACM ke users registered nahi hain system mein — email nahi jayegi
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+                    {hierarchyEmails.map((email, i) => (
+                      <span key={i} style={{ background:'linear-gradient(135deg,#43a047,#66bb6a)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}>
+                        📧 {email}
+                        <span onClick={() => setHierarchyEmails(prev => prev.filter((_,j) => j !== i))}
+                          style={{ cursor:'pointer', fontSize:'16px', fontWeight:'bold', opacity:.85 }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize:'11px', color:'#888', marginTop:'8px' }}>
+                  ✅ Inhe sirf PDF milega — credentials nahi dikhenge
+                </div>
+              </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
@@ -3094,7 +3153,11 @@ This will send a "Report Closed" email to the center.`)) {
                   <div><strong>Project Name:</strong> {selectedReportForRemarks.projectName || '-'}</div>
                   <div><strong>ZM Name:</strong> {selectedReportForRemarks.zmName || '-'}</div>
                   <div><strong>Region Head:</strong> {selectedReportForRemarks.regionHeadName || '-'}</div>
-                  <div><strong>Area/Cluster Mgr:</strong> {selectedReportForRemarks.areaClusterManager || '-'}</div>
+                  <div><strong>Area Manager:</strong> {selectedReportForRemarks.areaManager || selectedReportForRemarks.areaClusterManager || '-'}</div>
+                  <div><strong>Cluster Manager:</strong> {selectedReportForRemarks.clusterManager || '-'}</div>
+                  {selectedReportForRemarks.placementCoordinator && <div><strong>Placement Coordinator:</strong> {selectedReportForRemarks.placementCoordinator}</div>}
+                  {selectedReportForRemarks.seniorManagerPlacement && <div><strong>Senior Manager Placement:</strong> {selectedReportForRemarks.seniorManagerPlacement}</div>}
+                  {selectedReportForRemarks.nationalHeadPlacement && <div><strong>National Head Placement:</strong> {selectedReportForRemarks.nationalHeadPlacement}</div>}
                   <div><strong>Center Head:</strong> {selectedReportForRemarks.centerHeadName || '-'}</div>
                   <div><strong>Center Type:</strong> <span style={{
                     padding: '2px 8px',
@@ -3533,8 +3596,28 @@ This will send a "Report Closed" email to the center.`)) {
                             </div>
                             
                             <button 
-                              onClick={() => {
-                                setSelectedReportForRemarks(report);
+                              onClick={async () => {
+                                // Merge with live center data
+                                try {
+                                  const cRes = await fetch(`${API_URL}/api/centers`);
+                                  if (cRes.ok) {
+                                    const centers = await cRes.json();
+                                    const cData = centers.find(ct => ct.centerCode === report.centerCode);
+                                    if (cData) {
+                                      setSelectedReportForRemarks({
+                                        ...report,
+                                        areaManager: cData.areaManager || report.areaManager || cData.areaClusterManager || report.areaClusterManager || '',
+                                        clusterManager: cData.clusterManager || report.clusterManager || '',
+                                        placementCoordinator: cData.placementCoordinator || report.placementCoordinator || '',
+                                        seniorManagerPlacement: cData.seniorManagerPlacement || report.seniorManagerPlacement || '',
+                                        nationalHeadPlacement: cData.nationalHeadPlacement || report.nationalHeadPlacement || '',
+                                        placementApplicable: cData.placementApplicable || report.placementApplicable || 'yes',
+                                        zmName: cData.zmName || report.zmName || '',
+                                        regionHeadName: cData.regionHeadName || report.regionHeadName || '',
+                                      });
+                                    } else setSelectedReportForRemarks(report);
+                                  } else setSelectedReportForRemarks(report);
+                                } catch(e) { setSelectedReportForRemarks(report); }
                                 setShowCenterRemarksModal(true);
                               }}
                               style={{

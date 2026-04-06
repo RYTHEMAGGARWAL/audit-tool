@@ -108,24 +108,26 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
   };
 
   // View remarks - MongoDB version
-  const handleViewRemarks = (report) => {
+  const handleViewRemarks = async (report) => {
     try {
       console.log('\n📋 ========== VIEW REMARKS CLICKED ==========');
-      console.log('Report data:', {
-        centerCode: report.centerCode,
-        centerName: report.centerName,
-        centerType: report.centerType,
-        grandTotal: report.grandTotal,
-        placementApplicable: report.placementApplicable
-      });
-      
+
+      // Fetch live center data to get latest fields (areaManager, placementCoordinator etc.)
+      let centerInfo = {};
+      try {
+        const cRes = await fetch(`${API_URL}/api/centers`);
+        if (cRes.ok) {
+          const centers = await cRes.json();
+          const found = centers.find(c => c.centerCode === report.centerCode);
+          if (found) centerInfo = found;
+        }
+      } catch(e) { console.log('Center fetch failed, using report data'); }
+
       // For MongoDB, checkpoint data is directly in report object
       const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
       const data = {};
       checkpointIds.forEach(id => {
-        if (report[id]) {
-          data[id] = report[id];
-        }
+        if (report[id]) data[id] = report[id];
       });
       
       const remarksData = { 
@@ -133,13 +135,18 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         centerName: report.centerName, 
         centerCode: report.centerCode,
         centerType: report.centerType || 'CDC',
-        projectName: report.projectName || '',
-        zmName: report.zmName || '',
-        regionHeadName: report.regionHeadName || '',
-        areaClusterManager: report.areaClusterManager || '',
-        centerHeadName: report.centerHeadName || '',
-        location: report.location || '',
-       
+        projectName: centerInfo.projectName || report.projectName || '',
+        zmName: centerInfo.zmName || report.zmName || '',
+        regionHeadName: centerInfo.regionHeadName || report.regionHeadName || '',
+        areaClusterManager: centerInfo.areaClusterManager || report.areaClusterManager || '',
+        areaManager: centerInfo.areaManager || report.areaManager || centerInfo.areaClusterManager || report.areaClusterManager || '',
+        clusterManager: centerInfo.clusterManager || report.clusterManager || '',
+        placementCoordinator: centerInfo.placementCoordinator || report.placementCoordinator || '',
+        seniorManagerPlacement: centerInfo.seniorManagerPlacement || report.seniorManagerPlacement || '',
+        nationalHeadPlacement: centerInfo.nationalHeadPlacement || report.nationalHeadPlacement || '',
+        placementApplicable: centerInfo.placementApplicable || report.placementApplicable || 'yes',
+        centerHeadName: centerInfo.centerHeadName || report.centerHeadName || '',
+        location: centerInfo.location || report.location || '',
         auditedBy: report.auditedBy || '',
         auditPeriod: report.auditPeriod || '',
         financialYear: report.financialYear || 'FY26',
@@ -148,13 +155,9 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         data: data,
         customRemarks: report.remarksText || '',
         overallRemarks: report.remarksText || '',
-        placementApplicable: report.placementApplicable || 'yes',
         centerRemarksBy: report.centerRemarksBy || '',
         centerRemarksDate: report.centerRemarksDate || ''
       };
-      
-      console.log('✅ Setting selectedRemarks');
-      console.log('========================================\n');
       
       setSelectedRemarks(remarksData);
       setShowRemarksModal(true);
@@ -500,7 +503,17 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
                   <div><strong>Project Name:</strong> {selectedRemarks.projectName || '-'}</div>
                   <div><strong>ZM Name:</strong> {selectedRemarks.zmName || '-'}</div>
                   <div><strong>Region Head:</strong> {selectedRemarks.regionHeadName || '-'}</div>
-                  <div><strong>Area/Cluster Mgr:</strong> {selectedRemarks.areaClusterManager || '-'}</div>
+                  <div><strong>Area Manager:</strong> {selectedRemarks.areaManager || '-'}</div>
+                  <div><strong>Cluster Manager:</strong> {selectedRemarks.clusterManager || '-'}</div>
+                  {selectedRemarks.placementApplicable === 'yes' && selectedRemarks.placementCoordinator && (
+                    <div><strong>Placement Coordinator:</strong> {selectedRemarks.placementCoordinator}</div>
+                  )}
+                  {selectedRemarks.placementApplicable === 'yes' && selectedRemarks.seniorManagerPlacement && (
+                    <div><strong>Sr. Manager Placement:</strong> {selectedRemarks.seniorManagerPlacement}</div>
+                  )}
+                  {selectedRemarks.placementApplicable === 'yes' && selectedRemarks.nationalHeadPlacement && (
+                    <div><strong>National Head Placement:</strong> {selectedRemarks.nationalHeadPlacement}</div>
+                  )}
                   <div><strong>Center Head:</strong> {selectedRemarks.centerHeadName || '-'}</div>
                   <div><strong>Center Type:</strong> <span style={{
                     padding: '2px 8px',
