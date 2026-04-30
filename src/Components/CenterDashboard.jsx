@@ -179,10 +179,12 @@ const CenterDashboard = () => {
   };
   // ========================================
 
-  // Dynamic checkpoint data based on placement applicable
-  const getCheckpointData = (placementApplicable) => {
+  // Dynamic checkpoint data based on placement applicable AND centerType
+  // MP6, MP7 are DTV-only — not shown for CDC/SDC
+  const getCheckpointData = (placementApplicable, centerType) => {
     const isPlacementNA = placementApplicable === 'no';
-    
+    const isDTV = (centerType || '').toUpperCase() === 'DTV';
+
     return {
       'Front Office': [
         { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isPlacementNA ? 10.5 : 9 },
@@ -216,8 +218,10 @@ const CenterDashboard = () => {
         { id: 'MP3', name: 'TIRM details register', weightage: 30, maxScore: isPlacementNA ? 7.5 : 4.50 },
         { id: 'MP4', name: 'Availability and requirement of Biometric as per MOU', weightage: 25, maxScore: isPlacementNA ? 6.25 : 3.75 },
         { id: 'MP5', name: 'Physical asset verification', weightage: 10, maxScore: isPlacementNA ? 2.5 : 1.50 },
-        { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 },
-        { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 }
+        ...(isDTV ? [
+          { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 },
+          { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 }
+        ] : [])
       ]
     };
   };
@@ -777,7 +781,7 @@ const CenterDashboard = () => {
                             <button onClick={() => handleViewReport(report)} style={{ padding: '8px 16px', background: report.currentStatus === 'Closed' ? '#6c757d' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
                               {report.currentStatus === 'Closed' ? '📋 View Report' : 'View Report'}
                             </button>
-                            {report.currentStatus !== 'Closed' && isLocked && !isRequestPending && !editRequestStatus[report._id]?.editedOnce && (() => {
+                            {report.currentStatus !== 'Closed' && report.auditStatus !== 'Closed' && isLocked && !isRequestPending && !editRequestStatus[report._id]?.editedOnce && (() => {
                               const expired = isEditRequestExpired(report);
                               const remDays = getEditRequestRemainingDays(report);
                               if (expired) {
@@ -903,7 +907,7 @@ const CenterDashboard = () => {
                 </thead>
 
                 <tbody>
-                  {Object.entries(getCheckpointData(selectedReport.placementApplicable)).map(([areaName, checkpoints], areaIdx) => {
+                  {Object.entries(getCheckpointData(selectedReport.placementApplicable, selectedReport.centerType)).map(([areaName, checkpoints], areaIdx) => {
                     // Skip Placement Process area if it's empty (when placement is NA)
                     if (checkpoints.length === 0) return null;
                     
@@ -982,6 +986,17 @@ const CenterDashboard = () => {
             <div style={{ padding: '20px 25px', background: 'white', borderTop: '2px solid #e5e7eb' }}>
               {(() => {
                 const st = editRequestStatus[selectedReport._id] || {};
+
+                // ── CASE 0: Report CLOSED — no edit, no request ──
+                if (selectedReport.currentStatus === 'Closed' || selectedReport.auditStatus === 'Closed') {
+                  return (
+                    <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '10px', textAlign: 'center', border: '2px solid #cbd5e1' }}>
+                      <div style={{ fontSize: '22px', marginBottom: '6px' }}>🔒</div>
+                      <div style={{ fontWeight: '700', color: '#64748b', fontSize: '15px' }}>Report Closed</div>
+                      <div style={{ color: '#94a3b8', fontSize: '13px', marginTop: '4px' }}>No further edits or requests are allowed on a closed report</div>
+                    </div>
+                  );
+                }
 
                 // ── CASE 1: Permanently locked (2nd submit done) — har haal mein block ──
                 if (st.editedOnce) {

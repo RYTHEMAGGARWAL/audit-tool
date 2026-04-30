@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import axios from 'axios';
 import { useUsers } from '../contexts/UsersContext';
 import { API_URL } from '../config';
 import './UserManagement.css';
 
 const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
+  const fileInputRef = useRef(null);
+  const [bulkResult, setBulkResult] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
   const [activeOption, setActiveOption] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -139,6 +144,55 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
     return Object.keys(errors).length === 0;
   };
 
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setBulkLoading(true);
+    setBulkResult(null);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      // Find header row
+      let headerIdx = rows.findIndex(r => r.some(c => String(c).toLowerCase().trim() === 'username'));
+      if (headerIdx === -1) { alert('Could not find header row. Make sure Excel has: username, password, first name, last name, email, mobileno., role, centercode, centername'); setBulkLoading(false); return; }
+      const headers = rows[headerIdx].map(h => String(h).toLowerCase().trim());
+      const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => c !== ''));
+      const g = (row, col) => { const i = headers.indexOf(col); return i >= 0 ? String(row[i] || '').trim() : ''; };
+      const users = dataRows.map(row => ({
+        username: g(row, 'username'),
+        password: g(row, 'password'),
+        firstname: g(row, 'first name') || g(row, 'firstname'),
+        lastname: g(row, 'last name') || g(row, 'lastname'),
+        email: g(row, 'email'),
+        mobile: g(row, 'mobileno.') || g(row, 'mobile') || g(row, 'mobileno'),
+        Role: g(row, 'role'),
+        centerCode: g(row, 'centercode') || g(row, 'center code'),
+        centerName: g(row, 'centername') || g(row, 'center name'),
+      })).filter(u => u.username && u.password);
+
+      if (users.length === 0) { alert('No valid rows found. Check Excel format.'); setBulkLoading(false); return; }
+
+      const res = await fetch(`${API_URL}/api/users/bulk-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users, createdBy: createdBy || '', auditUserMode })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setBulkResult(data.results);
+      } else {
+        alert('Error: ' + (data.error || 'Upload failed'));
+      }
+    } catch(err) {
+      alert('Error reading file: ' + err.message);
+    } finally {
+      setBulkLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleCreate = async () => {
     console.log('\n🚀 ========== CREATE USER STARTED ==========');
     
@@ -159,7 +213,10 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
         ...newUserForm, 
         username: newUserForm.username.toLowerCase(), 
         email: newUserForm.email?.toLowerCase() || '',
-        centerCode: newUserForm.centerCode?.toUpperCase() || ''
+        centerCode: newUserForm.centerCode?.toUpperCase() || '',
+        // ── APPROVAL FLAGS — Audit User ne banaya toh pending ──
+        createdByRole: auditUserMode ? 'Audit User' : 'Admin',
+        createdBy: createdBy || (auditUserMode ? 'Audit User' : 'Admin')
       };
       
       console.log('📤 Sending data to backend:', {
@@ -592,6 +649,40 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
               <button type="button" className="btn-gray" onClick={resetForm}>
                 🔄 Reset
               </button>
+            </div>
+
+            {/* Bulk Upload */}
+            <div style={{ marginTop: '20px', padding: '16px', background: '#f0f4ff', borderRadius: '10px', border: '2px dashed #667eea' }}>
+              <div style={{ fontWeight: 'bold', color: '#1a237e', marginBottom: '10px', fontSize: '14px' }}>
+                📂 Bulk Upload Users from Excel
+              </div>
+              <div style={{ fontSize: '12px', color: '#555', marginBottom: '12px' }}>
+                Excel columns: <strong>username, password, first name, last name, email, mobileno., role, centercode, centername</strong>
+              </div>
+              <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
+              <button
+                type='button'
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={bulkLoading}
+                style={{ padding: '10px 24px', background: bulkLoading ? '#9ca3af' : 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', borderRadius: '8px', cursor: bulkLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+              >
+                {bulkLoading ? '⏳ Uploading...' : '📂 Upload Excel'}
+              </button>
+
+              {/* Result */}
+              {bulkResult && (
+                <div style={{ marginTop: '14px', padding: '14px', background: '#f0fff4', border: '2px solid #38a169', borderRadius: '10px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#276749', marginBottom: '10px' }}>📊 Upload Result</div>
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <span style={{ background: '#c6f6d5', color: '#276749', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>✅ Added: {bulkResult.added?.length || 0}</span>
+                    <span style={{ background: '#fefcbf', color: '#744210', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>⚠️ Skipped: {bulkResult.skipped?.length || 0}</span>
+                    {bulkResult.errors?.length > 0 && <span style={{ background: '#fed7d7', color: '#822727', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>❌ Errors: {bulkResult.errors.length}</span>}
+                  </div>
+                  {bulkResult.skipped?.length > 0 && <div style={{ fontSize: '12px', color: '#744210' }}><strong>Skipped (already exist):</strong> {bulkResult.skipped.map(s => s.username).join(', ')}</div>}
+                  {bulkResult.errors?.length > 0 && <div style={{ fontSize: '12px', color: '#822727', marginTop: '4px' }}><strong>Errors:</strong> {bulkResult.errors.map(e => `${e.username}: ${e.reason}`).join(', ')}</div>}
+                  <button onClick={() => setBulkResult(null)} style={{ marginTop: '8px', padding: '3px 10px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Dismiss</button>
+                </div>
+              )}
             </div>
           </form>
         </div>

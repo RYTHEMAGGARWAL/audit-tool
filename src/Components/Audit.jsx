@@ -802,33 +802,13 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     const gt = parseFloat(report.grandTotal) || 0;
     const status = gt >= 80 ? 'Compliant' : gt >= 65 ? 'Amber' : 'Non-Compliant';
 
-    // Time-based greeting
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-    // Center Head Name
-    const chName = report.centerHeadName || report.chName || 'Sir/Madam';
-
-    // Default message - baad mein credentials se update hoga
-    const buildMessage = (username = '', password = '') => {
+    // Fixed message — no dynamic name or greeting
+    const buildMessage = (firstname = '') => {
       const loginUrl = 'https://audit-tool-liard.vercel.app';
-      return `${greeting} ${chName},
-
-Thank you to you and your entire team for the cooperation extended during the physical visit at your centre.
-
-Kindly review the observations and share your comments using the following login credentials:
-
-Username: ${username || '(center username)'}
-Password: ${password || '(center password)'}
-
-Please login here to submit your remarks:
-${loginUrl}
-
-Note: You can edit and submit your remarks only once. After submission, any changes will require admin approval.
-
-Important: Please fill in your remarks within 7 days, otherwise the report will be automatically closed.
-
-If you have any suggestions or thoughts related to the audit for further improvement, you are most welcome to share them as well.`;
+      const hint = firstname
+        ? `Your first name in lowercase — Example: "${firstname.trim().toLowerCase()}"`
+        : 'Your first name in lowercase — Example: "shivam"';
+      return `Greetings,\n\nThank you to you and your entire team for the cooperation extended during the physical visit at your centre.\n\nKindly review the audit observations and share your remarks using the following login credentials:\n\nUsername Hint: ${hint}\nPassword Hint: Username@Employeecode — Example: "Shivam@202451"\n\nPlease login here to submit your remarks:\n${loginUrl}\n\nNote: You can edit and submit your remarks only once. After first submission, any changes will require Admin approval.\n\nImportant: Please fill in your remarks within 7 working days, otherwise the report will be automatically closed.\n\nIf you have any suggestions or thoughts related to the audit for further improvement, you are most welcome to share them as well.`;
     };
 
     // Set initial state with default message
@@ -836,7 +816,7 @@ If you have any suggestions or thoughts related to the audit for further improve
       to: '',
       cc: '',
       subject: `Audit Report - ${report.centerName} - Score: ${gt.toFixed(2)}/100 - ${status}`,
-      message: buildMessage()
+      message: buildMessage('')
     });
     setShowEmailForm(true);
 
@@ -849,7 +829,7 @@ If you have any suggestions or thoughts related to the audit for further improve
           setToList([data.email.toLowerCase()]);
           setEmailData(prev => ({
             ...prev,
-            message: buildMessage(data.username, data.password)
+            message: buildMessage(data.firstname || data.username || '')
           }));
         }
       }
@@ -857,7 +837,7 @@ If you have any suggestions or thoughts related to the audit for further improve
       console.error('❌ Error fetching center user email:', err);
     }
 
-    // Async 2: Hierarchy emails (ZM/RH/ACM) — PDF only
+    // Async 2: Hierarchy emails — ALL roles → auto-add to CC
     try {
       setHierarchyLoading(true);
       const hRes = await fetch(`${API_URL}/api/hierarchy-emails`, {
@@ -866,14 +846,24 @@ If you have any suggestions or thoughts related to the audit for further improve
         body: JSON.stringify({
           zmName: report.zmName || '',
           regionHeadName: report.regionHeadName || '',
-          areaClusterManager: report.areaClusterManager || '',
           areaManager: report.areaManager || report.areaClusterManager || '',
-          clusterManager: report.clusterManager || ''
+          clusterManager: report.clusterManager || '',
+          areaClusterManager: report.areaClusterManager || '',
+          seniorManagerPlacement: report.seniorManagerPlacement || '',
+          nationalHeadPlacement: report.nationalHeadPlacement || ''
         })
       });
       if (hRes.ok) {
         const hData = await hRes.json();
-        setHierarchyEmails(hData.emails || []);
+        const hierEmails = hData.emails || [];
+        setHierarchyEmails(hierEmails);
+        // Auto-add all to CC
+        if (hierEmails.length > 0) {
+          setCcList(prev => {
+            const existing = new Set(prev.map(e => e.toLowerCase()));
+            return [...prev, ...hierEmails.filter(e => !existing.has(e.toLowerCase()))];
+          });
+        }
       }
     } catch (err) {
       console.error('❌ Hierarchy emails error:', err);
@@ -881,7 +871,7 @@ If you have any suggestions or thoughts related to the audit for further improve
       setHierarchyLoading(false);
     }
 
-    // Async 3: Placement Coordinator email — if placement applicable
+    // Async 3: Placement Coordinator → auto-add to TO (if placement applicable)
     if (report.placementApplicable !== 'no' && report.placementCoordinator) {
       try {
         const pRes = await fetch(`${API_URL}/api/hierarchy-emails`, {
@@ -889,17 +879,41 @@ If you have any suggestions or thoughts related to the audit for further improve
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             placementCoordinator: report.placementCoordinator || '',
-            seniorManagerPlacement: report.seniorManagerPlacement || '',
-            nationalHeadPlacement: report.nationalHeadPlacement || ''
+            includePlacement: true
           })
         });
         if (pRes.ok) {
           const pData = await pRes.json();
-          setPlacementEmailList(pData.emails || []);
+          const ppEmails = pData.emails || [];
+          setPlacementEmailList(ppEmails);
+          // Auto-add PP Coord to TO list
+          if (ppEmails.length > 0) {
+            setToList(prev => {
+              const existing = new Set(prev.map(e => e.toLowerCase()));
+              return [...prev, ...ppEmails.filter(e => !existing.has(e.toLowerCase()))];
+            });
+          }
         }
       } catch (err) {
         console.error('❌ Placement emails error:', err);
       }
+    }
+
+    // Async 4: All Admins → auto-add to CC
+    try {
+      const aRes = await fetch(`${API_URL}/api/admin-emails`);
+      if (aRes.ok) {
+        const aData = await aRes.json();
+        const adminEmails = aData.emails || [];
+        if (adminEmails.length > 0) {
+          setCcList(prev => {
+            const existing = new Set(prev.map(e => e.toLowerCase()));
+            return [...prev, ...adminEmails.filter(e => !existing.has(e.toLowerCase()))];
+          });
+        }
+      }
+    } catch (err) {
+      console.error('❌ Admin emails error:', err);
     }
   };
 
@@ -941,7 +955,7 @@ If you have any suggestions or thoughts related to the audit for further improve
         customMessage: emailData.message || '',
         reportData: selectedReportForEmail,
         hierarchyEmails: hierarchyEmails,
-        placementEmails: placementEmailList
+        placementEmail: placementEmailList.length > 0 ? placementEmailList[0] : null
       }, {
         timeout: 60000
       });
@@ -2697,7 +2711,7 @@ const isWithinDateRange = (reportDate, start, end) => {
                         {/* 🔒 CLOSE REPORT CELL */}
                         <td style={{ textAlign: 'center', padding: '8px', background: '#fce4ec' }}>
                           {report.currentStatus === 'Closed' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                               <span style={{
                                 padding: '5px 10px', borderRadius: '10px', fontSize: '11px',
                                 fontWeight: 'bold', color: '#6c757d', background: '#f8f9fa',
@@ -2708,6 +2722,37 @@ const isWithinDateRange = (reportDate, start, end) => {
                               )}
                               {report.auditorClosedBy && (
                                 <span style={{ fontSize: '10px', color: '#aaa', fontStyle: 'italic' }}>{report.auditorClosedBy}</span>
+                              )}
+                              {report.reopenedBy ? (
+                                <span style={{ fontSize: '10px', color: '#999', fontStyle: 'italic', marginTop: '2px' }}>
+                                  Already reopened once
+                                </span>
+                              ) : isAdmin ? (
+                                <button onClick={async () => {
+                                  if (window.confirm('Reopen report for ' + report.centerName + '?\nCenter + Placement dono unlock honge.\n7 working days milenge.')) {
+                                    const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/reopen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reopenedBy: loggedUser.firstname }) });
+                                    const d = await res.json();
+                                    if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); loadSavedReports(); }
+                                    else alert('❌ ' + (d.error || 'Failed'));
+                                  }
+                                }} style={{ marginTop: '2px', padding: '5px 12px', background: 'linear-gradient(135deg,#2e7d32,#43a047)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+                                  🔓 Reopen
+                                </button>
+                              ) : (
+                                report.reopenRequestPending ? (
+                                  <span style={{ fontSize: '10px', color: '#e65100', fontWeight: 'bold' }}>⏳ Reopen pending...</span>
+                                ) : (
+                                  <button onClick={async () => {
+                                    const reason = window.prompt('Request reopen for ' + report.centerName + '?\nEnter reason (optional):');
+                                    if (reason === null) return;
+                                    const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/reopen-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestedBy: loggedUser.firstname, reason }) });
+                                    const d = await res.json();
+                                    if (res.ok) { alert('✅ Request sent to Admin!'); loadSavedReports(); }
+                                    else alert('❌ ' + (d.error || 'Failed'));
+                                  }} style={{ marginTop: '2px', padding: '5px 10px', background: 'linear-gradient(135deg,#e65100,#ff9800)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+                                    📤 Request Reopen
+                                  </button>
+                                )
                               )}
                             </div>
                           ) : report.centerRemarksDate ? (
@@ -2746,18 +2791,7 @@ This will send a "Report Closed" email to the center.`)) {
                               >
                                 🔒 Close Report
                               </button>
-                              {report.auditorReviewDeadlineString && (() => {
-                                const today = new Date(); today.setHours(0,0,0,0);
-                                const dl = new Date(report.auditorReviewDeadline); dl.setHours(0,0,0,0);
-                                const diff = Math.ceil((dl - today) / (1000*60*60*24));
-                                const rem = getRemainingWorkingDays(report.auditorReviewDeadline);
-                                const color = rem <= 1 ? '#dc3545' : rem <= 3 ? '#e65100' : '#2e7d32';
-                                return (
-                                  <span style={{ fontSize: '10px', color, fontWeight: 'bold' }}>
-                                    {rem <= 0 ? '🚨 Auto-close today' : `⏰ ${rem}d to review`}
-                                  </span>
-                                );
-                              })()}
+
                             </div>
                           ) : (
                             // Center ne remarks nahi bhari abhi tak
@@ -2928,36 +2962,7 @@ This will send a "Report Closed" email to the center.`)) {
                 );
               })()}
 
-              {/* ── HIERARCHY EMAILS — auto-fetched ZM/RH/ACM ── */}
-              <div style={{ marginBottom:'20px', background:'#f0fff8', border:'2px solid #a5d6a7', borderRadius:'10px', padding:'14px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                  <label style={{ fontWeight:'700', color:'#2e7d32', fontSize:'14px' }}>
-                    📨 Hierarchy ko bhi bhejo (ZM / RH / ACM)
-                  </label>
-                  <span style={{ fontSize:'12px', color:'#666' }}>PDF only — no credentials</span>
-                </div>
-
-                {hierarchyLoading ? (
-                  <div style={{ color:'#888', fontSize:'13px' }}>⏳ Fetching hierarchy emails...</div>
-                ) : hierarchyEmails.length === 0 ? (
-                  <div style={{ color:'#999', fontSize:'13px', fontStyle:'italic' }}>
-                    ℹ️ ZM/RH/ACM ke users registered nahi hain system mein — email nahi jayegi
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
-                    {hierarchyEmails.map((email, i) => (
-                      <span key={i} style={{ background:'linear-gradient(135deg,#43a047,#66bb6a)', color:'white', padding:'5px 12px', borderRadius:'20px', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}>
-                        📧 {email}
-                        <span onClick={() => setHierarchyEmails(prev => prev.filter((_,j) => j !== i))}
-                          style={{ cursor:'pointer', fontSize:'16px', fontWeight:'bold', opacity:.85 }}>×</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize:'11px', color:'#888', marginTop:'8px' }}>
-                  ✅ Inhe sirf PDF milega — credentials nahi dikhenge
-                </div>
-              </div>
+              {/* Hierarchy auto-added to CC silently */}
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={{

@@ -240,6 +240,9 @@ auditPeriod: { type: String, trim: true, default: '' },
   // Reminder tracking
   remindersSent: { type: [Number], default: [] },
   reminderClosedSent: { type: Boolean, default: false },
+  auditorNoRemarksClosed: { type: Boolean, default: false },
+  reopenedBy: { type: String, default: '' },
+  reopenedDate: { type: String, default: '' },
   // Auditor reminders
   auditorRemindersSent: { type: [Number], default: [] },
   auditorAutoClosedEmailSent: { type: Boolean, default: false },
@@ -560,31 +563,47 @@ app.post('/api/update-users', async (req, res) => {
 // ========================================
 app.post('/api/hierarchy-emails', async (req, res) => {
   try {
-    const { zmName, regionHeadName, areaClusterManager } = req.body;
+    const {
+      zmName, regionHeadName, areaManager, clusterManager,
+      areaClusterManager, seniorManagerPlacement, nationalHeadPlacement,
+      placementCoordinator, includePlacement
+    } = req.body;
     const emails = [];
 
-    const findEmail = async (name, role) => {
-      if (!name || name === '-') return;
-      const regex = new RegExp(name.trim().split(' ')[0], 'i'); // match first name
-      const user = await User.findOne({
-        role: role,
-        isActive: true,
-        $or: [
-          { firstname: regex },
-          { username: regex }
-        ]
-      });
+    const findEmail = async (name, Role, strictRole = false) => {
+      if (!name || name.trim() === '' || name === '-') return;
+      // Skip short prefixes like "Md.", "Mr."
+      const parts = name.trim().split(' ').filter(p => p.length > 1 && !/^(md|mr|ms|dr)\.?$/i.test(p));
+      if (!parts.length) return;
+      const orConds = parts.flatMap(p => [
+        { firstname: new RegExp('^' + p + '$', 'i') },
+        { username:  new RegExp('^' + p + '$', 'i') }
+      ]);
+      // Try 1: role + name match
+      let user = await User.findOne({ role: Role, isActive: true, $or: orConds });
+      // Try 2: name-only fallback (not for PP Coordinator — strict)
+      if (!user && !strictRole) {
+        user = await User.findOne({ isActive: true, $or: orConds });
+      }
       if (user && user.email) {
         emails.push(user.email);
-        console.log(`✅ Found ${role}: ${user.email}`);
+        console.log('✅ Found ' + Role + ' (' + name + ') [actual: ' + user.role + ']: ' + user.email);
+      } else {
+        console.log('⚠️ No email found for ' + Role + ': ' + name);
       }
     };
 
-    await findEmail(zmName, 'Zonal Manager');
-    await findEmail(regionHeadName, 'Region Head');
-    await findEmail(areaClusterManager, 'Area Cluster Manager');
+    await findEmail(zmName,                            'Zonal Manager');
+    await findEmail(regionHeadName,                    'Region Head');
+    await findEmail(areaManager || areaClusterManager, 'Area Manager');
+    await findEmail(clusterManager,                    'Cluster Manager');
+    await findEmail(seniorManagerPlacement,            'Senior Manager Placement');
+    await findEmail(nationalHeadPlacement,             'National Head Placement');
+    if (includePlacement) {
+      await findEmail(placementCoordinator,            'Placement Coordinator', true); // strict — role must match
+    }
 
-    res.json({ success: true, emails: [...new Set(emails)] }); // dedupe
+    res.json({ success: true, emails: [...new Set(emails)] });
   } catch (err) {
     console.error('❌ Hierarchy emails error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1344,6 +1363,12 @@ app.post('/api/audit-reports/:id/request-edit', async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    // ✅ GUARD: Can't request edit if report is CLOSED
+    if (report.currentStatus === 'Closed' || report.auditStatus === 'Closed') {
+      console.log('🔒 BLOCKED: Report is Closed — edit request not allowed');
+      return res.status(403).json({ error: 'Report is closed. No edit requests are allowed on a closed report.', reportClosed: true });
+    }
+
     // ✅ GUARD: Can't request edit if permanently locked
     if (report.remarksEditedOnce) {
       console.log('🔒 BLOCKED: Remarks permanently locked, edit request denied');
@@ -1806,11 +1831,13 @@ async function sendAuditorReminderEmail(report, daysLeft) {
 }
 
 // ========================================
-async function sendEmailInBackground(to, cc, subject, customMessage, reportData, hierarchyEmails = []) {
+async function sendEmailInBackground(to, cc, subject, customMessage, reportData, hierarchyEmails = [], placementEmail = null) {
   try {
     console.log('📧 Background email started...');
+    console.log('   To (CH):', to);
+    console.log('   Placement:', placementEmail || 'N/A');
+    console.log('   Hierarchy CC:', hierarchyEmails);
 
-    // Generate PDF once — use for both emails
     const pdfBuffer = await generatePDF(reportData);
     console.log('✅ PDF generated');
 
@@ -1820,31 +1847,55 @@ async function sendEmailInBackground(to, cc, subject, customMessage, reportData,
       contentType: 'application/pdf'
     }];
 
-    // ── EMAIL 1: Center Head — full email with credentials + PDF ──
-    const htmlBody = generateEmailHTML(reportData, customMessage || '');
+    // ── EMAIL 1: Center Head — custom message (with hint) + PDF ──
     const mail1 = {
       from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
       to: to,
       cc: cc || undefined,
       subject: subject,
-      html: htmlBody,
+      html: generateEmailHTML(reportData, customMessage || ''),
       attachments: attachment
     };
     const info1 = await transporter.sendMail(mail1);
     console.log('✅ Center Head email sent!', info1.messageId);
 
-    // ── EMAIL 2: Hierarchy (ZM/RH/ACM) — PDF only, no credentials ──
-    if (hierarchyEmails && hierarchyEmails.length > 0) {
-      const hierarchyHtml = generateEmailHTML(reportData, ''); // no custom message = no credentials
+    // ── EMAIL 2: Placement Coordinator — separate email with PP hint ──
+    if (placementEmail && reportData.placementApplicable !== 'no') {
+      const ppFirstname = (reportData.placementCoordinator || '').trim().split(' ')[0].toLowerCase();
+      const ppCapFirst = ppFirstname ? ppFirstname.charAt(0).toUpperCase() + ppFirstname.slice(1) : '';
+      const ppHint = ppFirstname
+        ? `Your login credentials:
+Username: ${ppFirstname}
+Password: ${ppCapFirst}@202156
+
+Please login and submit your Placement Process (PP1-PP4) remarks:
+https://audit-tool-liard.vercel.app
+
+Note: You can edit and submit your remarks only once. After first submission, any changes will require Admin approval.`
+        : `Please login to submit your Placement Process (PP1-PP4) remarks:
+https://audit-tool-liard.vercel.app`;
       const mail2 = {
         from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
-        to: hierarchyEmails.join(', '),
+        to: placementEmail,
         subject: subject,
-        html: hierarchyHtml,
+        html: generatePlacementEmailHTML(reportData, ppHint),
         attachments: attachment
       };
       const info2 = await transporter.sendMail(mail2);
-      console.log('✅ Hierarchy email sent to:', hierarchyEmails.join(', '), info2.messageId);
+      console.log('✅ Placement Coordinator email sent!', info2.messageId);
+    }
+
+    // ── EMAIL 3: Hierarchy (ZM/RH/AM/CM/SMP/NHP) — summary + PDF, no credentials ──
+    if (hierarchyEmails && hierarchyEmails.length > 0) {
+      const mail3 = {
+        from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+        to: hierarchyEmails.join(', '),
+        subject: subject,
+        html: generateEmailHTML(reportData, ''),
+        attachments: attachment
+      };
+      const info3 = await transporter.sendMail(mail3);
+      console.log('✅ Hierarchy email sent to:', hierarchyEmails.join(', '), info3.messageId);
     }
 
     // Update DB
@@ -1863,15 +1914,18 @@ async function sendEmailInBackground(to, cc, subject, customMessage, reportData,
 // ========================================
 app.post('/api/send-audit-email', async (req, res) => {
   try {
-    const { to, cc, subject, customMessage, reportData, hierarchyEmails } = req.body;
+    const { to, cc, subject, customMessage, reportData, hierarchyEmails, placementEmail, placementEmails } = req.body;
+
+    const ppEmail = placementEmail || (placementEmails && placementEmails[0]) || null;
 
     console.log('\n📧 EMAIL REQUEST:', reportData.centerName);
-    console.log('   To:', to);
-    console.log('   Hierarchy emails:', hierarchyEmails || []);
+    console.log('   To (CH):', to);
+    console.log('   Placement Email:', ppEmail || 'N/A');
+    console.log('   Hierarchy CC:', hierarchyEmails || []);
 
     res.json({ success: true, message: 'Email is being sent...' });
 
-    sendEmailInBackground(to, cc, subject, customMessage || '', reportData, hierarchyEmails || []);
+    sendEmailInBackground(to, cc, subject, customMessage || '', reportData, hierarchyEmails || [], ppEmail);
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1886,31 +1940,47 @@ app.post('/api/send-audit-email', async (req, res) => {
 // ========================================
 app.post('/api/hierarchy-emails', async (req, res) => {
   try {
-    const { zmName, regionHeadName, areaClusterManager } = req.body;
+    const {
+      zmName, regionHeadName, areaManager, clusterManager,
+      areaClusterManager, seniorManagerPlacement, nationalHeadPlacement,
+      placementCoordinator, includePlacement
+    } = req.body;
     const emails = [];
 
-    const findEmail = async (name, role) => {
-      if (!name || name === '-') return;
-      const regex = new RegExp(name.trim().split(' ')[0], 'i'); // match first name
-      const user = await User.findOne({
-        role: role,
-        isActive: true,
-        $or: [
-          { firstname: regex },
-          { username: regex }
-        ]
-      });
+    const findEmail = async (name, Role, strictRole = false) => {
+      if (!name || name.trim() === '' || name === '-') return;
+      // Skip short prefixes like "Md.", "Mr."
+      const parts = name.trim().split(' ').filter(p => p.length > 1 && !/^(md|mr|ms|dr)\.?$/i.test(p));
+      if (!parts.length) return;
+      const orConds = parts.flatMap(p => [
+        { firstname: new RegExp('^' + p + '$', 'i') },
+        { username:  new RegExp('^' + p + '$', 'i') }
+      ]);
+      // Try 1: role + name match
+      let user = await User.findOne({ role: Role, isActive: true, $or: orConds });
+      // Try 2: name-only fallback (not for PP Coordinator — strict)
+      if (!user && !strictRole) {
+        user = await User.findOne({ isActive: true, $or: orConds });
+      }
       if (user && user.email) {
         emails.push(user.email);
-        console.log(`✅ Found ${role}: ${user.email}`);
+        console.log('✅ Found ' + Role + ' (' + name + ') [actual: ' + user.role + ']: ' + user.email);
+      } else {
+        console.log('⚠️ No email found for ' + Role + ': ' + name);
       }
     };
 
-    await findEmail(zmName, 'Zonal Manager');
-    await findEmail(regionHeadName, 'Region Head');
-    await findEmail(areaClusterManager, 'Area Cluster Manager');
+    await findEmail(zmName,                            'Zonal Manager');
+    await findEmail(regionHeadName,                    'Region Head');
+    await findEmail(areaManager || areaClusterManager, 'Area Manager');
+    await findEmail(clusterManager,                    'Cluster Manager');
+    await findEmail(seniorManagerPlacement,            'Senior Manager Placement');
+    await findEmail(nationalHeadPlacement,             'National Head Placement');
+    if (includePlacement) {
+      await findEmail(placementCoordinator,            'Placement Coordinator', true); // strict — role must match
+    }
 
-    res.json({ success: true, emails: [...new Set(emails)] }); // dedupe
+    res.json({ success: true, emails: [...new Set(emails)] });
   } catch (err) {
     console.error('❌ Hierarchy emails error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2461,6 +2531,18 @@ app.post('/api/audit-reports/check-deadlines', async (req, res) => {
 // ========================================
 // GET CENTER USER EMAIL + CREDENTIALS
 // ========================================
+
+// GET /api/admin-emails
+app.get('/api/admin-emails', async (req, res) => {
+  try {
+    const admins = await User.find({ role: 'Admin', isActive: true });
+    const emails = admins.map(a => a.email).filter(Boolean);
+    res.json({ success: true, emails: [...new Set(emails)] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/center-user-email/:centerCode', async (req, res) => {
   try {
     const { centerCode } = req.params;
@@ -2568,6 +2650,165 @@ app.post('/api/audit-reports/:id/close-report', async (req, res) => {
   }
 });
 
+
+
+// ========================================
+// REOPEN REPORT - Auditor/Admin ke liye (hamesha reopen kar sakte hain)
+// ========================================
+app.post('/api/audit-reports/:id/reopen', async (req, res) => {
+  try {
+    const { reopenedBy } = req.body;
+    const report = await AuditReport.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    // 7 working days from today
+    const addWorkingDays = (startDate, days) => {
+      let d = new Date(startDate);
+      let added = 0;
+      while (added < days) {
+        d.setDate(d.getDate() + 1);
+        const day = d.getDay();
+        if (day !== 0 && day !== 6) added++;
+      }
+      return d;
+    };
+
+    const newDeadline = addWorkingDays(new Date(), 7);
+    report.currentStatus = 'Approved';
+    report.centerHeadRemarksLocked = false;
+    report.centerDeadline = newDeadline;
+    report.centerDeadlineString = newDeadline.toLocaleDateString('en-GB');
+    report.remindersSent = [];
+    report.reminderClosedSent = false;
+    report.auditorNoRemarksClosed = false;
+    report.autoClosedBy = '';
+    report.autoClosedDate = '';
+    report.reopenedBy = reopenedBy || 'Auditor';
+    report.reopenedDate = new Date().toLocaleDateString('en-GB');
+    await report.save();
+
+    console.log(`Report reopened: ${report.centerCode} by ${reopenedBy}, deadline: ${report.centerDeadlineString}`);
+
+    // Center user ko email
+    const centerUser = await User.findOne({
+      centerCode: report.centerCode.toUpperCase(),
+      role: 'Center User',
+      isActive: true
+    });
+
+    if (centerUser && centerUser.email) {
+      const loginUrl = 'https://audit-tool-liard.vercel.app';
+      const hadRemarks = !!report.centerRemarksDate;
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
+<div style="max-width:700px;margin:0 auto;background:white;">
+  <div style="background:linear-gradient(135deg,#2e7d32,#43a047);padding:25px;text-align:center;">
+    <h1 style="color:white;margin:0;font-size:24px;">Audit Report Reopened</h1>
+    <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:15px;">${report.centerName} (${report.centerCode})</p>
+  </div>
+  <div style="padding:30px;">
+    <p style="font-size:15px;color:#333;">Greetings,</p>
+    <div style="background:#e8f5e9;border-left:4px solid #4caf50;padding:20px;border-radius:8px;margin:20px 0;">
+      <h3 style="margin:0 0 12px;color:#2e7d32;">Your audit report has been reopened</h3>
+      <p style="margin:0;color:#555;font-size:14px;line-height:1.9;">
+        <strong>Center:</strong> ${report.centerName}<br/>
+        <strong>Reopened By:</strong> ${reopenedBy || 'Auditor'}<br/>
+        <strong>New Deadline:</strong> <span style="color:#dc3545;font-weight:bold;">${report.centerDeadlineString}</span> (7 working days from today)
+      </p>
+    </div>
+    ${hadRemarks ? `
+    <div style="background:#e3f2fd;border:1px solid #2196f3;padding:15px;border-radius:8px;margin:15px 0;">
+      <p style="margin:0;color:#1565c0;font-size:14px;">
+        <strong>Note:</strong> You had previously submitted remarks. You can now update/edit them before the new deadline.
+      </p>
+    </div>` : ''}
+    <div style="background:#fff3e0;border:1px solid #ff9800;padding:15px;border-radius:8px;margin:15px 0;">
+      <p style="margin:0;color:#e65100;font-size:14px;line-height:1.7;">
+        <strong>Important:</strong> Please submit your remarks before <strong>${report.centerDeadlineString}</strong>.
+        After this deadline, the report will be automatically closed again.
+      </p>
+    </div>
+    <div style="text-align:center;margin:25px 0;">
+      <a href="${loginUrl}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;text-decoration:none;border-radius:8px;font-weight:bold;font-size:14px;">
+        Submit / Update Remarks Now
+      </a>
+    </div>
+    <p style="font-size:14px;color:#666;margin-top:25px;">Best Regards,<br/><strong>NIIT Audit Team</strong></p>
+  </div>
+  <div style="background:#f5f5f5;padding:15px;text-align:center;border-top:1px solid #ddd;">
+    <p style="margin:0;color:#999;font-size:12px;">This is an automated email from NIIT Audit System.</p>
+  </div>
+</div></body></html>`;
+
+      try {
+        await transporter.sendMail({
+          from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
+          to: centerUser.email,
+          subject: `Audit Report Reopened - ${report.centerName} | New Deadline: ${report.centerDeadlineString}`,
+          html
+        });
+        console.log(`Reopen email sent to: ${centerUser.email}`);
+      } catch(e) {
+        console.log('Reopen email failed:', e.message);
+      }
+    }
+
+    res.json({ success: true, message: 'Report reopened successfully', newDeadline: report.centerDeadlineString });
+  } catch (err) {
+    console.error('Reopen error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ========================================
+// BULK IMPORT USERS FROM EXCEL
+// ========================================
+app.post('/api/users/bulk-import', async (req, res) => {
+  try {
+    const { users, createdBy, auditUserMode } = req.body;
+    if (!users || !Array.isArray(users) || users.length === 0)
+      return res.status(400).json({ error: 'No users data provided' });
+
+    const results = { added: [], skipped: [], errors: [] };
+    const isAdmin = !auditUserMode;
+
+    for (const u of users) {
+      try {
+        const username = (u.username || '').trim().toLowerCase();
+        if (!username || !u.password) {
+          results.errors.push({ username: username || '?', reason: 'Missing username or password' });
+          continue;
+        }
+        const existing = await User.findOne({ username });
+        if (existing) { results.skipped.push({ username, reason: 'Already exists' }); continue; }
+
+        await User.create({
+          username,
+          password: u.password,
+          firstname: u.firstname || '',
+          lastname: u.lastname || '',
+          email: u.email || '',
+          mobile: u.mobile || '',
+          Role: u.Role || 'Center User',
+          role: u.Role || 'Center User',
+          centerCode: (u.centerCode || '').toUpperCase(),
+          centerName: u.centerName || '',
+          isActive: isAdmin,
+          approvalStatus: isAdmin ? 'approved' : 'pending',
+          createdBy: createdBy || '',
+        });
+        results.added.push({ username });
+      } catch(e) {
+        results.errors.push({ username: u.username || '?', reason: e.message });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ========================================
 // APPROVAL ENDPOINTS

@@ -1,7 +1,5 @@
 // emailTemplate.js - Professional Email Template for Audit Reports
 
-const NIIT_LOGO = 'https://upload.wikimedia.org/wikipedia/en/thumb/e/ef/NIIT_logo.svg/1200px-NIIT_logo.svg.png';
-
 const getStatusColor = (score, maxScore) => {
   const percent = (score / maxScore) * 100;
   if (percent >= 80) return '#28a745';
@@ -87,7 +85,6 @@ const generateEmailHTML = (reportData, customMessage = '') => {
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding:30px; text-align:center;">
-      <img src="${NIIT_LOGO}" alt="NIIT" style="height:50px; margin-bottom:15px; filter:brightness(0) invert(1);" onerror="this.style.display='none'"/>
       <h1 style="color:white; margin:0; font-size:28px;">📋 Audit Report</h1>
       <p style="color:rgba(255,255,255,0.9); margin:10px 0 0; font-size:16px;">
         ${reportData.centerName} (${reportData.centerCode})
@@ -97,23 +94,27 @@ const generateEmailHTML = (reportData, customMessage = '') => {
     <!-- Main Content -->
     <div style="padding:30px;">
 
-      <p style="font-size:16px; color:#333; margin-bottom:20px;">Dear Sir/Madam,</p>
-
-      <p style="font-size:15px; color:#555; line-height:1.6;">
-        Please find below the audit report summary for <strong>${reportData.centerName}</strong>.
-      </p>
+      <!-- Fixed Message Body -->
+      <div style="background:#f8f9fa; padding:20px; border-radius:8px; margin:20px 0; border-left:4px solid #667eea;">
+        <p style="margin:0; color:#333; font-size:15px; line-height:1.8;">
+          Greetings,<br/><br/>
+          Thank you to you and your entire team for the cooperation extended during the physical visit at your centre.<br/><br/>
+          Please find below the audit report summary for <strong>${reportData.centerName}</strong>.<br/><br/>
+          Kindly review the audit observations and share your remarks using the following login credentials:<br/><br/>
+          <strong>Username Hint:</strong> Your first name in lowercase — Example: "shivam"<br/>
+          <strong>Password Hint:</strong> Username@Employeecode — Example: "Shivam@202451"<br/><br/>
+          Please login here to submit your remarks:<br/>
+          <a href="${loginUrl}" style="color:#667eea;">${loginUrl}</a><br/><br/>
+          <strong>Note:</strong> You can edit and submit your remarks only once. After first submission, any changes will require Admin approval.<br/><br/>
+          <strong>Important:</strong> Please fill in your remarks within 7 working days, otherwise the report will be automatically closed.<br/><br/>
+          If you have any suggestions or thoughts related to the audit for further improvement, you are most welcome to share them as well.
+        </p>
+      </div>
 
       <!-- Summary Table -->
       <div style="margin:25px 0; overflow-x:auto;">
         ${summaryTable}
       </div>
-
-      <!-- Custom Message (if any) -->
-      ${customMessage ? `
-        <div style="background:#f8f9fa; padding:20px; border-radius:8px; margin:20px 0; border-left:4px solid #667eea;">
-          <p style="margin:0; color:#333; white-space:pre-wrap;">${customMessage}</p>
-        </div>
-      ` : ''}
 
       <!-- PDF Notice -->
       <div style="background:#fff3e0; padding:15px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #ff9800;">
@@ -154,7 +155,7 @@ const generateEmailSubject = (reportData) => {
 const generatePDFHTML = () => ''; // unused, pdfGenerator.js handles PDF
 
 // Email for Placement Coordinator - same template, PP focused note
-const generatePlacementEmailHTML = (reportData) => {
+const generatePlacementEmailHTML = (reportData, credentialsMsg = '') => {
   const summaryTable = generateSummaryTableHTML(reportData);
   const pp = parseFloat(reportData.placementScore) || 0;
   const ppStatus = getStatusText(pp, 15);
@@ -174,7 +175,8 @@ const generatePlacementEmailHTML = (reportData) => {
       </p>
     </div>
     <div style="padding:30px;">
-      <p style="font-size:16px; color:#333; margin-bottom:20px;">Dear ${reportData.placementCoordinator || 'Placement Coordinator'},</p>
+      <p style="font-size:16px; color:#333; margin-bottom:20px;">Greetings,</p>
+
       <p style="font-size:15px; color:#555; line-height:1.6;">
         Please find below the audit report summary for <strong>${reportData.centerName}</strong>.
         As the Placement Coordinator, please review the <strong>Placement Process</strong> section and submit your remarks.
@@ -199,6 +201,11 @@ const generatePlacementEmailHTML = (reportData) => {
           📎 <strong>Attachment:</strong> Full detailed audit report is attached as PDF for your reference.
         </p>
       </div>
+      ${credentialsMsg ? `
+      <div style="background:#e8f5e9; padding:18px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #2e7d32;">
+        <p style="margin:0 0 8px; color:#1b5e20; font-size:14px; font-weight:bold;">🔐 Your Login Credentials</p>
+        <p style="margin:0; color:#1b5e20; font-size:14px; white-space:pre-wrap;">${credentialsMsg}</p>
+      </div>` : ''}
       <p style="font-size:14px; color:#666; margin-top:30px; line-height:1.6;">
         Best Regards,<br/><strong>NIIT Audit Team</strong>
       </p>

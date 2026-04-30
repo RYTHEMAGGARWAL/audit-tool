@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_URL } from '../config';
+import * as XLSX from 'xlsx';
 
 
 const gstStateMap = {
@@ -38,6 +39,81 @@ const CenterManagement = ({ auditUserMode = false, createdBy = '' }) => {
   });
   const [editingId, setEditingId] = useState(null);
   const [centerSearch, setCenterSearch] = useState('');
+  const [bulkResult, setBulkResult] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setBulkLoading(true);
+    setBulkResult(null);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      // header:1 gives array of arrays
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      // Find header row (contains 'Center Code')
+      let headerIdx = rows.findIndex(r => r.some(c => String(c).trim() === 'Center Code'));
+      if (headerIdx === -1) { alert('Could not find "Center Code" column in Excel. Please check format.'); setBulkLoading(false); return; }
+      const headers = rows[headerIdx].map(h => String(h).trim());
+      const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => c !== ''));
+      const colMap = {
+        centerCode: headers.indexOf('Center Code'),
+        centerName: headers.indexOf('Center Name'),
+        location: headers.indexOf('Location'),
+        centerType: headers.indexOf('Center Type'),
+        projectName: headers.indexOf('Project Name'),
+        centerHeadName: headers.indexOf('Center Head Name'),
+        clusterManager: headers.indexOf('Cluster Manager'),
+        areaManager: headers.indexOf('Area Manager'),
+        regionHeadName: headers.indexOf('Region Head'),
+        zmName: headers.indexOf('Zonal Manager Name'),
+        placementCoordinator: headers.indexOf('Placement Coordinator'),
+        seniorManagerPlacement: headers.indexOf('Senior Management Placement'),
+        nationalHeadPlacement: headers.indexOf('National Head Placement'),
+      };
+      const g = (row, key) => { const i = colMap[key]; return i >= 0 ? String(row[i] || '').trim() : ''; };
+      const centers = dataRows.map(row => ({
+        centerCode: g(row, 'centerCode'),
+        centerName: g(row, 'centerName'),
+        location: g(row, 'location'),
+        centerType: g(row, 'centerType'),
+        projectName: g(row, 'projectName'),
+        centerHeadName: g(row, 'centerHeadName'),
+        clusterManager: g(row, 'clusterManager'),
+        areaManager: g(row, 'areaManager'),
+        regionHeadName: g(row, 'regionHeadName'),
+        zmName: g(row, 'zmName'),
+        placementCoordinator: g(row, 'placementCoordinator'),
+        seniorManagerPlacement: g(row, 'seniorManagerPlacement'),
+        nationalHeadPlacement: g(row, 'nationalHeadPlacement'),
+        placementApplicable: g(row, 'placementCoordinator') ? 'yes' : 'no',
+      })).filter(c => c.centerCode && c.centerName);
+
+      if (centers.length === 0) { alert('No valid rows found in Excel.'); setBulkLoading(false); return; }
+
+      const res = await fetch(`${API_URL}/api/centers/bulk-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ centers, createdBy: createdBy || '', auditUserMode: auditUserMode || false })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setBulkResult(data.results);
+        loadCenters();
+      } else {
+        alert('Error: ' + (data.error || 'Upload failed'));
+      }
+    } catch(err) {
+      alert('Error reading file: ' + err.message);
+    } finally {
+      setBulkLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const [originalCenter, setOriginalCenter] = useState(null); // Track original before edit
 
   useEffect(() => {
@@ -370,22 +446,77 @@ const code = newCenter.centerCode.trim().toUpperCase();
 
         
 
-        <button
-          onClick={handleAdd}
-          style={{
-            marginTop: '5px',
-            padding: '12px 30px',
-            background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '15px'
-          }}
-        >
-          ➕ Add Center
-        </button>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleAdd}
+            style={{
+              marginTop: '5px',
+              padding: '12px 30px',
+              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '15px'
+            }}
+          >
+            ➕ Add Center
+          </button>
+
+          {/* Bulk Upload from Excel */}
+          <div style={{ marginTop: '5px' }}>
+            <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
+            <button
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              disabled={bulkLoading}
+              style={{
+                padding: '12px 24px',
+                background: bulkLoading ? '#9ca3af' : 'linear-gradient(135deg, #667eea, #764ba2)',
+                color: 'white', border: 'none', borderRadius: '8px',
+                cursor: bulkLoading ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold', fontSize: '15px'
+              }}
+            >
+              {bulkLoading ? '⏳ Uploading...' : '📂 Upload Excel'}
+            </button>
+          </div>
+        </div>
+
+        {/* Bulk Upload Result */}
+        {bulkResult && (
+          <div style={{ marginTop: '15px', padding: '15px', background: '#f0fff4', border: '2px solid #38a169', borderRadius: '10px' }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#276749', fontSize: '15px' }}>
+              📊 Excel Upload Result
+            </div>
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              <span style={{ background: '#c6f6d5', color: '#276749', padding: '4px 14px', borderRadius: '20px', fontWeight: 'bold' }}>
+                ✅ Added: {bulkResult.added?.length || 0}
+              </span>
+              <span style={{ background: '#fefcbf', color: '#744210', padding: '4px 14px', borderRadius: '20px', fontWeight: 'bold' }}>
+                ⚠️ Skipped: {bulkResult.skipped?.length || 0}
+              </span>
+              {bulkResult.errors?.length > 0 && (
+                <span style={{ background: '#fed7d7', color: '#822727', padding: '4px 14px', borderRadius: '20px', fontWeight: 'bold' }}>
+                  ❌ Errors: {bulkResult.errors.length}
+                </span>
+              )}
+            </div>
+            {bulkResult.skipped?.length > 0 && (
+              <div style={{ fontSize: '13px', color: '#744210' }}>
+                <strong>Skipped (already exist):</strong> {bulkResult.skipped.map(s => s.code).join(', ')}
+              </div>
+            )}
+            {bulkResult.errors?.length > 0 && (
+              <div style={{ fontSize: '13px', color: '#822727', marginTop: '6px' }}>
+                <strong>Errors:</strong> {bulkResult.errors.map(e => `${e.code}: ${e.reason}`).join(', ')}
+              </div>
+            )}
+            <button onClick={() => setBulkResult(null)} style={{ marginTop: '10px', padding: '4px 12px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+              Dismiss
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Centers Table */}

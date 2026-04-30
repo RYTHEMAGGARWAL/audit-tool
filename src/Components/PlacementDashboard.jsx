@@ -150,7 +150,7 @@ const PlacementDashboard = () => {
 
   const handleViewReport = async (report) => {
     setSelectedReport(report);
-    setSubmitted(false); setLocked(false); setEditedOnce(false); setCenterHeadLocked(false);
+    setSubmitted(false); setLocked(false); setEditedOnce(false); setCenterHeadLocked(false); setChSubmitted(false);
     try {
       const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/placement-status`);
       if (res.ok) {
@@ -164,7 +164,7 @@ const PlacementDashboard = () => {
         setCenterHeadLocked(data.centerHeadRemarksLocked || false);
         setRequestPending(data.placementEditRequest || false);
         setRemarksDate(data.placementRemarksDate || '');
-        setChSubmitted(!!data.centerRemarksDate); // CH submitted check
+        setChSubmitted(!!data.centerRemarksDate && (data.centerHeadRemarksLocked || false)); // CH submitted AND locked
       }
     } catch (e) { setPpRemarks({}); }
   };
@@ -232,7 +232,7 @@ const PlacementDashboard = () => {
   const getScore = (r) => parseFloat(r.grandTotal || 0);
   const getStatusColor = (s) => s >= 80 ? '#2e7d32' : s >= 65 ? '#e65100' : '#c62828';
   const getStatusLabel = (s) => s >= 80 ? 'Compliant' : s >= 65 ? 'Amber' : 'Non-Compliant';
-  const isLocked = chSubmitted || centerHeadLocked || editedOnce || requestPending;
+  const isLocked = (chSubmitted && centerHeadLocked) || editedOnce || requestPending;
 
   const thStyle = { padding: '10px 12px', background: 'linear-gradient(135deg, #1a237e, #3949ab)', color: 'white', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' };
   const tdStyle = { padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontSize: '13px', textAlign: 'center', verticalAlign: 'middle' };

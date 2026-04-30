@@ -6,6 +6,7 @@ const ApprovalRequests = ({ onUpdate }) => {
   const [pendingCenters, setPendingCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('users');
+  const [reopenRequests, setReopenRequests] = useState([]);
 
   useEffect(() => {
     loadPending();
@@ -14,12 +15,14 @@ const ApprovalRequests = ({ onUpdate }) => {
   const loadPending = async () => {
     setLoading(true);
     try {
-      const [usersRes, centersRes] = await Promise.all([
+      const [usersRes, centersRes, reopenRes] = await Promise.all([
         fetch(`${API_URL}/api/pending-approvals/users`),
-        fetch(`${API_URL}/api/pending-approvals/centers`)
+        fetch(`${API_URL}/api/pending-approvals/centers`),
+        fetch(`${API_URL}/api/audit-reports/reopen-requests/pending`)
       ]);
       if (usersRes.ok) setPendingUsers(await usersRes.json());
       if (centersRes.ok) setPendingCenters(await centersRes.json());
+      if (reopenRes.ok) setReopenRequests(await reopenRes.json());
     } catch(e) {
       console.error('Error loading pending:', e);
     } finally {
@@ -90,6 +93,15 @@ const ApprovalRequests = ({ onUpdate }) => {
           }}
         >
           🏢 Centers {pendingCenters.length > 0 && `(${pendingCenters.length})`}
+        </button>
+        <button
+          onClick={() => setActiveSection('reopen')}
+          style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
+            background: activeSection === 'reopen' ? 'linear-gradient(135deg, #e65100, #ff9800)' : '#f1f5f9',
+            color: activeSection === 'reopen' ? 'white' : '#333', position: 'relative'
+          }}
+        >
+          🔓 Reopen Requests {reopenRequests.length > 0 && `(${reopenRequests.length})`}
         </button>
       </div>
 
@@ -258,6 +270,61 @@ const ApprovalRequests = ({ onUpdate }) => {
                     <button
                       onClick={() => handleReject('center', c._id)}
                       style={{ padding: '10px 22px', background: 'linear-gradient(135deg, #f44336, #e91e63)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                    >❌ Reject</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+      {/* REOPEN REQUESTS SECTION */}
+      {activeSection === 'reopen' && (
+        reopenRequests.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', background: '#f9fafb', borderRadius: '12px', color: '#999' }}>
+            <div style={{ fontSize: '48px', marginBottom: '15px' }}>🔓</div>
+            <p style={{ fontSize: '16px' }}>No pending reopen requests</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {reopenRequests.map(r => (
+              <div key={r._id} style={{ background: 'white', border: '2px solid #ff9800', borderRadius: '12px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#e65100', marginBottom: '8px' }}>
+                      🔓 {r.centerName} ({r.centerCode})
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#555' }}>
+                      <span>👤 Requested By: <strong>{r.reopenRequestBy}</strong></span>
+                      <span>📅 Date: {r.reopenRequestDate}</span>
+                      <span>📊 Score: <strong>{r.grandTotal}/100</strong></span>
+                      <span>🏢 Status: {r.currentStatus}</span>
+                    </div>
+                    {r.reopenRequestReason && (
+                      <div style={{ marginTop: '10px', padding: '10px 14px', background: '#fff8e1', borderRadius: '8px', border: '1px solid #ffc107', fontSize: '13px', color: '#856404' }}>
+                        📝 Reason: {r.reopenRequestReason}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm('Approve reopen for ' + r.centerName + '?\nCenter + Placement dono unlock honge.')) return;
+                        const res = await fetch(`${API_URL}/api/audit-reports/${r._id}/reopen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reopenedBy: 'Admin' }) });
+                        const d = await res.json();
+                        if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); loadPending(); if (onUpdate) onUpdate(); }
+                        else alert('❌ ' + (d.error || 'Failed'));
+                      }}
+                      style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#4caf50,#8bc34a)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                    >✅ Approve & Reopen</button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm('Reject reopen request for ' + r.centerName + '?')) return;
+                        const res = await fetch(`${API_URL}/api/audit-reports/${r._id}/reject-reopen`, { method: 'POST' });
+                        if (res.ok) { alert('❌ Request rejected.'); loadPending(); if (onUpdate) onUpdate(); }
+                        else alert('Failed');
+                      }}
+                      style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#f44336,#e91e63)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
                     >❌ Reject</button>
                   </div>
                 </div>
