@@ -8,6 +8,7 @@ import PendingApprovals from './PendingApprovals';
 import EditRequestsApproval from './EditRequestsApproval';
 import ApprovalRequests from './ApprovalRequests';
 import MyRequests from './MyRequests';
+import Dashboard from './Dashboard';
 import { API_URL } from '../config';
 import './Admin.css';
 
@@ -22,7 +23,7 @@ const Admin = () => {
   const isLegacyUser = loggedUser.Role === 'User';
 
   const [activeTab, setActiveTab] = useState(
-    isAdmin ? 'User Management' :
+    isAdmin ? 'Dashboard' :
     isAuditUser ? 'Audit' :
     'Audit'
   );
@@ -117,6 +118,9 @@ const Admin = () => {
         {/* ── ADMIN TABS ── */}
         {isAdmin && (
           <>
+            <button className={activeTab === 'Dashboard' ? 'active' : ''} onClick={() => setActiveTab('Dashboard')}>
+              📊 Dashboard
+            </button>
             <button className={activeTab === 'User Management' ? 'active' : ''} onClick={() => setActiveTab('User Management')}>
               👥 User Management
             </button>
@@ -195,6 +199,7 @@ const Admin = () => {
         {/* ── ADMIN CONTENT ── */}
         {isAdmin && (
           <>
+            {activeTab === 'Dashboard' && <Dashboard />}
             {activeTab === 'User Management' && <UserManagement auditUserMode={false} createdBy={loggedUser.firstname} />}
             {activeTab === 'Center Management' && <CenterManagement />}
             {activeTab === 'Audit' && <Audit />}

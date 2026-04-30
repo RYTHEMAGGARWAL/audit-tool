@@ -2762,52 +2762,86 @@ app.post('/api/audit-reports/:id/reopen', async (req, res) => {
 
 
 // ========================================
-// BULK IMPORT USERS FROM EXCEL
+// ANALYTICS API
 // ========================================
-app.post('/api/users/bulk-import', async (req, res) => {
+app.get('/api/analytics', async (req, res) => {
   try {
-    const { users, createdBy, auditUserMode } = req.body;
-    if (!users || !Array.isArray(users) || users.length === 0)
-      return res.status(400).json({ error: 'No users data provided' });
+    const reports = await AuditReport.find({}).select(
+      'grandTotal currentStatus centerType zmName regionHeadName areaManager financialYear auditedBy placementApplicable centerRemarksDate placementRemarksSubmitted emailSent centerName centerCode frontOfficeScore deliveryProcessScore placementScore managementScore auditDateString createdAt auditStatus'
+    );
 
-    const results = { added: [], skipped: [], errors: [] };
-    const isAdmin = !auditUserMode;
+    const total = reports.length;
+    const compliant = reports.filter(r => parseFloat(r.grandTotal) >= 80).length;
+    const amber = reports.filter(r => parseFloat(r.grandTotal) >= 65 && parseFloat(r.grandTotal) < 80).length;
+    const nonCompliant = reports.filter(r => parseFloat(r.grandTotal) < 65).length;
 
-    for (const u of users) {
-      try {
-        const username = (u.username || '').trim().toLowerCase();
-        if (!username || !u.password) {
-          results.errors.push({ username: username || '?', reason: 'Missing username or password' });
-          continue;
-        }
-        const existing = await User.findOne({ username });
-        if (existing) { results.skipped.push({ username, reason: 'Already exists' }); continue; }
+    const statusBreakdown = {};
+    reports.forEach(r => { const s = r.currentStatus || 'Unknown'; statusBreakdown[s] = (statusBreakdown[s] || 0) + 1; });
 
-        await User.create({
-          username,
-          password: u.password,
-          firstname: u.firstname || '',
-          lastname: u.lastname || '',
-          email: u.email || '',
-          mobile: u.mobile || '',
-          Role: u.Role || 'Center User',
-          role: u.Role || 'Center User',
-          centerCode: (u.centerCode || '').toUpperCase(),
-          centerName: u.centerName || '',
-          isActive: isAdmin,
-          approvalStatus: isAdmin ? 'approved' : 'pending',
-          createdBy: createdBy || '',
-        });
-        results.added.push({ username });
-      } catch(e) {
-        results.errors.push({ username: u.username || '?', reason: e.message });
-      }
-    }
+    const typeBreakdown = {};
+    reports.forEach(r => { const t = r.centerType || 'Unknown'; typeBreakdown[t] = (typeBreakdown[t] || 0) + 1; });
 
-    res.json({ success: true, results });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const auditorBreakdown = {};
+    reports.forEach(r => {
+      const a = r.auditedBy || 'Unknown';
+      if (!auditorBreakdown[a]) auditorBreakdown[a] = { total: 0, submitted: 0 };
+      auditorBreakdown[a].total++;
+      if (['Approved','Closed','Pending with Supervisor'].includes(r.currentStatus)) auditorBreakdown[a].submitted++;
+    });
+
+    const placementReports = reports.filter(r => r.placementApplicable === 'yes');
+    const sectionAvg = {
+      frontOffice: reports.reduce((s, r) => s + (parseFloat(r.frontOfficeScore) || 0), 0) / (total || 1),
+      delivery: reports.reduce((s, r) => s + (parseFloat(r.deliveryProcessScore) || 0), 0) / (total || 1),
+      placement: placementReports.reduce((s, r) => s + (parseFloat(r.placementScore) || 0), 0) / (placementReports.length || 1),
+      management: reports.reduce((s, r) => s + (parseFloat(r.managementScore) || 0), 0) / (total || 1),
+    };
+
+    // Section-wise compliance breakdown
+    const sectionBreakdown = {
+      frontOffice: {
+        compliant: reports.filter(r => (parseFloat(r.frontOfficeScore)||0)/30 >= 0.80).length,
+        amber: reports.filter(r => { const p=(parseFloat(r.frontOfficeScore)||0)/30; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (parseFloat(r.frontOfficeScore)||0)/30 < 0.65).length,
+      },
+      delivery: {
+        compliant: reports.filter(r => (parseFloat(r.deliveryProcessScore)||0)/40 >= 0.80).length,
+        amber: reports.filter(r => { const p=(parseFloat(r.deliveryProcessScore)||0)/40; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (parseFloat(r.deliveryProcessScore)||0)/40 < 0.65).length,
+      },
+      placement: {
+        compliant: placementReports.filter(r => (parseFloat(r.placementScore)||0)/15 >= 0.80).length,
+        amber: placementReports.filter(r => { const p=(parseFloat(r.placementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: placementReports.filter(r => (parseFloat(r.placementScore)||0)/15 < 0.65).length,
+        total: placementReports.length,
+      },
+      management: {
+        compliant: reports.filter(r => (parseFloat(r.managementScore)||0)/15 >= 0.80).length,
+        amber: reports.filter(r => { const p=(parseFloat(r.managementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (parseFloat(r.managementScore)||0)/15 < 0.65).length,
+      },
+    };
+
+    const avgScore = total > 0 ? reports.reduce((s, r) => s + (parseFloat(r.grandTotal) || 0), 0) / total : 0;
+    const emailPending = reports.filter(r => r.currentStatus === 'Approved' && !r.emailSent).length;
+    const remarksPending = reports.filter(r => r.emailSent && !r.centerRemarksDate && r.currentStatus === 'Approved').length;
+    const closed = reports.filter(r => r.currentStatus === 'Closed').length;
+
+    const allReports = reports.map(r => ({
+      centerName: r.centerName, centerCode: r.centerCode,
+      grandTotal: parseFloat(r.grandTotal) || 0,
+      frontOfficeScore: parseFloat(r.frontOfficeScore) || 0,
+      deliveryProcessScore: parseFloat(r.deliveryProcessScore) || 0,
+      placementScore: parseFloat(r.placementScore) || 0,
+      managementScore: parseFloat(r.managementScore) || 0,
+      placementApplicable: r.placementApplicable,
+      currentStatus: r.currentStatus,
+      auditDateString: r.auditDateString, auditedBy: r.auditedBy,
+      emailSent: r.emailSent, centerRemarksDate: r.centerRemarksDate,
+    }));
+
+    res.json({ total, compliant, amber, nonCompliant, avgScore, emailPending, remarksPending, closed, statusBreakdown, typeBreakdown, auditorBreakdown, sectionAvg, sectionBreakdown, allReports });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ========================================
