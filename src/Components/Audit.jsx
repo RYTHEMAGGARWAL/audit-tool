@@ -1202,110 +1202,69 @@ const isWithinDateRange = (reportDate, start, end) => {
 
   return (
     <div className="management-section">
-      <h2>📋 Audit Management</h2>
 
-      <div className="action-buttons" style={{
-        display: 'flex',
-        gap: '20px',
-        justifyContent: 'center',
-        marginBottom: '30px',
-        flexWrap: 'wrap'
-      }}>
-        <button 
-          className={`btn ${activeOption === 'create' ? 'active' : ''}`}
-          onClick={() => handleOptionClick('create')}
-          style={{
-            padding: '15px 35px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            border: activeOption === 'create' ? '3px solid #667eea' : '2px solid #ddd',
-            background: activeOption === 'create' 
-              ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
-              : 'white',
-            color: activeOption === 'create' ? 'white' : '#333',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: activeOption === 'create' 
-              ? '0 8px 20px rgba(102, 126, 234, 0.4)' 
-              : '0 4px 10px rgba(0,0,0,0.1)',
-            transform: activeOption === 'create' ? 'translateY(-2px)' : 'none'
-          }}
-          onMouseOver={(e) => {
-            if (activeOption !== 'create') {
-              e.target.style.borderColor = '#667eea';
-              e.target.style.transform = 'translateY(-2px)';
+      {/* ── EXCEL-STYLE DROPDOWN TAB ── */}
+      {(() => {
+        const [dropOpen, setDropOpen] = React.useState(false);
+        const dropRef = React.useRef(null);
+
+        React.useEffect(() => {
+          const handleOutside = (e) => {
+            if (dropRef.current && !dropRef.current.contains(e.target)) {
+              setDropOpen(false);
             }
-          }}
-          onMouseOut={(e) => {
-            if (activeOption !== 'create') {
-              e.target.style.borderColor = '#ddd';
-              e.target.style.transform = 'none';
-            }
-          }}
-        >
-          ➕ Create Report
-        </button>
-        <button 
-          className={`btn ${activeOption === 'view' ? 'active' : ''}`}
-          onClick={() => handleOptionClick('view')}
-          style={{
-            padding: '15px 35px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            border: activeOption === 'view' ? '3px solid #667eea' : '2px solid #ddd',
-            background: activeOption === 'view' 
-              ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
-              : 'white',
-            color: activeOption === 'view' ? 'white' : '#333',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: activeOption === 'view' 
-              ? '0 8px 20px rgba(102, 126, 234, 0.4)' 
-              : '0 4px 10px rgba(0,0,0,0.1)',
-            transform: activeOption === 'view' ? 'translateY(-2px)' : 'none'
-          }}
-          onMouseOver={(e) => {
-            if (activeOption !== 'view') {
-              e.target.style.borderColor = '#667eea';
-              e.target.style.transform = 'translateY(-2px)';
-            }
-          }}
-          onMouseOut={(e) => {
-            if (activeOption !== 'view') {
-              e.target.style.borderColor = '#ddd';
-              e.target.style.transform = 'none';
-            }
-          }}
-        >
-          📊 View Reports
-        </button>
-        
-        <button 
-          className={`btn ${activeOption === 'history' ? 'active' : ''}`}
-          onClick={() => handleOptionClick('history')}
-          style={{
-            padding: '15px 35px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            border: activeOption === 'history' ? '3px solid #ff6f00' : '2px solid #ddd',
-            background: activeOption === 'history' 
-              ? 'linear-gradient(135deg, #ff6f00 0%, #ff9800 100%)' 
-              : 'white',
-            color: activeOption === 'history' ? 'white' : '#333',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: activeOption === 'history' 
-              ? '0 8px 20px rgba(255, 111, 0, 0.4)' 
-              : '0 4px 10px rgba(0,0,0,0.1)',
-            transform: activeOption === 'history' ? 'translateY(-2px)' : 'none'
-          }}
-        >
-          📜 History
-        </button>
-      </div>
+          };
+          document.addEventListener('mousedown', handleOutside);
+          return () => document.removeEventListener('mousedown', handleOutside);
+        }, []);
+
+        const menuItems = [
+          { key: 'create',  icon: '➕', label: 'Create Report', color: '#667eea' },
+          { key: 'view',    icon: '📊', label: 'View Reports',  color: '#2196f3' },
+          { key: 'history', icon: '📜', label: 'History',       color: '#ff6f00' },
+        ];
+
+        const active = menuItems.find(m => m.key === activeOption);
+
+        return (
+          <div className="audit-excel-tab-wrap" ref={dropRef}>
+            <button
+              className={`audit-excel-tab${dropOpen ? ' audit-excel-tab--open' : ''}`}
+              onClick={() => setDropOpen(o => !o)}
+            >
+              <span className="aet-icon">📋</span>
+              <span className="aet-title">Audit</span>
+              {active && (
+                <span className="aet-active-chip" style={{ background: active.color }}>
+                  {active.icon} {active.label}
+                </span>
+              )}
+              <span className="aet-caret">{dropOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {dropOpen && (
+              <div className="audit-excel-dropdown">
+                <div className="aed-header">📋 Audit Management</div>
+                {menuItems.map((item, i) => (
+                  <button
+                    key={item.key}
+                    className={`aed-item${activeOption === item.key ? ' aed-item--active' : ''}`}
+                    style={{ '--item-color': item.color }}
+                    onClick={() => {
+                      handleOptionClick(item.key);
+                      setDropOpen(false);
+                    }}
+                  >
+                    <span className="aed-item-icon">{item.icon}</span>
+                    <span className="aed-item-label">{item.label}</span>
+                    {activeOption === item.key && <span className="aed-item-check">✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* CREATE REPORT */}
       {activeOption === 'create' && (

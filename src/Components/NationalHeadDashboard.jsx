@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 
 const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
@@ -251,7 +252,17 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
   );
 };
 
-export default function Dashboard() {
+export default function NationalHeadDashboard() {
+  const navigate = useNavigate();
+  const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+
+  useEffect(() => {
+    if (!loggedUser?.username || !['National Head', 'National Head Placement'].includes(loggedUser.Role)) {
+      alert('Unauthorized!');
+      navigate('/');
+    }
+  }, []);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState('');
@@ -352,12 +363,26 @@ export default function Dashboard() {
   const auditorData = Object.entries(data.auditorBreakdown || {}).sort((a, b) => b[1].total - a[1].total);
 
   return (
-    <div style={{ padding: 20, background: '#f0f2f8', minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f8', fontFamily: 'Segoe UI, sans-serif' }}>
+
+      {/* ── HEADER ── */}
+      <header style={{ background: 'white', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', borderBottom: '1px solid #e0e0e0' }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#333' }}>
+          🏛️ {loggedUser.Role} Dashboard - Welcome, {loggedUser.firstname}
+        </h1>
+        <button
+          onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}
+          style={{ background: '#dc3545', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+          Logout
+        </button>
+      </header>
+
+      <div style={{ padding: 20 }}>
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: '800', color: '#1a237e' }}>Audit Analytics Dashboard</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: '800', color: '#1a237e' }}>🏛️ {loggedUser.Role} — Audit Analytics Dashboard</h2>
           <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>Last refreshed: {lastRefresh}</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -562,6 +587,7 @@ export default function Dashboard() {
 
       {/* Full Checkpoint Modal */}
       <ReportDetailModal report={selectedReport} onClose={closeModal} loading={modalLoading} />
+      </div>
     </div>
   );
 }

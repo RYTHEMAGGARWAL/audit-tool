@@ -770,6 +770,168 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+/* ══════════════════════════════════════════
+   EXCEL-STYLE AUDIT DROPDOWN
+══════════════════════════════════════════ */
+
+.audit-excel-tab-wrap {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 24px;
+  z-index: 1000;
+}
+
+/* The clickable tab button */
+.audit-excel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px 9px 14px;
+  background: white;
+  border: 1.5px solid #d0d5e8;
+  border-bottom: 3px solid #667eea;
+  border-radius: 8px 8px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  min-width: 160px;
+}
+
+.audit-excel-tab:hover {
+  background: #f4f5ff;
+}
+
+.audit-excel-tab--open {
+  background: #f4f5ff;
+  border-color: #667eea;
+  border-bottom-color: #f4f5ff; /* merge with dropdown */
+  box-shadow: 0 2px 12px rgba(102,126,234,0.15);
+  border-radius: 8px 8px 0 0;
+}
+
+.aet-icon  { font-size: 18px; }
+.aet-title { font-size: 15px; font-weight: 700; color: #222; }
+
+.aet-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  animation: fadeIn 0.2s ease;
+}
+
+.aet-caret {
+  margin-left: auto;
+  font-size: 11px;
+  color: #888;
+  padding-left: 6px;
+}
+
+/* The dropdown panel */
+.audit-excel-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: white;
+  border: 1.5px solid #667eea;
+  border-top: none;
+  border-radius: 0 8px 8px 8px;
+  box-shadow: 0 8px 32px rgba(102,126,234,0.18), 0 2px 8px rgba(0,0,0,0.1);
+  overflow: hidden;
+  animation: dropDown 0.18s ease;
+  z-index: 9999;
+}
+
+@keyframes dropDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Header label inside dropdown */
+.aed-header {
+  padding: 10px 16px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #999;
+  background: #f8f9fc;
+  border-bottom: 1px solid #eee;
+}
+
+/* Each menu item */
+.aed-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s, padding-left 0.12s;
+  position: relative;
+}
+
+.aed-item:last-child { border-bottom: none; }
+
+.aed-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--item-color);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.aed-item:hover {
+  background: #f4f5ff;
+  color: var(--item-color);
+  padding-left: 22px;
+}
+
+.aed-item:hover::before { opacity: 1; }
+
+.aed-item--active {
+  background: color-mix(in srgb, var(--item-color) 10%, white);
+  color: var(--item-color);
+  padding-left: 22px;
+}
+
+.aed-item--active::before { opacity: 1; }
+
+.aed-item-icon { font-size: 17px; }
+.aed-item-label { flex: 1; }
+
+.aed-item-check {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--item-color);
+}
+
+@media (max-width: 600px) {
+  .audit-excel-tab { min-width: 120px; }
+  .audit-excel-dropdown { min-width: 180px; }
+}
+
 /* Print Styles */
 @media print {
   .options,

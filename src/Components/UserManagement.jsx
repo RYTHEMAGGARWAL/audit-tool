@@ -9,6 +9,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const fileInputRef = useRef(null);
   const [bulkResult, setBulkResult] = useState(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [umDropOpen, setUmDropOpen] = useState(false);
+  const umDropRef = useRef(null);
 
   const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
   const [activeOption, setActiveOption] = useState('');
@@ -30,6 +32,12 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   // Load centers
   useEffect(() => {
     loadCenters();
+  }, []);
+
+  useEffect(() => {
+    const h = (e) => { if (umDropRef.current && !umDropRef.current.contains(e.target)) setUmDropOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
 
   const loadCenters = async () => {
@@ -428,25 +436,47 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
     <div className="management-section">
       {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
       
-      <h2>👥 User Management</h2>
-      
-      <div className="status-bar">
-        <span>📊 Total Users: {globalUsers.length}</span>
-        <button onClick={async () => { await loadUsersData(); showMessage('✅ Refreshed!', 'success'); }} disabled={loading}>
-          {loading ? '⏳' : '🔄 Refresh'}
-        </button>
-      </div>
-
-      <div className="options">
-        <button className={activeOption === 'create' ? 'active' : ''} onClick={() => { resetForm(); setActiveOption('create'); }}>
-          ➕ Create User
-        </button>
-        <button className={activeOption === 'view' ? 'active' : ''} onClick={async () => { await loadUsersData(); setActiveOption('view'); }}>
-          👁️ View User
-        </button>
-        <button className={activeOption === 'modify' ? 'active' : ''} onClick={async () => { await loadUsersData(); setActiveOption('modify'); setSelectedUser(null); }}>
-          ✏️ Modify User
-        </button>
+      {/* ── EXCEL-STYLE DROPDOWN ── */}
+      <div className="um-tab-row">
+        <div className="um-excel-tab-wrap" ref={umDropRef}>
+          <button
+            className={`um-excel-tab${umDropOpen ? ' um-excel-tab--open' : ''}`}
+            onClick={() => setUmDropOpen(o => !o)}
+          >
+            <span className="um-aet-icon">👥</span>
+            <span className="um-aet-title">User Management</span>
+            {activeOption === 'create' && <span className="um-aet-active-chip" style={{ background: '#11998e' }}>➕ Create User</span>}
+            {activeOption === 'view'   && <span className="um-aet-active-chip" style={{ background: '#2196f3' }}>👁️ View User</span>}
+            {activeOption === 'modify' && <span className="um-aet-active-chip" style={{ background: '#f7971e' }}>✏️ Modify User</span>}
+            <span className="um-aet-caret">{umDropOpen ? '▲' : '▼'}</span>
+          </button>
+          {umDropOpen && (
+            <div className="um-excel-dropdown">
+              <div className="um-aed-header">👥 User Management</div>
+              <button className={`um-aed-item${activeOption==='create'?' um-aed-item--active':''}`} style={{'--item-color':'#11998e'}}
+                onClick={() => { resetForm(); setActiveOption('create'); setUmDropOpen(false); }}>
+                <span className="um-aed-item-icon">➕</span><span className="um-aed-item-label">Create User</span>
+                {activeOption==='create'&&<span className="um-aed-item-check">✓</span>}
+              </button>
+              <button className={`um-aed-item${activeOption==='view'?' um-aed-item--active':''}`} style={{'--item-color':'#2196f3'}}
+                onClick={async () => { await loadUsersData(); setActiveOption('view'); setUmDropOpen(false); }}>
+                <span className="um-aed-item-icon">👁️</span><span className="um-aed-item-label">View User</span>
+                {activeOption==='view'&&<span className="um-aed-item-check">✓</span>}
+              </button>
+              <button className={`um-aed-item${activeOption==='modify'?' um-aed-item--active':''}`} style={{'--item-color':'#f7971e'}}
+                onClick={async () => { await loadUsersData(); setActiveOption('modify'); setSelectedUser(null); setUmDropOpen(false); }}>
+                <span className="um-aed-item-icon">✏️</span><span className="um-aed-item-label">Modify User</span>
+                {activeOption==='modify'&&<span className="um-aed-item-check">✓</span>}
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="um-status-right">
+          <span className="um-total-badge">📊 Total Users: {globalUsers.length}</span>
+          <button className="um-refresh-btn" onClick={async () => { await loadUsersData(); showMessage('✅ Refreshed!', 'success'); }} disabled={loading}>
+            {loading ? '⏳' : '🔄 Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* CREATE USER */}
@@ -583,6 +613,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                 <option value="Placement Coordinator">Placement Coordinator</option>
                 <option value="Senior Manager Placement">Senior Manager Placement</option>
                 <option value="National Head Placement">National Head Placement</option>
+                <option value="National Head">National Head</option>
                 <option value="Admin">Admin</option>
               </select>
             </div>
@@ -931,6 +962,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
                     <option value="Placement Coordinator">Placement Coordinator</option>
                     <option value="Senior Manager Placement">Senior Manager Placement</option>
                     <option value="National Head Placement">National Head Placement</option>
+                    <option value="National Head">National Head</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>

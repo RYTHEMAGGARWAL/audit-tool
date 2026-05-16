@@ -96,7 +96,9 @@ const Login = () => {
         const role = data.user.Role?.toLowerCase();
         console.log('✅ Role (lowercase):', role);
         
-        const hierarchyRoles = ['zonal manager', 'region head', 'area manager', 'cluster manager', 'operation head', 'senior manager placement', 'national head placement'];
+        const hierarchyRoles = ['zonal manager', 'region head', 'area manager', 'cluster manager', 'operation head', 'senior manager placement'];
+      if (role === 'national head' || role === 'national head placement') { navigate('/national-head'); return; }
+        if (role === 'national head' || role === 'national head placement') { navigate('/national-head'); return; }
         if (role === 'admin') {
           navigate('/admin');
         } else if (role === 'center user') {
@@ -130,7 +132,8 @@ const Login = () => {
       const role = user.Role?.toLowerCase();
       console.log('✅ Role (lowercase):', role);
       
-      const hierarchyRoles = ['zonal manager', 'region head', 'area manager', 'cluster manager', 'operation head', 'senior manager placement', 'national head placement'];
+      const hierarchyRoles = ['zonal manager', 'region head', 'area manager', 'cluster manager', 'operation head', 'senior manager placement'];
+      if (role === 'national head' || role === 'national head placement') { navigate('/national-head'); return; }
       if (role === 'admin') {
         navigate('/admin');
       } else if (role === 'center user') {

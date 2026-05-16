@@ -7,6 +7,8 @@ import UserDashboard from './Components/UserDashboard';
 import PlacementDashboard from './Components/PlacementDashboard';
 import CenterDashboard from './Components/CenterDashboard';
 import HierarchyDashboard from './Components/HierarchyDashboard';
+import RoleDashboard from './Components/RoleDashboard';
+import NationalHeadDashboard from './Components/NationalHeadDashboard';
 import './App.css';
 
 function App() {
@@ -19,8 +21,11 @@ function App() {
             <Route path="/admin" element={<Admin />} />
             <Route path="/user-dashboard" element={<UserDashboard />} />
             <Route path="/center-dashboard" element={<CenterDashboard />} />
-            <Route path="/hierarchy-dashboard" element={<HierarchyDashboard />} />
-             <Route path="/placement-dashboard" element={<PlacementDashboard />} />
+            {/* RoleDashboard — all hierarchy roles (Zonal Manager, Region Head, Area/Cluster Manager, Placement roles) */}
+            <Route path="/hierarchy-dashboard" element={<RoleDashboard />} />
+            <Route path="/role-dashboard" element={<RoleDashboard />} />
+            <Route path="/national-head" element={<NationalHeadDashboard />} />
+            <Route path="/placement-dashboard" element={<PlacementDashboard />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>

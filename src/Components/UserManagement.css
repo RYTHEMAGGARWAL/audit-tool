@@ -429,8 +429,210 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+
+/* ══════════════════════════════════════════
+   EXCEL-STYLE USER MANAGEMENT DROPDOWN
+══════════════════════════════════════════ */
+
+.um-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* ── Dropdown wrapper ── */
+.um-excel-tab-wrap {
+  position: relative;
+  display: inline-block;
+  z-index: 1000;
+}
+
+/* The clickable tab button */
+.um-excel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px 9px 14px;
+  background: white;
+  border: 1.5px solid #d0d5e8;
+  border-bottom: 3px solid #667eea;
+  border-radius: 8px 8px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  min-width: 180px;
+}
+
+.um-excel-tab:hover { background: #f4f5ff; }
+
+.um-excel-tab--open {
+  background: #f4f5ff;
+  border-color: #667eea;
+  border-bottom-color: #f4f5ff;
+  box-shadow: 0 2px 12px rgba(102,126,234,0.15);
+}
+
+.um-aet-icon  { font-size: 18px; }
+.um-aet-title { font-size: 15px; font-weight: 700; color: #222; }
+
+.um-aet-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  animation: umFadeIn 0.2s ease;
+}
+
+@keyframes umFadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.um-aet-caret {
+  margin-left: auto;
+  font-size: 11px;
+  color: #888;
+  padding-left: 6px;
+}
+
+/* ── Dropdown panel ── */
+.um-excel-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 210px;
+  background: white;
+  border: 1.5px solid #667eea;
+  border-top: none;
+  border-radius: 0 8px 8px 8px;
+  box-shadow: 0 8px 32px rgba(102,126,234,0.18), 0 2px 8px rgba(0,0,0,0.1);
+  overflow: hidden;
+  animation: umDropDown 0.18s ease;
+  z-index: 9999;
+}
+
+@keyframes umDropDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.um-aed-header {
+  padding: 10px 16px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #999;
+  background: #f8f9fc;
+  border-bottom: 1px solid #eee;
+}
+
+.um-aed-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s, padding-left 0.12s;
+  position: relative;
+}
+
+.um-aed-item:last-child { border-bottom: none; }
+
+.um-aed-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  width: 3px; height: 100%;
+  background: var(--item-color);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.um-aed-item:hover {
+  background: #f4f5ff;
+  color: var(--item-color);
+  padding-left: 22px;
+}
+.um-aed-item:hover::before { opacity: 1; }
+
+.um-aed-item--active {
+  background: color-mix(in srgb, var(--item-color) 10%, white);
+  color: var(--item-color);
+  padding-left: 22px;
+}
+.um-aed-item--active::before { opacity: 1; }
+
+.um-aed-item-icon  { font-size: 17px; }
+.um-aed-item-label { flex: 1; }
+.um-aed-item-check { font-size: 14px; font-weight: 900; color: var(--item-color); }
+
+/* ── Status right side ── */
+.um-status-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.um-total-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+}
+
+.um-refresh-btn {
+  padding: 8px 18px;
+  background: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.um-refresh-btn:hover {
+  background: #667eea;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+}
+
+.um-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .um-tab-row { flex-direction: column; align-items: flex-start; }
+  .um-excel-tab { min-width: 140px; }
+  .um-excel-dropdown { min-width: 180px; }
+  .um-status-right { width: 100%; justify-content: space-between; }
+}
   .management-section {
     padding: 15px;
   }
