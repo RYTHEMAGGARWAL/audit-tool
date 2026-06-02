@@ -8,8 +8,10 @@ import Select from 'react-select';
 
 import './Audit.css';
 
-const AuditManagement = () => {
+const AuditManagement = ({ defaultOption = '', hideHeader = false }) => {
   const [activeOption, setActiveOption] = useState('');
+  const [dropOpen, setDropOpen] = React.useState(false);
+  const dropRef = React.useRef(null);
   const [centers, setCenters] = useState([]);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [auditType, setAuditType] = useState('Skills-CDC');
@@ -1116,6 +1118,20 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     }
   }, [activeOption]);
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  // Sync with Admin's IndiGo tab dropdown
+  useEffect(() => {
+    if (defaultOption) handleOptionClick(defaultOption);
+  }, [defaultOption]);
+
   // ========================================
   // 🔥 NEW RED FLAG STATUS LOGIC
   // ========================================
@@ -1203,29 +1219,14 @@ const isWithinDateRange = (reportDate, start, end) => {
   return (
     <div className="management-section">
 
-      {/* ── EXCEL-STYLE DROPDOWN TAB ── */}
-      {(() => {
-        const [dropOpen, setDropOpen] = React.useState(false);
-        const dropRef = React.useRef(null);
-
-        React.useEffect(() => {
-          const handleOutside = (e) => {
-            if (dropRef.current && !dropRef.current.contains(e.target)) {
-              setDropOpen(false);
-            }
-          };
-          document.addEventListener('mousedown', handleOutside);
-          return () => document.removeEventListener('mousedown', handleOutside);
-        }, []);
-
+      {/* ── EXCEL-STYLE DROPDOWN TAB (hidden when controlled by Admin's tab) ── */}
+      {!hideHeader && (() => {
         const menuItems = [
           { key: 'create',  icon: '➕', label: 'Create Report', color: '#667eea' },
           { key: 'view',    icon: '📊', label: 'View Reports',  color: '#2196f3' },
           { key: 'history', icon: '📜', label: 'History',       color: '#ff6f00' },
         ];
-
         const active = menuItems.find(m => m.key === activeOption);
-
         return (
           <div className="audit-excel-tab-wrap" ref={dropRef}>
             <button
@@ -1241,19 +1242,15 @@ const isWithinDateRange = (reportDate, start, end) => {
               )}
               <span className="aet-caret">{dropOpen ? '▲' : '▼'}</span>
             </button>
-
             {dropOpen && (
               <div className="audit-excel-dropdown">
                 <div className="aed-header">📋 Audit Management</div>
-                {menuItems.map((item, i) => (
+                {menuItems.map((item) => (
                   <button
                     key={item.key}
                     className={`aed-item${activeOption === item.key ? ' aed-item--active' : ''}`}
                     style={{ '--item-color': item.color }}
-                    onClick={() => {
-                      handleOptionClick(item.key);
-                      setDropOpen(false);
-                    }}
+                    onClick={() => { handleOptionClick(item.key); setDropOpen(false); }}
                   >
                     <span className="aed-item-icon">{item.icon}</span>
                     <span className="aed-item-label">{item.label}</span>

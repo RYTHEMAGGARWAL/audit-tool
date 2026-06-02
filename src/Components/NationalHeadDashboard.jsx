@@ -403,10 +403,6 @@ export default function NationalHeadDashboard() {
         <StatCard icon="✅" label="Compliant" value={data.compliant} sub={`${data.total ? ((data.compliant / data.total) * 100).toFixed(1) : 0}%`} color="#2e7d32" filterKey="compliant" />
         <StatCard icon="🟡" label="Amber" value={data.amber} sub={`${data.total ? ((data.amber / data.total) * 100).toFixed(1) : 0}%`} color="#e65100" filterKey="amber" />
         <StatCard icon="❌" label="Non-Compliant" value={data.nonCompliant} sub={`${data.total ? ((data.nonCompliant / data.total) * 100).toFixed(1) : 0}%`} color="#c62828" filterKey="nonCompliant" />
-        <StatCard icon="⭐" label="Avg Score" value={data.avgScore.toFixed(1)} sub="out of 100" color="#7b1fa2" />
-        <StatCard icon="📧" label="Email Pending" value={data.emailPending} color="#0288d1" filterKey="emailPending" />
-        <StatCard icon="⏳" label="Remarks Pending" value={data.remarksPending} color="#f57c00" filterKey="remarksPending" />
-        <StatCard icon="🔒" label="Closed" value={data.closed} color="#546e7a" filterKey="closed" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: 14, marginBottom: 16, animation: 'fadeUp 0.45s ease' }}>
@@ -590,4 +586,4 @@ export default function NationalHeadDashboard() {
       </div>
     </div>
   );
-}
+} 

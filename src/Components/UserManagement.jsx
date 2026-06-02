@@ -5,7 +5,7 @@ import { useUsers } from '../contexts/UsersContext';
 import { API_URL } from '../config';
 import './UserManagement.css';
 
-const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
+const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '', hideHeader = false }) => {
   const fileInputRef = useRef(null);
   const [bulkResult, setBulkResult] = useState(null);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -13,7 +13,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const umDropRef = useRef(null);
 
   const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
-  const [activeOption, setActiveOption] = useState('');
+  const [activeOption, setActiveOption] = useState(defaultOption || '');
   const [selectedUser, setSelectedUser] = useState(null);
   const [editForm, setEditForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
   const [newUserForm, setNewUserForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
@@ -39,6 +39,16 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
+  // Sync activeOption when Admin's IndiGo dropdown changes selection
+  useEffect(() => {
+    if (defaultOption) {
+      setActiveOption(defaultOption);
+      if (defaultOption === 'view' || defaultOption === 'modify') {
+        loadUsersData();
+      }
+    }
+  }, [defaultOption]);
 
   const loadCenters = async () => {
     try {
@@ -436,7 +446,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
     <div className="management-section">
       {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
       
-      {/* ── EXCEL-STYLE DROPDOWN ── */}
+      {/* ── EXCEL-STYLE DROPDOWN (hidden when controlled by Admin's IndiGo tab) ── */}
+      {!hideHeader && (
       <div className="um-tab-row">
         <div className="um-excel-tab-wrap" ref={umDropRef}>
           <button
@@ -478,6 +489,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
           </button>
         </div>
       </div>
+      )}
 
       {/* CREATE USER */}
       {activeOption === 'create' && (
@@ -1045,4 +1057,4 @@ const UserManagement = ({ auditUserMode = false, createdBy = '' }) => {
   );
 };
 
-export default UserManagement;
+export default UserManagement;  

@@ -273,10 +273,6 @@ const RoleDashboard = () => {
     {label:'Compliant',        num:compliant,    icon:'✅', cls:'rdb-stat-compliant', auditKey:'Compliant',     color:'#2e7d32', pct:total>0?((compliant/total)*100).toFixed(1):0},
     {label:'Amber',            num:amber,        icon:'🟡', cls:'rdb-stat-amber',    auditKey:'Amber',         color:'#e65100', pct:total>0?((amber/total)*100).toFixed(1):0},
     {label:'Non-Compliant',    num:nonCompliant, icon:'❌', cls:'rdb-stat-nc',       auditKey:'Non-Compliant', color:'#c62828', pct:total>0?((nonCompliant/total)*100).toFixed(1):0},
-    {label:'Avg Score',        num:avgScore,     icon:'⭐', cls:'rdb-stat-avg',      auditKey:null,            color:'#00acc1', sub:'out of 100'},
-    {label:'Email Pending',    num:emailPending, icon:'📧', cls:'rdb-stat-email',    auditKey:null,            color:'#7b1fa2'},
-    {label:'Remarks Pending',  num:remarksPending,icon:'⏳',cls:'rdb-stat-remarks',  auditKey:null,            color:'#f57c00'},
-    {label:'Closed',           num:closedCount,  icon:'🔒', cls:'rdb-stat-closed',   auditKey:null,            color:'#455a64'},
   ];
 
   return (
