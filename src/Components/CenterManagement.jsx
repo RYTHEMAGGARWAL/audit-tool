@@ -17,7 +17,7 @@ const gstStateMap = {
   '38': 'Ladakh'
 };
 
-const CenterManagement = ({ auditUserMode = false, createdBy = '' }) => {
+const CenterManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '' }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newCenter, setNewCenter] = useState({
@@ -42,6 +42,11 @@ const CenterManagement = ({ auditUserMode = false, createdBy = '' }) => {
   const [bulkResult, setBulkResult] = useState(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const [activeOption, setActiveOption] = useState('');
+
+  useEffect(() => {
+    if (defaultOption) setActiveOption(defaultOption);
+  }, [defaultOption]);
 
   const handleBulkUpload = async (e) => {
     const file = e.target.files[0];
@@ -335,10 +340,12 @@ const code = newCenter.centerCode.trim().toUpperCase();
   if (loading) return <div style={{textAlign: 'center', padding: '40px'}}>⏳ Loading...</div>;
 
   return (
-    <div style={{padding: '20px'}}>
-      <h2 style={{marginBottom: '20px'}}>🏢 Center Management</h2>
+    <div style={{padding: "20px"}}>
 
-      {/* Add New Center Form */}
+
+
+      {/* ── ADD CENTER ── */}
+      {activeOption === 'create' && (
       <div style={{
         background: '#f0f8ff',
         padding: '20px',
@@ -518,8 +525,10 @@ const code = newCenter.centerCode.trim().toUpperCase();
           </div>
         )}
       </div>
+      )}
 
-      {/* Centers Table */}
+      {/* ── VIEW / MODIFY CENTERS TABLE ── */}
+      {(activeOption === 'view' || activeOption === 'modify') && (
       <div style={{background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px'}}>
           <h3 style={{margin: 0}}>📋 All Centers (Total: {centers.filter(ct => {
@@ -859,6 +868,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

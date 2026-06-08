@@ -31,6 +31,10 @@ const Admin = () => {
   const [umSubOption,   setUmSubOption]   = useState('');
   const umRef = useRef(null);
 
+  const [cmDropOpen,  setCmDropOpen]  = useState(false);
+  const [cmSubOption, setCmSubOption] = useState('');
+  const cmRef = useRef(null);
+
   const [auditDropOpen,    setAuditDropOpen]    = useState(false);
   const [auditSubOption,   setAuditSubOption]   = useState('');
   const auditRef = useRef(null);
@@ -57,6 +61,7 @@ const Admin = () => {
   useEffect(() => {
     const handler = (e) => {
       if (umRef.current       && !umRef.current.contains(e.target))       setUmDropOpen(false);
+      if (cmRef.current       && !cmRef.current.contains(e.target))       setCmDropOpen(false);
       if (auditRef.current    && !auditRef.current.contains(e.target))    setAuditDropOpen(false);
       if (reqRef.current      && !reqRef.current.contains(e.target))      setReqDropOpen(false);
       if (auAuditRef.current  && !auAuditRef.current.contains(e.target))  setAuAuditDropOpen(false);
@@ -81,7 +86,7 @@ const Admin = () => {
   }, [navigate, loggedUser]);
 
   const closeAll = () => {
-    setUmDropOpen(false); setAuditDropOpen(false); setReqDropOpen(false);
+    setUmDropOpen(false); setCmDropOpen(false); setAuditDropOpen(false); setReqDropOpen(false);
     setAuAuditDropOpen(false); setAuUserDropOpen(false);
   };
 
@@ -145,10 +150,25 @@ const Admin = () => {
               )}
             </div>
 
-            {/* Center Management */}
-            <button className={activeTab==='Center Management' ? 'active' : ''} onClick={() => { setActiveTab('Center Management'); closeAll(); }}>
-              🏢 Center Management
-            </button>
+            {/* Center Management ▼ */}
+            <div className="tab-dropdown-wrap" ref={cmRef}>
+              <button className={`tab-dropdown-btn ${activeTab==='Center Management' ? 'active' : ''}`}
+                onClick={() => { if(activeTab!=='Center Management') setCmSubOption(''); setActiveTab('Center Management'); setCmDropOpen(o=>!o); setUmDropOpen(false); setAuditDropOpen(false); setReqDropOpen(false); }}>
+                🏢 Center Management
+                <span className="tab-dropdown-caret">{cmDropOpen && activeTab==='Center Management' ? '▲' : '▼'}</span>
+              </button>
+              {cmDropOpen && activeTab==='Center Management' && (
+                <DropPanel
+                  items={[
+                    { key:'create', icon:'➕', label:'Add Center',    color:'#11998e', count:0 },
+                    { key:'view',   icon:'👁️', label:'View Centers',  color:'#2196f3', count:0 },
+                    { key:'modify', icon:'✏️', label:'Modify Center', color:'#f7971e', count:0 },
+                  ]}
+                  activeKey={cmSubOption}
+                  onSelect={(k) => { setCmSubOption(k); setCmDropOpen(false); }}
+                />
+              )}
+            </div>
 
             {/* Audit ▼ */}
             <div className="tab-dropdown-wrap" ref={auditRef}>
@@ -223,10 +243,25 @@ const Admin = () => {
               )}
             </div>
 
-            {/* Center Management */}
-            <button className={activeTab==='Center Management' ? 'active' : ''} onClick={() => { setActiveTab('Center Management'); closeAll(); }}>
-              🏢 Center Management
-            </button>
+            {/* Center Management ▼ */}
+            <div className="tab-dropdown-wrap" ref={cmRef}>
+              <button className={`tab-dropdown-btn ${activeTab==='Center Management' ? 'active' : ''}`}
+                onClick={() => { if(activeTab!=='Center Management') setCmSubOption(''); setActiveTab('Center Management'); setCmDropOpen(o=>!o); setAuAuditDropOpen(false); setAuUserDropOpen(false); }}>
+                🏢 Center Management
+                <span className="tab-dropdown-caret">{cmDropOpen && activeTab==='Center Management' ? '▲' : '▼'}</span>
+              </button>
+              {cmDropOpen && activeTab==='Center Management' && (
+                <DropPanel
+                  items={[
+                    { key:'create', icon:'➕', label:'Add Center',    color:'#11998e', count:0 },
+                    { key:'view',   icon:'👁️', label:'View Centers',  color:'#2196f3', count:0 },
+                    { key:'modify', icon:'✏️', label:'Modify Center', color:'#f7971e', count:0 },
+                  ]}
+                  activeKey={cmSubOption}
+                  onSelect={(k) => { setCmSubOption(k); setCmDropOpen(false); }}
+                />
+              )}
+            </div>
 
             {/* Create Center User ▼ */}
             <div className="tab-dropdown-wrap" ref={auUserRef}>
@@ -263,10 +298,12 @@ const Admin = () => {
         {/* ── ADMIN CONTENT ── */}
         {isAdmin && (
           <>
-            {activeTab==='Dashboard'         && <Dashboard />}
-            {activeTab==='User Management'   && <UserManagement auditUserMode={false} createdBy={loggedUser.firstname} defaultOption={umSubOption} hideHeader={true} />}
-            {activeTab==='Center Management' && <CenterManagement />}
-            {activeTab==='Audit'             && <Audit defaultOption={auditSubOption} hideHeader={true} />}
+            {/* Dashboard always shows unless a sub-option is selected */}
+            {(activeTab==='Dashboard' || (activeTab==='User Management' && !umSubOption) || (activeTab==='Center Management' && !cmSubOption) || (activeTab==='Audit' && !auditSubOption) || (activeTab==='Requests' && !reqSubOption)) && <Dashboard />}
+
+            {activeTab==='User Management'   && umSubOption   && <UserManagement auditUserMode={false} createdBy={loggedUser.firstname} defaultOption={umSubOption} hideHeader={true} />}
+            {activeTab==='Center Management' && cmSubOption   && <CenterManagement defaultOption={cmSubOption} />}
+            {activeTab==='Audit'             && auditSubOption && <Audit defaultOption={auditSubOption} hideHeader={true} />}
             {activeTab==='Requests' && reqSubOption==='pending'  && <PendingApprovals onApprovalUpdate={refreshAllCounts} />}
             {activeTab==='Requests' && reqSubOption==='edit'     && <EditRequestsApproval onApprovalUpdate={refreshAllCounts} />}
             {activeTab==='Requests' && reqSubOption==='approval' && <ApprovalRequests onUpdate={refreshAllCounts} />}
@@ -276,10 +313,12 @@ const Admin = () => {
         {/* ── AUDIT USER CONTENT ── */}
         {isAuditUser && (
           <>
-            {activeTab==='Dashboard'         && <AuditUserDashboard />}
-            {activeTab==='Audit'             && <Audit defaultOption={auAuditSubOption} hideHeader={true} />}
-            {activeTab==='Center Management' && <CenterManagement auditUserMode={true} createdBy={loggedUser.firstname} />}
-            {activeTab==='User Management'   && <UserManagement auditUserMode={true} createdBy={loggedUser.firstname} defaultOption={auUserSubOption} hideHeader={true} />}
+            {/* Dashboard shows unless sub-option selected */}
+            {(activeTab==='Dashboard' || (activeTab==='Audit' && !auAuditSubOption) || (activeTab==='Center Management' && !cmSubOption) || (activeTab==='User Management' && !auUserSubOption)) && <AuditUserDashboard />}
+
+            {activeTab==='Audit'             && auAuditSubOption && <Audit defaultOption={auAuditSubOption} hideHeader={true} />}
+            {activeTab==='Center Management' && cmSubOption      && <CenterManagement auditUserMode={true} createdBy={loggedUser.firstname} defaultOption={cmSubOption} />}
+            {activeTab==='User Management'   && auUserSubOption  && <UserManagement auditUserMode={true} createdBy={loggedUser.firstname} defaultOption={auUserSubOption} hideHeader={true} />}
             {activeTab==='My Requests'       && <MyRequests createdBy={loggedUser.firstname} />}
           </>
         )}
