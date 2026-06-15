@@ -6,6 +6,8 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { generatePDF } = require('./pdfGenerator');
 const path = require('path');
@@ -15,6 +17,43 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ========================================
+// PASSWORD POLICY CONFIG
+// ========================================
+const PASSWORD_POLICY = {
+  minLength: 8,
+  saltRounds: 12,
+  expiryDays: 30,
+  jwtSecret: process.env.JWT_SECRET || 'niit-audit-secret-key-change-in-production',
+  jwtExpiry: '7d'
+};
+
+const validatePassword = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push('At least 8 characters required');
+  if (!/[A-Z]/.test(password)) errors.push('At least one uppercase letter (A-Z)');
+  if (!/[a-z]/.test(password)) errors.push('At least one lowercase letter (a-z)');
+  if (!/[0-9]/.test(password)) errors.push('At least one number (0-9)');
+  if (!/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) errors.push('At least one special character (@$!%*?& etc)');
+  return errors;
+};
+
+const hashPassword = async (plain) => await bcrypt.hash(plain, PASSWORD_POLICY.saltRounds);
+
+const verifyPassword = async (plain, hashed) => {
+  if (hashed && (hashed.startsWith('$2b$') || hashed.startsWith('$2a$'))) {
+    return await bcrypt.compare(plain, hashed);
+  }
+  return plain === hashed; // plain text fallback for old users
+};
+
+const generateToken = (user) => jwt.sign(
+  { id: user._id, username: user.username, role: user.role },
+  PASSWORD_POLICY.jwtSecret,
+  { expiresIn: PASSWORD_POLICY.jwtExpiry }
+);
+
 
 // ========================================
 // NODEMAILER EMAIL CONFIGURATION
@@ -80,7 +119,12 @@ const userSchema = new mongoose.Schema({
   // Modify approval fields
   modifyApprovalStatus: { type: String, enum: ['pending', 'approved', 'none'], default: 'none' },
   modifiedBy: { type: String, default: '' },
-  pendingModifyData: { type: Object, default: null }
+  pendingModifyData: { type: Object, default: null },
+  // ── PASSWORD POLICY FIELDS ──
+  forcePasswordChange: { type: Boolean, default: false },
+  passwordChangedAt: { type: Date, default: null },
+  passwordExpiresAt: { type: Date, default: null },
+  isPasswordHashed: { type: Boolean, default: false }
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
@@ -278,7 +322,7 @@ app.use('/public', express.static('public'));
 // AUTH ROUTES
 // ========================================
 
-// Login
+// Login - UPDATED with bcrypt + JWT + password policy
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -289,21 +333,47 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
 
-    const user = await User.findOne({ 
-      username: username.toLowerCase(),
-      isActive: true 
-    });
-
-    if (!user || user.password !== password) {
-      console.log(`❌ Invalid credentials for ${username}`);
+    const user = await User.findOne({ username: username.toLowerCase(), isActive: true });
+    if (!user) {
+      console.log(`❌ User not found: ${username}`);
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    console.log(`✅ Login successful for ${username}`);
-    console.log(`✅ Role: ${user.role}`);
+    const isValid = await verifyPassword(password, user.password);
+    if (!isValid) {
+      console.log(`❌ Wrong password for ${username}`);
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Migrate plain text password to bcrypt on first successful login
+    if (!user.isPasswordHashed) {
+      console.log(`🔄 Migrating password to bcrypt for ${username}`);
+      const hashed = await hashPassword(password);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
+      user.password = hashed;
+      user.isPasswordHashed = true;
+      if (!user.passwordChangedAt) user.passwordChangedAt = now;
+      if (!user.passwordExpiresAt) user.passwordExpiresAt = expiresAt;
+      await user.save();
+    }
+
+    // Check if password expired
+    let passwordExpired = false;
+    if (user.passwordExpiresAt && new Date() > user.passwordExpiresAt) {
+      passwordExpired = true;
+      user.forcePasswordChange = true;
+      await user.save();
+    }
+
+    const token = generateToken(user);
+    console.log(`✅ Login successful for ${username} | Role: ${user.role} | ForceChange: ${user.forcePasswordChange}`);
 
     res.json({
       success: true,
+      token,
+      forcePasswordChange: user.forcePasswordChange || passwordExpired,
+      passwordExpired,
       user: {
         _id: user._id,
         username: user.username,
@@ -311,7 +381,7 @@ app.post('/api/login', async (req, res) => {
         lastname: user.lastname,
         email: user.email,
         mobile: user.mobile,
-        Role: user.role, // Frontend expects 'Role'
+        Role: user.role,
         centerCode: user.centerCode || '',
       }
     });
@@ -321,7 +391,65 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Send OTP
+// Change Password (first login / expired / user-initiated)
+app.post('/api/change-password', async (req, res) => {
+  try {
+    const { username, currentPassword, newPassword } = req.body;
+    if (!username || !currentPassword || !newPassword)
+      return res.status(400).json({ error: 'All fields required' });
+
+    const user = await User.findOne({ username: username.toLowerCase(), isActive: true });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isValid = await verifyPassword(currentPassword, user.password);
+    if (!isValid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const policyErrors = validatePassword(newPassword);
+    if (policyErrors.length > 0) return res.status(400).json({ error: policyErrors.join('. ') });
+
+    const hashed = await hashPassword(newPassword);
+    const now = new Date();
+    user.password = hashed;
+    user.isPasswordHashed = true;
+    user.forcePasswordChange = false;
+    user.passwordChangedAt = now;
+    user.passwordExpiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
+    await user.save();
+
+    console.log(`✅ Password changed for ${username}`);
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Reset Password (force change on next login)
+app.post('/api/admin-reset-password', async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+    if (!userId || !newPassword) return res.status(400).json({ error: 'userId and newPassword required' });
+
+    const policyErrors = validatePassword(newPassword);
+    if (policyErrors.length > 0) return res.status(400).json({ error: policyErrors.join('. ') });
+
+    const hashed = await hashPassword(newPassword);
+    const now = new Date();
+    const user = await User.findByIdAndUpdate(userId, {
+      password: hashed,
+      isPasswordHashed: true,
+      forcePasswordChange: true,
+      passwordChangedAt: now,
+      passwordExpiresAt: new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000)
+    }, { new: true });
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    console.log(`✅ Admin reset password for: ${user.username}`);
+    res.json({ success: true, message: 'Password reset. User must change on next login.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/forgot-password/send-otp', async (req, res) => {
   try {
     const { email } = req.body;
@@ -379,17 +507,23 @@ app.post('/api/forgot-password/verify-otp', async (req, res) => {
   }
 });
 
-// Reset Password
+// Reset Password - UPDATED with policy validation + bcrypt
 app.post('/api/forgot-password/reset-password', async (req, res) => {
   try {
     const { email, newPassword } = req.body;
     const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const policyErrors = validatePassword(newPassword);
+    if (policyErrors.length > 0) return res.status(400).json({ error: policyErrors.join('. ') });
 
-    user.password = newPassword;
+    const hashed = await hashPassword(newPassword);
+    const now = new Date();
+    user.password = hashed;
+    user.isPasswordHashed = true;
+    user.forcePasswordChange = false;
+    user.passwordChangedAt = now;
+    user.passwordExpiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
     user.resetOTP = null;
     user.resetOTPExpires = null;
     await user.save();
@@ -411,7 +545,9 @@ app.get('/api/users', async (req, res) => {
     const formatted = users.map(u => ({
       _id: u._id,
       username: u.username,
-      password: u.password,
+      passwordSet: !!u.password,
+      forcePasswordChange: u.forcePasswordChange || false,
+      passwordExpiresAt: u.passwordExpiresAt || null,
       firstname: u.firstname,
       lastname: u.lastname,
       email: u.email,
@@ -425,55 +561,51 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// Create user
+// Create user - UPDATED with bcrypt + policy + forcePasswordChange
 app.post('/api/users', async (req, res) => {
   try {
     console.log('\n🔵 ========== CREATE USER REQUEST ==========');
-    console.log('📥 Received body:', {
-      username: req.body.username,
-      Role: req.body.Role,
-      centerCode: req.body.centerCode
-    });
-    
     const { username, password, firstname, lastname, email, mobile, centerCode, Role } = req.body;
-    
-    console.log('🔍 Extracted centerCode:', `"${centerCode}"`);
-    
+
+    // Validate password policy
+    const policyErrors = validatePassword(password);
+    if (policyErrors.length > 0) {
+      return res.status(400).json({ error: 'Password policy: ' + policyErrors.join('. ') });
+    }
+
+    const hashed = await hashPassword(password);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
+
     const userData = {
       username: username.toLowerCase(),
-      password,
+      password: hashed,
+      isPasswordHashed: true,
+      forcePasswordChange: true,  // User must change on first login
+      passwordChangedAt: now,
+      passwordExpiresAt: expiresAt,
       firstname,
       lastname,
       email: email.toLowerCase(),
       mobile,
       centerCode: centerCode || '',
-      role: Role || 'Center User'  // Default to Center User
+      role: Role || 'Center User'
     };
-    
-    console.log('📦 Creating user with data:', {
-      username: userData.username,
-      role: userData.role,
-      centerCode: userData.centerCode
-    });
-    
-    // Agar Audit User ne banaya toh pending approval
+
     if (req.body.createdByRole === 'Audit User') {
       userData.approvalStatus = 'pending';
-      userData.isActive = false; // Admin approve kare tabhi active
+      userData.isActive = false;
       userData.approvalRequestedBy = req.body.createdBy || 'Audit User';
     }
 
-    // Check if username exists (including inactive users)
     const user = new User(userData);
     await user.save();
-    
-    console.log('✅ User saved to database!');
-    console.log('💾 Saved user centerCode:', `"${user.centerCode}"`);
-    console.log('💾 Approval status:', userData.approvalStatus);
+
+    console.log('✅ User saved! forcePasswordChange=true');
     console.log('========================================\n');
-    
-    res.status(201).json({ 
-      success: true, 
+
+    res.status(201).json({
+      success: true,
       user,
       pendingApproval: userData.approvalStatus === 'pending'
     });
@@ -483,7 +615,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Update user
+// Update user - UPDATED with bcrypt password hashing
 app.put('/api/users/:id', async (req, res) => {
   try {
     // Audit User modify - store as pending
@@ -491,13 +623,7 @@ app.put('/api/users/:id', async (req, res) => {
       const { modifiedByRole, modifiedBy, ...pendingData } = req.body;
       const user = await User.findByIdAndUpdate(
         req.params.id,
-        {
-          $set: {
-            modifyApprovalStatus: 'pending',
-            modifiedBy: modifiedBy || '',
-            pendingModifyData: pendingData
-          }
-        },
+        { $set: { modifyApprovalStatus: 'pending', modifiedBy: modifiedBy || '', pendingModifyData: pendingData } },
         { new: true }
       );
       return res.json({ success: true, user, pendingApproval: true });
@@ -505,16 +631,29 @@ app.put('/api/users/:id', async (req, res) => {
 
     // Admin direct update
     const updateData = { ...req.body, role: req.body.Role };
-    if (req.body.centerCode !== undefined) {
-      updateData.centerCode = req.body.centerCode || '';
+
+    // Hash password if admin provided a new one
+    if (req.body.password && req.body.password.trim()) {
+      const policyErrors = validatePassword(req.body.password);
+      if (policyErrors.length > 0) {
+        return res.status(400).json({ error: 'Password policy: ' + policyErrors.join('. ') });
+      }
+      updateData.password = await hashPassword(req.body.password);
+      updateData.isPasswordHashed = true;
+      updateData.forcePasswordChange = true;
+      updateData.passwordChangedAt = new Date();
+      updateData.passwordExpiresAt = new Date(Date.now() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
+    } else {
+      delete updateData.password; // Don't update password if blank
     }
+
+    if (req.body.centerCode !== undefined) updateData.centerCode = req.body.centerCode || '';
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json({ success: true, user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // Delete user
 app.delete('/api/users/:id', async (req, res) => {
@@ -526,7 +665,7 @@ app.delete('/api/users/:id', async (req, res) => {
   }
 });
 
-// Bulk update users (for backward compatibility)
+// Bulk update users - UPDATED with bcrypt
 app.post('/api/update-users', async (req, res) => {
   try {
     const users = req.body.users || req.body;
@@ -534,10 +673,20 @@ app.post('/api/update-users', async (req, res) => {
     console.log(`💾 Total: ${users.length}`);
 
     for (const userData of users) {
+      let pwd = userData.password;
+      let isHashed = false;
+      if (pwd && !pwd.startsWith('$2b$') && !pwd.startsWith('$2a$')) {
+        pwd = await hashPassword(pwd);
+        isHashed = true;
+      }
       await User.findOneAndUpdate(
         { username: userData.username.toLowerCase() },
         {
-          password: userData.password,
+          password: pwd,
+          isPasswordHashed: isHashed || pwd?.startsWith('$2b$'),
+          forcePasswordChange: true,
+          passwordChangedAt: new Date(),
+          passwordExpiresAt: new Date(Date.now() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000),
           firstname: userData.firstname,
           lastname: userData.lastname || '',
           email: userData.email?.toLowerCase(),
@@ -555,8 +704,55 @@ app.post('/api/update-users', async (req, res) => {
   }
 });
 
+// Bulk import users - NEW endpoint
+app.post('/api/users/bulk-import', async (req, res) => {
+  try {
+    const { users, createdBy, auditUserMode } = req.body;
+    const results = [];
 
-// ========================================
+    for (const userData of users) {
+      try {
+        const policyErrors = validatePassword(userData.password);
+        if (policyErrors.length > 0) {
+          results.push({ username: userData.username, status: 'error', error: 'Password policy failed: ' + policyErrors[0] });
+          continue;
+        }
+        const hashed = await hashPassword(userData.password);
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
+        await User.findOneAndUpdate(
+          { username: userData.username?.toLowerCase() },
+          {
+            username: userData.username?.toLowerCase(),
+            password: hashed,
+            isPasswordHashed: true,
+            forcePasswordChange: true,
+            passwordChangedAt: now,
+            passwordExpiresAt: expiresAt,
+            firstname: userData.firstname,
+            lastname: userData.lastname || '',
+            email: userData.email?.toLowerCase(),
+            mobile: userData.mobile || '',
+            role: userData.Role || 'Center User',
+            centerCode: userData.centerCode || '',
+            isActive: !auditUserMode,
+            approvalStatus: auditUserMode ? 'pending' : 'approved',
+            approvalRequestedBy: auditUserMode ? (createdBy || '') : ''
+          },
+          { upsert: true, new: true }
+        );
+        results.push({ username: userData.username, status: 'success' });
+      } catch (err) {
+        results.push({ username: userData.username, status: 'error', error: err.message });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET HIERARCHY EMAILS by name matching
 // POST /api/hierarchy-emails
 // body: { zmName, regionHeadName, areaClusterManager }
@@ -2557,7 +2753,7 @@ app.get('/api/center-user-email/:centerCode', async (req, res) => {
       email: centerUser.email || '',
       username: centerUser.username || '',
       firstname: centerUser.firstname || '',
-      password: centerUser.password || ''
+      passwordNote: 'Password secured - contact admin for reset'
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2902,7 +3098,15 @@ app.post('/api/pending-approvals/user/:id/approve', async (req, res) => {
       if (lastname) user.lastname = lastname;
       if (email) user.email = email;
       if (mobile) user.mobile = mobile;
-      if (password) user.password = password;
+      if (password) {
+        if (!password.startsWith('$2b$') && !password.startsWith('$2a$')) {
+          user.password = await hashPassword(password);
+          user.isPasswordHashed = true;
+          user.forcePasswordChange = true;
+        } else {
+          user.password = password;
+        }
+      }
       user.modifyApprovalStatus = 'approved';
       user.pendingModifyData = null;
       user.approvalDate = new Date().toLocaleDateString('en-GB');

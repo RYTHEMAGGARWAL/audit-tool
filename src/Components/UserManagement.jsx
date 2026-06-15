@@ -5,6 +5,33 @@ import { useUsers } from '../contexts/UsersContext';
 import { API_URL } from '../config';
 import './UserManagement.css';
 
+// ========================================
+// PASSWORD POLICY VALIDATION
+// ========================================
+const validatePassword = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push('At least 8 characters');
+  if (!/[A-Z]/.test(password)) errors.push('One uppercase letter (A-Z)');
+  if (!/[a-z]/.test(password)) errors.push('One lowercase letter (a-z)');
+  if (!/[0-9]/.test(password)) errors.push('One number (0-9)');
+  if (!/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) errors.push('One special character (@$!%*?& etc)');
+  return errors;
+};
+
+const checkPasswordStrength = (password) => {
+  if (!password) return { message: '', color: '' };
+  let s = 0;
+  if (password.length >= 8) s++;
+  if (/[A-Z]/.test(password)) s++;
+  if (/[a-z]/.test(password)) s++;
+  if (/\d/.test(password)) s++;
+  if (/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) s++;
+  if (s <= 2) return { message: '❌ Weak - Password too simple', color: '#f44336' };
+  if (s === 3) return { message: '⚠️ Medium - Add more complexity', color: '#ff9800' };
+  if (s === 4) return { message: '✅ Strong', color: '#4caf50' };
+  return { message: '✅ Very Strong', color: '#2196f3' };
+};
+
 const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '', hideHeader = false }) => {
   const fileInputRef = useRef(null);
   const [bulkResult, setBulkResult] = useState(null);
@@ -20,19 +47,25 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   const [tableUsers, setTableUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState({ message: '', color: '' });
+  const [editPasswordStrength, setEditPasswordStrength] = useState({ message: '', color: '' });
   const [validationErrors, setValidationErrors] = useState({});
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [message, setMessage] = useState({ text: '', type: '' });
   const [viewSearch, setViewSearch] = useState('');
   const [modifySearch, setModifySearch] = useState('');
   const [centers, setCenters] = useState([]);
 
-  // Load centers
-  useEffect(() => {
-    loadCenters();
-  }, []);
+  // ── Admin Reset Password Modal ──
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState(null);
+  const [resetNewPwd, setResetNewPwd] = useState('');
+  const [resetConfirmPwd, setResetConfirmPwd] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  useEffect(() => { loadCenters(); }, []);
 
   useEffect(() => {
     const h = (e) => { if (umDropRef.current && !umDropRef.current.contains(e.target)) setUmDropOpen(false); };
@@ -40,27 +73,19 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // Sync activeOption when Admin's IndiGo dropdown changes selection
   useEffect(() => {
     if (defaultOption) {
       setActiveOption(defaultOption);
-      if (defaultOption === 'view' || defaultOption === 'modify') {
-        loadUsersData();
-      }
+      if (defaultOption === 'view' || defaultOption === 'modify') loadUsersData();
     }
   }, [defaultOption]);
 
   const loadCenters = async () => {
     try {
-      console.log('🏢 Loading centers from API...');
       const response = await fetch(`${API_URL}/api/centers`);
       if (response.ok) {
         const centersData = await response.json();
-        console.log('✅ Centers loaded:', centersData.length, 'centers');
-        console.log('📋 Center codes:', centersData.map(c => c.centerCode).join(', '));
         setCenters(centersData);
-      } else {
-        console.error('❌ Failed to load centers, status:', response.status);
       }
     } catch (err) {
       console.error('❌ Error loading centers:', err);
@@ -72,36 +97,12 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
     setTimeout(() => setMessage({ text: '', type: '' }), 3000);
   };
 
-  const checkPasswordStrength = (password) => {
-    if (!password) return { message: '', color: '' };
-    let s = 0;
-    if (password.length >= 8) s++;
-    if (/[A-Z]/.test(password)) s++;
-    if (/[a-z]/.test(password)) s++;
-    if (/\d/.test(password)) s++;
-    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) s++;
-    if (s <= 2) return { message: '❌ Weak', color: '#f44336' };
-    if (s === 3) return { message: '⚠️ Medium', color: '#ff9800' };
-    if (s === 4) return { message: '✅ Strong', color: '#4caf50' };
-    return { message: '✅ Very Strong', color: '#2196f3' };
-  };
-
   const loadUsersData = async () => {
     try {
       setLoading(true);
-      console.log('👥 Loading users from API...');
       const response = await fetch(`${API_URL}/api/users`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const usersData = await response.json();
-      console.log('✅ Users loaded:', usersData.length, 'users');
-      
-      // Debug: Show which users have center codes
-      const centerUsers = usersData.filter(u => u.Role === 'Center User');
-      console.log('🏢 Center Users:', centerUsers.length);
-      centerUsers.forEach(u => {
-        console.log(`   ${u.username}: centerCode="${u.centerCode || 'EMPTY'}"`);
-      });
-      
       setTableUsers([...usersData]);
       setGlobalUsers([...usersData]);
     } catch (err) {
@@ -115,50 +116,34 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   useEffect(() => { loadUsersData(); }, []);
 
   const resetForm = () => {
-    console.log('🔄 Form reset');
     setNewUserForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
     setPasswordStrength({ message: '', color: '' });
     setValidationErrors({});
   };
 
   const validateForm = () => {
-    console.log('\n🔍 ========== VALIDATION CHECK ==========');
-    console.log('Form data:', {
-      username: newUserForm.username,
-      Role: newUserForm.Role,
-      centerCode: newUserForm.centerCode
-    });
-    
     const errors = {};
     if (!newUserForm.username?.trim()) errors.username = 'Required';
     else if (newUserForm.username.length < 3) errors.username = 'Min 3 characters';
-    if (!newUserForm.password?.trim()) errors.password = 'Required';
-    else if (newUserForm.password.length < 4) errors.password = 'Min 4 characters';
+    
+    // Password policy validation
+    if (!newUserForm.password?.trim()) {
+      errors.password = 'Required';
+    } else {
+      const policyErrors = validatePassword(newUserForm.password);
+      if (policyErrors.length > 0) errors.password = policyErrors.join(', ');
+    }
+    
     if (!newUserForm.firstname?.trim()) errors.firstname = 'Required';
     if (!newUserForm.lastname?.trim()) errors.lastname = 'Required';
     if (!newUserForm.email?.trim()) errors.email = 'Required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUserForm.email)) errors.email = 'Invalid email';
     if (!newUserForm.mobile?.trim()) errors.mobile = 'Required';
     else if (!/^[0-9]{10}$/.test(newUserForm.mobile)) errors.mobile = '10 digits required';
-    
-    // Validate center code for Center User
-    if (newUserForm.Role === 'Center User') {
-      console.log('🏢 Center User detected - checking centerCode...');
-      console.log('   centerCode value:', `"${newUserForm.centerCode}"`);
-      
-      if (!newUserForm.centerCode?.trim()) {
-        console.log('❌ Center Code is EMPTY!');
-        errors.centerCode = 'Center Code required for Center User';
-      } else {
-        console.log('✅ Center Code is present:', newUserForm.centerCode);
-      }
+    if (newUserForm.Role === 'Center User' && !newUserForm.centerCode?.trim()) {
+      errors.centerCode = 'Center Code required for Center User';
     }
-    
     setValidationErrors(errors);
-    console.log('Validation errors:', errors);
-    console.log('Validation result:', Object.keys(errors).length === 0 ? '✅ PASS' : '❌ FAIL');
-    console.log('========================================\n');
-    
     return Object.keys(errors).length === 0;
   };
 
@@ -172,7 +157,6 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
       const wb = XLSX.read(arrayBuffer, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      // Find header row
       let headerIdx = rows.findIndex(r => r.some(c => String(c).toLowerCase().trim() === 'username'));
       if (headerIdx === -1) { alert('Could not find header row. Make sure Excel has: username, password, first name, last name, email, mobileno., role, centercode, centername'); setBulkLoading(false); return; }
       const headers = rows[headerIdx].map(h => String(h).toLowerCase().trim());
@@ -212,39 +196,20 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   };
 
   const handleCreate = async () => {
-    console.log('\n🚀 ========== CREATE USER STARTED ==========');
-    
-    if (!validateForm()) {
-      console.log('❌ Validation failed, stopping create');
-      return showMessage('Fix validation errors', 'error');
-    }
-    
+    if (!validateForm()) return showMessage('Fix validation errors', 'error');
     if (globalUsers.some(u => u.username?.toLowerCase() === newUserForm.username?.toLowerCase())) {
-      console.log('❌ Username already exists');
       return showMessage('Username already exists!', 'error');
     }
-    
     try {
       setLoading(true);
-      
       const userData = { 
         ...newUserForm, 
         username: newUserForm.username.toLowerCase(), 
         email: newUserForm.email?.toLowerCase() || '',
         centerCode: newUserForm.centerCode?.toUpperCase() || '',
-        // ── APPROVAL FLAGS — Audit User ne banaya toh pending ──
         createdByRole: auditUserMode ? 'Audit User' : 'Admin',
         createdBy: createdBy || (auditUserMode ? 'Audit User' : 'Admin')
       };
-      
-      console.log('📤 Sending data to backend:', {
-        username: userData.username,
-        Role: userData.Role,
-        centerCode: userData.centerCode,
-        email: userData.email
-      });
-      
-      console.log('🌐 API URL:', `${API_URL}/api/users`);
       
       const res = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
@@ -252,20 +217,11 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
         body: JSON.stringify(userData)
       });
       
-      console.log('📥 Response status:', res.status);
-      
       if (res.ok) {
         const result = await res.json();
-        console.log('✅ User created successfully!');
-        console.log('📋 Created user data:', {
-          username: result.user?.username,
-          Role: result.user?.role || result.user?.Role,
-          centerCode: result.user?.centerCode
-        });
-        
-        showMessage('✅ User created successfully!', 'success');
+        showMessage('✅ User created! They will be asked to set a new password on first login.', 'success');
 
-        // Bulk replace old name if hierarchy role and replaceOldName provided
+        // Bulk replace old name if hierarchy role
         const hierarchyRoles = ['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'];
         if (hierarchyRoles.includes(newUserForm.Role) && newUserForm.replaceOldName?.trim()) {
           try {
@@ -273,21 +229,12 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
             const replaceRes = await fetch(`${API_URL}/api/bulk-replace-hierarchy-name`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                role: newUserForm.Role,
-                oldName: newUserForm.replaceOldName.trim(),
-                newName: newFullName
-              })
+              body: JSON.stringify({ role: newUserForm.Role, oldName: newUserForm.replaceOldName.trim(), newName: newFullName })
             });
             const replaceData = await replaceRes.json();
-            if (replaceData.success) {
-              showMessage(`✅ User created! ${replaceData.message}`, 'success');
-            } else {
-              showMessage('✅ User created! (Name replace failed: ' + replaceData.error + ')', 'warning');
-            }
+            if (replaceData.success) showMessage(`✅ User created! ${replaceData.message}`, 'success');
           } catch (replaceErr) {
             console.error('Bulk replace error:', replaceErr);
-            showMessage('✅ User created! (Name replace failed)', 'warning');
           }
         }
 
@@ -295,87 +242,59 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
         await loadUsersData();
       } else {
         const error = await res.json();
-        console.log('❌ Create failed:', error);
         showMessage(`❌ ${error.error}`, 'error');
       }
     } catch (err) {
-      console.error('❌ Exception during create:', err);
       showMessage(`❌ ${err.message}`, 'error');
     } finally {
       setLoading(false);
-      console.log('========================================\n');
     }
   };
 
   const handleUpdate = async () => {
     if (!selectedUser) return;
-    
-    console.log('\n🔄 ========== UPDATE USER STARTED ==========');
-    console.log('Updating user:', selectedUser);
-    console.log('Form data:', {
-      Role: editForm.Role,
-      centerCode: editForm.centerCode
-    });
-    
-    // Validate center code for Center User in edit
     if (editForm.Role === 'Center User' && !editForm.centerCode?.trim()) {
-      console.log('❌ Center Code missing for Center User');
       return showMessage('Center Code required for Center User', 'error');
+    }
+    
+    // Validate edit password if provided
+    if (editForm.password?.trim()) {
+      const policyErrors = validatePassword(editForm.password);
+      if (policyErrors.length > 0) {
+        return showMessage('Password policy: ' + policyErrors.join(', '), 'error');
+      }
     }
     
     try {
       setLoading(true);
       const user = globalUsers.find(u => u.username === selectedUser);
-      
       if (user?._id) {
         const updateData = {
           ...editForm,
-          centerCode: editForm.centerCode?.toUpperCase() || ''
+          centerCode: editForm.centerCode?.toUpperCase() || '',
+          modifiedByRole: auditUserMode ? 'Audit User' : 'Admin',
+          modifiedBy: auditUserMode ? createdBy : 'Admin'
         };
-        
-        console.log('📤 Sending update to backend:', {
-          userId: user._id,
-          Role: updateData.Role,
-          centerCode: updateData.centerCode,
-          auditUserMode: auditUserMode,
-          modifiedByRole: auditUserMode ? 'Audit User' : 'Admin'
-        });
         
         const res = await fetch(`${API_URL}/api/users/${user._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...updateData,
-            modifiedByRole: auditUserMode ? 'Audit User' : 'Admin',
-            modifiedBy: auditUserMode ? createdBy : 'Admin'
-          })
+          body: JSON.stringify(updateData)
         });
-        
-        console.log('📥 Response status:', res.status);
         
         if (res.ok) {
           const result = await res.json();
-          console.log('✅ User update request sent!');
-          
-          if (result.pendingApproval) {
-            showMessage('✅ Modify request submitted! Waiting for Admin approval.', 'success');
-          } else {
-            showMessage('✅ Updated!', 'success');
-          }
+          showMessage(result.pendingApproval ? '✅ Modify request submitted!' : '✅ Updated!', 'success');
           await loadUsersData();
-        } else {
-          console.log('❌ Update failed');
         }
       }
-      
       setSelectedUser(null);
       setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
+      setEditPasswordStrength({ message: '', color: '' });
     } catch (err) {
-      console.error('❌ Exception during update:', err);
       showMessage(`❌ ${err.message}`, 'error');
     } finally {
       setLoading(false);
-      console.log('========================================\n');
     }
   };
 
@@ -386,10 +305,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
       const user = globalUsers.find(u => u.username === selectedUser);
       if (user?._id) {
         const res = await fetch(`${API_URL}/api/users/${user._id}`, { method: 'DELETE' });
-        if (res.ok) {
-          showMessage('✅ Deleted!', 'success');
-          await loadUsersData();
-        }
+        if (res.ok) { showMessage('✅ Deleted!', 'success'); await loadUsersData(); }
       }
       setSelectedUser(null);
       setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
@@ -410,15 +326,9 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
     setSelectedUser(username);
     const user = globalUsers.find(u => u.username === username);
     if (user) {
-      console.log('👤 Selected user:', {
-        username: user.username,
-        Role: user.Role,
-        centerCode: user.centerCode || 'EMPTY'
-      });
-      
       setEditForm({
         username: user.username || '',
-        password: user.password || '',
+        password: '',  // ← Password blank: admin must enter new one explicitly
         firstname: user.firstname || '',
         lastname: user.lastname || '',
         email: user.email || '',
@@ -426,16 +336,63 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
         centerCode: user.centerCode || '',
         Role: user.Role || 'User'
       });
+      setEditPasswordStrength({ message: '', color: '' });
     }
   };
 
-  const togglePwd = (i) => {
-    const s = new Set(visiblePasswords);
-    s.has(i) ? s.delete(i) : s.add(i);
-    setVisiblePasswords(s);
+  // ── Admin Reset Password ──
+  const openResetModal = (user) => {
+    setResetTargetUser(user);
+    setResetNewPwd('');
+    setResetConfirmPwd('');
+    setShowResetPwd(false);
+    setShowResetConfirm(false);
+    setShowResetModal(true);
   };
 
-  // Debug: Log when center code changes
+  const handleAdminReset = async () => {
+    if (resetNewPwd !== resetConfirmPwd) {
+      return showMessage('Passwords do not match!', 'error');
+    }
+    const policyErrors = validatePassword(resetNewPwd);
+    if (policyErrors.length > 0) {
+      return showMessage('Password policy: ' + policyErrors.join(', '), 'error');
+    }
+    try {
+      setResetLoading(true);
+      const res = await fetch(`${API_URL}/api/admin-reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: resetTargetUser._id, newPassword: resetNewPwd })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showMessage(`✅ Password reset for ${resetTargetUser.username}. They must change on next login.`, 'success');
+        setShowResetModal(false);
+        setResetTargetUser(null);
+        setResetNewPwd('');
+        setResetConfirmPwd('');
+      } else {
+        showMessage(`❌ ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showMessage(`❌ ${err.message}`, 'error');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // Password expiry display
+  const getExpiryBadge = (user) => {
+    if (!user.passwordExpiresAt) return null;
+    const now = new Date();
+    const expiry = new Date(user.passwordExpiresAt);
+    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) return <span style={{ background: '#ffebee', color: '#c62828', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', marginLeft: '4px' }}>⏰ Expired</span>;
+    if (daysLeft <= 5) return <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', marginLeft: '4px' }}>⚠️ {daysLeft}d left</span>;
+    return null;
+  };
+
   useEffect(() => {
     if (newUserForm.Role === 'Center User') {
       console.log('🏢 Center Code changed:', `"${newUserForm.centerCode}"`);
@@ -445,70 +402,136 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   return (
     <div className="management-section">
       {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
-      
-      {/* ── EXCEL-STYLE DROPDOWN (hidden when controlled by Admin's IndiGo tab) ── */}
-      {!hideHeader && (
-      <div className="um-tab-row">
-        <div className="um-excel-tab-wrap" ref={umDropRef}>
-          <button
-            className={`um-excel-tab${umDropOpen ? ' um-excel-tab--open' : ''}`}
-            onClick={() => setUmDropOpen(o => !o)}
-          >
-            <span className="um-aet-icon">👥</span>
-            <span className="um-aet-title">User Management</span>
-            {activeOption === 'create' && <span className="um-aet-active-chip" style={{ background: '#11998e' }}>➕ Create User</span>}
-            {activeOption === 'view'   && <span className="um-aet-active-chip" style={{ background: '#2196f3' }}>👁️ View User</span>}
-            {activeOption === 'modify' && <span className="um-aet-active-chip" style={{ background: '#f7971e' }}>✏️ Modify User</span>}
-            <span className="um-aet-caret">{umDropOpen ? '▲' : '▼'}</span>
-          </button>
-          {umDropOpen && (
-            <div className="um-excel-dropdown">
-              <div className="um-aed-header">👥 User Management</div>
-              <button className={`um-aed-item${activeOption==='create'?' um-aed-item--active':''}`} style={{'--item-color':'#11998e'}}
-                onClick={() => { resetForm(); setActiveOption('create'); setUmDropOpen(false); }}>
-                <span className="um-aed-item-icon">➕</span><span className="um-aed-item-label">Create User</span>
-                {activeOption==='create'&&<span className="um-aed-item-check">✓</span>}
+
+      {/* ── ADMIN RESET PASSWORD MODAL ── */}
+      {showResetModal && resetTargetUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '420px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 8px', color: '#1a237e' }}>🔑 Reset Password</h3>
+            <p style={{ color: '#666', fontSize: '14px', margin: '0 0 20px' }}>
+              Resetting for: <strong>{resetTargetUser.username}</strong> ({resetTargetUser.firstname} {resetTargetUser.lastname})<br/>
+              <span style={{ color: '#e65100', fontSize: '12px' }}>⚠️ User will be forced to change password on next login.</span>
+            </p>
+
+            <div className="field-box">
+              <label>🔐 New Password</label>
+              <div className="password-wrapper">
+                <input
+                  type={showResetPwd ? 'text' : 'password'}
+                  value={resetNewPwd}
+                  onChange={(e) => setResetNewPwd(e.target.value)}
+                  placeholder="Enter new password"
+                  autoComplete="new-password"
+                />
+                <button type="button" className="password-toggle" onClick={() => setShowResetPwd(!showResetPwd)}>
+                  {showResetPwd ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {/* Policy checklist */}
+              {resetNewPwd && (
+                <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
+                  {[
+                    { check: resetNewPwd.length >= 8, text: 'Min 8 characters' },
+                    { check: /[A-Z]/.test(resetNewPwd), text: 'Uppercase (A-Z)' },
+                    { check: /[a-z]/.test(resetNewPwd), text: 'Lowercase (a-z)' },
+                    { check: /[0-9]/.test(resetNewPwd), text: 'Number (0-9)' },
+                    { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(resetNewPwd), text: 'Special char (@$!%*?&)' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
+                      {item.check ? '✅' : '❌'} {item.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="field-box">
+              <label>✅ Confirm Password</label>
+              <div className="password-wrapper">
+                <input
+                  type={showResetConfirm ? 'text' : 'password'}
+                  value={resetConfirmPwd}
+                  onChange={(e) => setResetConfirmPwd(e.target.value)}
+                  placeholder="Confirm new password"
+                  style={{ borderColor: resetConfirmPwd ? (resetConfirmPwd === resetNewPwd ? '#4caf50' : '#f44336') : undefined }}
+                />
+                <button type="button" className="password-toggle" onClick={() => setShowResetConfirm(!showResetConfirm)}>
+                  {showResetConfirm ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {resetConfirmPwd && resetConfirmPwd !== resetNewPwd && <div className="error-text">❌ Passwords don't match</div>}
+            </div>
+
+            <div className="btn-group" style={{ marginTop: '16px' }}>
+              <button className="btn-green" onClick={handleAdminReset}
+                disabled={resetLoading || validatePassword(resetNewPwd).length > 0 || resetNewPwd !== resetConfirmPwd}>
+                {resetLoading ? '⏳ Resetting...' : '🔑 Reset Password'}
               </button>
-              <button className={`um-aed-item${activeOption==='view'?' um-aed-item--active':''}`} style={{'--item-color':'#2196f3'}}
-                onClick={async () => { await loadUsersData(); setActiveOption('view'); setUmDropOpen(false); }}>
-                <span className="um-aed-item-icon">👁️</span><span className="um-aed-item-label">View User</span>
-                {activeOption==='view'&&<span className="um-aed-item-check">✓</span>}
-              </button>
-              <button className={`um-aed-item${activeOption==='modify'?' um-aed-item--active':''}`} style={{'--item-color':'#f7971e'}}
-                onClick={async () => { await loadUsersData(); setActiveOption('modify'); setSelectedUser(null); setUmDropOpen(false); }}>
-                <span className="um-aed-item-icon">✏️</span><span className="um-aed-item-label">Modify User</span>
-                {activeOption==='modify'&&<span className="um-aed-item-check">✓</span>}
+              <button className="btn-gray" onClick={() => { setShowResetModal(false); setResetTargetUser(null); }}>
+                ❌ Cancel
               </button>
             </div>
-          )}
+          </div>
         </div>
-        <div className="um-status-right">
-          <span className="um-total-badge">📊 Total Users: {globalUsers.length}</span>
-          <button className="um-refresh-btn" onClick={async () => { await loadUsersData(); showMessage('✅ Refreshed!', 'success'); }} disabled={loading}>
-            {loading ? '⏳' : '🔄 Refresh'}
-          </button>
-        </div>
-      </div>
       )}
 
-      {/* CREATE USER */}
+      {/* ── EXCEL-STYLE DROPDOWN ── */}
+      {!hideHeader && (
+        <div className="um-tab-row">
+          <div className="um-excel-tab-wrap" ref={umDropRef}>
+            <button className={`um-excel-tab${umDropOpen ? ' um-excel-tab--open' : ''}`} onClick={() => setUmDropOpen(o => !o)}>
+              <span className="um-aet-icon">👥</span>
+              <span className="um-aet-title">User Management</span>
+              {activeOption === 'create' && <span className="um-aet-active-chip" style={{ background: '#11998e' }}>➕ Create User</span>}
+              {activeOption === 'view'   && <span className="um-aet-active-chip" style={{ background: '#2196f3' }}>👁️ View User</span>}
+              {activeOption === 'modify' && <span className="um-aet-active-chip" style={{ background: '#f7971e' }}>✏️ Modify User</span>}
+              <span className="um-aet-caret">{umDropOpen ? '▲' : '▼'}</span>
+            </button>
+            {umDropOpen && (
+              <div className="um-excel-dropdown">
+                <div className="um-aed-header">👥 User Management</div>
+                <button className={`um-aed-item${activeOption==='create'?' um-aed-item--active':''}`} style={{'--item-color':'#11998e'}}
+                  onClick={() => { resetForm(); setActiveOption('create'); setUmDropOpen(false); }}>
+                  <span className="um-aed-item-icon">➕</span><span className="um-aed-item-label">Create User</span>
+                  {activeOption==='create'&&<span className="um-aed-item-check">✓</span>}
+                </button>
+                <button className={`um-aed-item${activeOption==='view'?' um-aed-item--active':''}`} style={{'--item-color':'#2196f3'}}
+                  onClick={async () => { await loadUsersData(); setActiveOption('view'); setUmDropOpen(false); }}>
+                  <span className="um-aed-item-icon">👁️</span><span className="um-aed-item-label">View User</span>
+                  {activeOption==='view'&&<span className="um-aed-item-check">✓</span>}
+                </button>
+                <button className={`um-aed-item${activeOption==='modify'?' um-aed-item--active':''}`} style={{'--item-color':'#f7971e'}}
+                  onClick={async () => { await loadUsersData(); setActiveOption('modify'); setSelectedUser(null); setUmDropOpen(false); }}>
+                  <span className="um-aed-item-icon">✏️</span><span className="um-aed-item-label">Modify User</span>
+                  {activeOption==='modify'&&<span className="um-aed-item-check">✓</span>}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="um-status-right">
+            <span className="um-total-badge">📊 Total Users: {globalUsers.length}</span>
+            <button className="um-refresh-btn" onClick={async () => { await loadUsersData(); showMessage('✅ Refreshed!', 'success'); }} disabled={loading}>
+              {loading ? '⏳' : '🔄 Refresh'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── CREATE USER ── */}
       {activeOption === 'create' && (
         <div className="create-user">
           <h3>➕ Create New User</h3>
           
           <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <div className="info-box">
-              <span>📋 Required fields marked with *</span>
+              <span>📋 Required fields marked with * &nbsp;|&nbsp; 🔐 User will be asked to set new password on first login</span>
             </div>
 
             <div className="field-box">
               <label>👤 Username *</label>
-              <input 
-                name="create_username_field"
-                autoComplete="off"
-                type="text" 
-                placeholder="Enter username (min 3 characters)" 
-                value={newUserForm.username} 
+              <input name="create_username_field" autoComplete="off" type="text"
+                placeholder="Enter username (min 3 characters)"
+                value={newUserForm.username}
                 onChange={(e) => setNewUserForm({...newUserForm, username: e.target.value.toLowerCase().replace(/\s/g, '')})}
                 className={validationErrors.username ? 'error' : ''}
               />
@@ -516,17 +539,16 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
             </div>
 
             <div className="field-box">
-              <label>🔐 Password *</label>
+              <label>🔐 Password * <span style={{ fontWeight: '400', fontSize: '12px', color: '#667eea' }}>(User must change on first login)</span></label>
               <div className="password-wrapper">
-                <input 
-                  name="create_password_field"
-                  autoComplete="new-password"
-                  type={showCreatePassword ? 'text' : 'password'} 
-                  placeholder="Enter password (min 4 characters)" 
-                  value={newUserForm.password} 
-                  onChange={(e) => { 
-                    setNewUserForm({...newUserForm, password: e.target.value}); 
-                    setPasswordStrength(checkPasswordStrength(e.target.value)); 
+                <input
+                  name="create_password_field" autoComplete="new-password"
+                  type={showCreatePassword ? 'text' : 'password'}
+                  placeholder="Min 8 chars, uppercase, number, special char"
+                  value={newUserForm.password}
+                  onChange={(e) => {
+                    setNewUserForm({...newUserForm, password: e.target.value});
+                    setPasswordStrength(checkPasswordStrength(e.target.value));
                   }}
                   className={validationErrors.password ? 'error' : ''}
                 />
@@ -534,17 +556,33 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                   {showCreatePassword ? '🙈' : '👁️'}
                 </button>
               </div>
-              {passwordStrength.message && <div className="helper-text" style={{ color: passwordStrength.color }}>{passwordStrength.message}</div>}
+
+              {/* Strength + Policy */}
+              {newUserForm.password && (
+                <>
+                  <div className="helper-text" style={{ color: passwordStrength.color }}>{passwordStrength.message}</div>
+                  <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
+                    {[
+                      { check: newUserForm.password.length >= 8, text: 'Min 8 characters' },
+                      { check: /[A-Z]/.test(newUserForm.password), text: 'Uppercase letter (A-Z)' },
+                      { check: /[a-z]/.test(newUserForm.password), text: 'Lowercase letter (a-z)' },
+                      { check: /[0-9]/.test(newUserForm.password), text: 'Number (0-9)' },
+                      { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(newUserForm.password), text: 'Special character (@$!%*?&)' },
+                    ].map((item, i) => (
+                      <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
+                        {item.check ? '✅' : '❌'} {item.text}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
               {validationErrors.password && <div className="error-text">{validationErrors.password}</div>}
             </div>
 
             <div className="field-box">
               <label>📝 First Name *</label>
-              <input 
-                autoComplete="off"
-                type="text" 
-                placeholder="Enter first name" 
-                value={newUserForm.firstname} 
+              <input autoComplete="off" type="text" placeholder="Enter first name"
+                value={newUserForm.firstname}
                 onChange={(e) => setNewUserForm({...newUserForm, firstname: e.target.value})}
                 className={validationErrors.firstname ? 'error' : ''}
               />
@@ -553,11 +591,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
 
             <div className="field-box">
               <label>📝 Last Name *</label>
-              <input 
-                autoComplete="off"
-                type="text" 
-                placeholder="Enter last name" 
-                value={newUserForm.lastname} 
+              <input autoComplete="off" type="text" placeholder="Enter last name"
+                value={newUserForm.lastname}
                 onChange={(e) => setNewUserForm({...newUserForm, lastname: e.target.value})}
                 className={validationErrors.lastname ? 'error' : ''}
               />
@@ -566,11 +601,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
 
             <div className="field-box">
               <label>📧 Email *</label>
-              <input 
-                autoComplete="off"
-                type="email" 
-                placeholder="Enter email" 
-                value={newUserForm.email} 
+              <input autoComplete="off" type="email" placeholder="Enter email"
+                value={newUserForm.email}
                 onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
                 className={validationErrors.email ? 'error' : ''}
               />
@@ -579,11 +611,8 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
 
             <div className="field-box">
               <label>📱 Mobile *</label>
-              <input 
-                autoComplete="off"
-                type="text" 
-                placeholder="Enter 10 digit mobile" 
-                value={newUserForm.mobile} 
+              <input autoComplete="off" type="text" placeholder="Enter 10 digit mobile"
+                value={newUserForm.mobile}
                 onChange={(e) => setNewUserForm({...newUserForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10)})}
                 maxLength="10"
                 className={validationErrors.mobile ? 'error' : ''}
@@ -594,26 +623,12 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
 
             <div className="field-box">
               <label>👤 Role *</label>
-              <select
-                value={newUserForm.Role}
+              <select value={newUserForm.Role}
                 onChange={(e) => {
-                  console.log('🔄 Role changed to:', e.target.value);
                   setNewUserForm({...newUserForm, Role: e.target.value});
-                  // Clear center code if not Center User
-                  if (e.target.value !== 'Center User') {
-                    console.log('🗑️ Clearing centerCode (not Center User)');
-                    setNewUserForm(prev => ({...prev, centerCode: ''}));
-                  }
+                  if (e.target.value !== 'Center User') setNewUserForm(prev => ({...prev, centerCode: ''}));
                 }}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #ddd',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  backgroundColor: 'white'
-                }}
+                style={{ width: '100%', padding: '12px', border: '2px solid #ddd', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: 'white' }}
               >
                 <option value="Audit User">Audit User</option>
                 <option value="Center User">Center User</option>
@@ -630,32 +645,17 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
               </select>
             </div>
 
-            {/* Center Code Field - Only for Center User */}
             {newUserForm.Role === 'Center User' && (
               <div className="field-box">
                 <label>🏢 Center Code *</label>
-                <select
-                  value={newUserForm.centerCode}
-                  onChange={(e) => {
-                    console.log('🏢 Center Code selected:', e.target.value);
-                    setNewUserForm({...newUserForm, centerCode: e.target.value});
-                  }}
+                <select value={newUserForm.centerCode}
+                  onChange={(e) => setNewUserForm({...newUserForm, centerCode: e.target.value})}
                   className={validationErrors.centerCode ? 'error' : ''}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: validationErrors.centerCode ? '2px solid #f44336' : '2px solid #4caf50',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    backgroundColor: '#f0fdf4'
-                  }}
+                  style={{ width: '100%', padding: '12px', border: validationErrors.centerCode ? '2px solid #f44336' : '2px solid #4caf50', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: '#f0fdf4' }}
                 >
                   <option value="">Select Center Code *</option>
                   {centers.map(center => (
-                    <option key={center.centerCode} value={center.centerCode}>
-                      {center.centerCode} - {center.centerName}
-                    </option>
+                    <option key={center.centerCode} value={center.centerCode}>{center.centerCode} - {center.centerName}</option>
                   ))}
                 </select>
                 {validationErrors.centerCode && <div className="error-text">{validationErrors.centerCode}</div>}
@@ -665,16 +665,13 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
               </div>
             )}
 
-
-            {/* Replace Old Name - for hierarchy roles */}
             {['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'].includes(newUserForm.Role) && (
               <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
                 <label style={{ color: '#e65100', fontWeight: '700' }}>
                   🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder={`Enter old ${newUserForm.Role} name to replace (e.g. "Shweta")`}
+                <input type="text"
+                  placeholder={`Enter old ${newUserForm.Role} name to replace`}
                   value={newUserForm.replaceOldName}
                   onChange={(e) => setNewUserForm({...newUserForm, replaceOldName: e.target.value})}
                   style={{ width: '100%', padding: '10px 14px', border: '2px solid #ffcc02', borderRadius: '8px', fontSize: '14px', marginTop: '6px' }}
@@ -689,22 +686,20 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
               <button type="button" className="btn-green" onClick={handleCreate} disabled={loading}>
                 {loading ? '⏳ Creating...' : '✅ Create User'}
               </button>
-              <button type="button" className="btn-gray" onClick={resetForm}>
-                🔄 Reset
-              </button>
+              <button type="button" className="btn-gray" onClick={resetForm}>🔄 Reset</button>
             </div>
 
             {/* Bulk Upload */}
             <div style={{ marginTop: '20px', padding: '16px', background: '#f0f4ff', borderRadius: '10px', border: '2px dashed #667eea' }}>
-              <div style={{ fontWeight: 'bold', color: '#1a237e', marginBottom: '10px', fontSize: '14px' }}>
-                📂 Bulk Upload Users from Excel
-              </div>
-              <div style={{ fontSize: '12px', color: '#555', marginBottom: '12px' }}>
+              <div style={{ fontWeight: 'bold', color: '#1a237e', marginBottom: '10px', fontSize: '14px' }}>📂 Bulk Upload Users from Excel</div>
+              <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>
                 Excel columns: <strong>username, password, first name, last name, email, mobileno., role, centercode, centername</strong>
               </div>
+              <div style={{ fontSize: '12px', color: '#e65100', marginBottom: '12px' }}>
+                ⚠️ Password must meet policy: 8+ chars, uppercase, lowercase, number, special char
+              </div>
               <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
-              <button
-                type='button'
+              <button type='button'
                 onClick={() => fileInputRef.current && fileInputRef.current.click()}
                 disabled={bulkLoading}
                 style={{ padding: '10px 24px', background: bulkLoading ? '#9ca3af' : 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', borderRadius: '8px', cursor: bulkLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '14px' }}
@@ -712,17 +707,22 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                 {bulkLoading ? '⏳ Uploading...' : '📂 Upload Excel'}
               </button>
 
-              {/* Result */}
               {bulkResult && (
                 <div style={{ marginTop: '14px', padding: '14px', background: '#f0fff4', border: '2px solid #38a169', borderRadius: '10px' }}>
                   <div style={{ fontWeight: 'bold', color: '#276749', marginBottom: '10px' }}>📊 Upload Result</div>
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                    <span style={{ background: '#c6f6d5', color: '#276749', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>✅ Added: {bulkResult.added?.length || 0}</span>
-                    <span style={{ background: '#fefcbf', color: '#744210', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>⚠️ Skipped: {bulkResult.skipped?.length || 0}</span>
-                    {bulkResult.errors?.length > 0 && <span style={{ background: '#fed7d7', color: '#822727', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>❌ Errors: {bulkResult.errors.length}</span>}
+                    <span style={{ background: '#c6f6d5', color: '#276749', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>
+                      ✅ Success: {bulkResult.filter(r => r.status === 'success').length}
+                    </span>
+                    <span style={{ background: '#fed7d7', color: '#822727', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>
+                      ❌ Errors: {bulkResult.filter(r => r.status === 'error').length}
+                    </span>
                   </div>
-                  {bulkResult.skipped?.length > 0 && <div style={{ fontSize: '12px', color: '#744210' }}><strong>Skipped (already exist):</strong> {bulkResult.skipped.map(s => s.username).join(', ')}</div>}
-                  {bulkResult.errors?.length > 0 && <div style={{ fontSize: '12px', color: '#822727', marginTop: '4px' }}><strong>Errors:</strong> {bulkResult.errors.map(e => `${e.username}: ${e.reason}`).join(', ')}</div>}
+                  {bulkResult.filter(r => r.status === 'error').length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#822727' }}>
+                      <strong>Errors:</strong> {bulkResult.filter(r => r.status === 'error').map(e => `${e.username}: ${e.error}`).join(', ')}
+                    </div>
+                  )}
                   <button onClick={() => setBulkResult(null)} style={{ marginTop: '8px', padding: '3px 10px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Dismiss</button>
                 </div>
               )}
@@ -731,25 +731,19 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
         </div>
       )}
 
-      {/* VIEW USERS */}
+      {/* ── VIEW USERS ── */}
       {activeOption === 'view' && (
         <div className="view-user">
           <h3>👁️ Users List ({auditUserMode ? tableUsers.filter(u => u.Role === 'Center User' || u.role === 'center user').length : tableUsers.length})</h3>
 
-          {/* Search Bar */}
           <div style={{ marginBottom: '16px', position: 'relative' }}>
-            <input
-              type="text"
-              placeholder="Search by name, username, email, role, center code..."
-              value={viewSearch}
-              onChange={e => setViewSearch(e.target.value)}
+            <input type="text" placeholder="Search by name, username, email, role, center code..."
+              value={viewSearch} onChange={e => setViewSearch(e.target.value)}
               style={{ width: '100%', padding: '12px 40px 12px 16px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
             />
             {viewSearch && (
               <button onClick={() => setViewSearch('')}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>
-                ✕
-              </button>
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>✕</button>
             )}
           </div>
           
@@ -759,13 +753,14 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                 <tr>
                   <th>#</th>
                   <th>Username</th>
-                  <th>Password</th>
+                  <th>Password Status</th>
                   <th>First Name</th>
                   <th>Last Name</th>
                   <th>Email</th>
                   <th>Mobile</th>
                   <th>Center Code</th>
                   <th>Role</th>
+                  {!auditUserMode && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -774,38 +769,32 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                   .filter(u => {
                     if (!viewSearch) return true;
                     const q = viewSearch.toLowerCase();
-                    return (
-                      u.username?.toLowerCase().includes(q) ||
-                      u.firstname?.toLowerCase().includes(q) ||
-                      u.lastname?.toLowerCase().includes(q) ||
-                      u.email?.toLowerCase().includes(q) ||
-                      u.mobile?.includes(q) ||
-                      u.centerCode?.toLowerCase().includes(q) ||
-                      (u.Role || u.role || '').toLowerCase().includes(q)
-                    );
+                    return (u.username?.toLowerCase().includes(q) || u.firstname?.toLowerCase().includes(q) || u.lastname?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.mobile?.includes(q) || u.centerCode?.toLowerCase().includes(q) || (u.Role || u.role || '').toLowerCase().includes(q));
                   })
                   .map((u, i) => (
                   <tr key={u._id || i}>
                     <td>{i + 1}</td>
                     <td><span className="username-badge">{u.username}</span></td>
                     <td>
-                      <span style={{ fontFamily: 'monospace' }}>{visiblePasswords.has(i) ? u.password : '••••••'}</span>
-                      <button onClick={() => togglePwd(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '8px' }}>
-                        {visiblePasswords.has(i) ? '🙈' : '👁️'}
-                      </button>
+                      {/* Security: Don't show actual password - show status instead */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', display: 'inline-block' }}>
+                          🔒 Secured
+                        </span>
+                        {u.forcePasswordChange && (
+                          <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' }}>
+                            ⚠️ Must Change
+                          </span>
+                        )}
+                        {getExpiryBadge(u)}
+                      </div>
                     </td>
                     <td>{u.firstname}</td>
                     <td>{u.lastname || '-'}</td>
                     <td>{u.email || '-'}</td>
                     <td>{u.mobile || '-'}</td>
                     <td>
-                      <span style={{ 
-                        fontWeight: 'bold', 
-                        color: u.centerCode ? '#2196f3' : '#999',
-                        background: u.centerCode ? '#e3f2fd' : 'transparent',
-                        padding: u.centerCode ? '4px 8px' : '0',
-                        borderRadius: u.centerCode ? '4px' : '0'
-                      }}>
+                      <span style={{ fontWeight: 'bold', color: u.centerCode ? '#2196f3' : '#999', background: u.centerCode ? '#e3f2fd' : 'transparent', padding: u.centerCode ? '4px 8px' : '0', borderRadius: u.centerCode ? '4px' : '0' }}>
                         {u.centerCode || '-'}
                       </span>
                     </td>
@@ -814,11 +803,19 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                         {u.Role || u.role || '-'}
                       </span>
                       {(u.approvalStatus === 'pending' || u.modifyApprovalStatus === 'pending') && (
-                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>
-                          ⏳ Pending
-                        </span>
+                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>⏳ Pending</span>
                       )}
                     </td>
+                    {!auditUserMode && (
+                      <td>
+                        <button
+                          onClick={() => openResetModal(u)}
+                          style={{ padding: '5px 12px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}
+                        >
+                          🔑 Reset Pwd
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -827,7 +824,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
         </div>
       )}
 
-      {/* MODIFY USER */}
+      {/* ── MODIFY USER ── */}
       {activeOption === 'modify' && (
         <div className="modify-user">
           <h3>✏️ Modify User</h3>
@@ -835,14 +832,9 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
           <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <div className="field-box">
               <label>Select User to Modify:</label>
-              {/* Search filter for modify dropdown */}
-              {/* Search input */}
               <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <input
-                  type="text"
-                  placeholder="Name, username, email ya role type karo..."
-                  value={modifySearch}
-                  onChange={e => setModifySearch(e.target.value)}
+                <input type="text" placeholder="Name, username, email ya role type karo..."
+                  value={modifySearch} onChange={e => setModifySearch(e.target.value)}
                   style={{ width: '100%', padding: '12px 40px 12px 14px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f8f9ff' }}
                 />
                 {modifySearch && (
@@ -851,7 +843,6 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                 )}
               </div>
 
-              {/* Filtered user cards */}
               <div style={{ maxHeight: '280px', overflowY: 'auto', border: '2px solid #e0e0e0', borderRadius: '10px', background: 'white' }}>
                 {(() => {
                   const filtered = globalUsers.filter(u => {
@@ -870,17 +861,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                     return (
                       <div key={u._id || u.username}
                         onClick={() => handleSelectUser({ target: { value: u.username } })}
-                        style={{
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #f0f0f0',
-                          background: isSelected ? 'linear-gradient(135deg, #667eea15, #764ba215)' : 'white',
-                          borderLeft: isSelected ? '4px solid #667eea' : '4px solid transparent',
-                          transition: 'all 0.15s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px'
-                        }}
+                        style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', background: isSelected ? 'linear-gradient(135deg, #667eea15, #764ba215)' : 'white', borderLeft: isSelected ? '4px solid #667eea' : '4px solid transparent', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '12px' }}
                         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8f9ff'; }}
                         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'white'; }}
                       >
@@ -897,6 +878,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                         <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: `${roleColor}20`, color: roleColor, border: `1px solid ${roleColor}40`, whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {role}
                         </span>
+                        {u.forcePasswordChange && <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 6px', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold' }}>⚠️ Must Change</span>}
                         {isSelected && <span style={{ color: '#667eea', fontSize: '18px', flexShrink: 0 }}>✓</span>}
                       </div>
                     );
@@ -916,17 +898,40 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                 </div>
 
                 <div className="field-box">
-                  <label>🔐 Password</label>
+                  <label>🔐 New Password <span style={{ fontWeight: '400', fontSize: '12px', color: '#999' }}>(leave blank to keep current)</span></label>
                   <div className="password-wrapper">
-                    <input 
+                    <input
                       autoComplete="new-password"
-                      type={showEditPassword ? 'text' : 'password'} 
-                      value={editForm.password} 
-                      onChange={(e) => setEditForm({...editForm, password: e.target.value})}
+                      type={showEditPassword ? 'text' : 'password'}
+                      value={editForm.password}
+                      placeholder="Enter new password (or leave blank)"
+                      onChange={(e) => {
+                        setEditForm({...editForm, password: e.target.value});
+                        setEditPasswordStrength(e.target.value ? checkPasswordStrength(e.target.value) : { message: '', color: '' });
+                      }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowEditPassword(!showEditPassword)}>
                       {showEditPassword ? '🙈' : '👁️'}
                     </button>
+                  </div>
+                  {editPasswordStrength.message && <div className="helper-text" style={{ color: editPasswordStrength.color }}>{editPasswordStrength.message}</div>}
+                  {editForm.password && (
+                    <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
+                      {[
+                        { check: editForm.password.length >= 8, text: 'Min 8 characters' },
+                        { check: /[A-Z]/.test(editForm.password), text: 'Uppercase (A-Z)' },
+                        { check: /[a-z]/.test(editForm.password), text: 'Lowercase (a-z)' },
+                        { check: /[0-9]/.test(editForm.password), text: 'Number (0-9)' },
+                        { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(editForm.password), text: 'Special char (@$!%*?&)' },
+                      ].map((item, i) => (
+                        <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
+                          {item.check ? '✅' : '❌'} {item.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="helper-text" style={{ color: '#e65100', marginTop: '4px' }}>
+                    ⚠️ If changed by Admin → user must reset on next login
                   </div>
                 </div>
 
@@ -934,17 +939,14 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                   <label>📝 First Name</label>
                   <input autoComplete="off" value={editForm.firstname} onChange={(e) => setEditForm({...editForm, firstname: e.target.value})} />
                 </div>
-
                 <div className="field-box">
                   <label>📝 Last Name</label>
                   <input autoComplete="off" value={editForm.lastname} onChange={(e) => setEditForm({...editForm, lastname: e.target.value})} />
                 </div>
-
                 <div className="field-box">
                   <label>📧 Email</label>
                   <input autoComplete="off" type="email" value={editForm.email} onChange={(e) => setEditForm({...editForm, email: e.target.value})} />
                 </div>
-
                 <div className="field-box">
                   <label>📱 Mobile</label>
                   <input autoComplete="off" value={editForm.mobile} onChange={(e) => setEditForm({...editForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10)})} maxLength="10" />
@@ -952,16 +954,10 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
 
                 <div className="field-box">
                   <label>👥 Role</label>
-                  <select 
-                    value={editForm.Role} 
+                  <select value={editForm.Role}
                     onChange={(e) => {
-                      console.log('🔄 Role changed to:', e.target.value);
                       setEditForm({...editForm, Role: e.target.value});
-                      // Clear center code if not Center User
-                      if (e.target.value !== 'Center User') {
-                        console.log('🗑️ Clearing centerCode (not Center User)');
-                        setEditForm(prev => ({...prev, centerCode: ''}));
-                      }
+                      if (e.target.value !== 'Center User') setEditForm(prev => ({...prev, centerCode: ''}));
                     }}
                   >
                     <option value="Audit User">Audit User</option>
@@ -979,31 +975,16 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                   </select>
                 </div>
 
-                {/* Center Code Field - Only for Center User */}
                 {editForm.Role === 'Center User' && (
                   <div className="field-box">
                     <label>🏢 Center Code *</label>
-                    <select
-                      value={editForm.centerCode}
-                      onChange={(e) => {
-                        console.log('🏢 Center Code selected:', e.target.value);
-                        setEditForm({...editForm, centerCode: e.target.value});
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        border: !editForm.centerCode ? '2px solid #f44336' : '2px solid #4caf50',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        cursor: 'pointer',
-                        backgroundColor: '#f0fdf4'
-                      }}
+                    <select value={editForm.centerCode}
+                      onChange={(e) => setEditForm({...editForm, centerCode: e.target.value})}
+                      style={{ width: '100%', padding: '12px', border: !editForm.centerCode ? '2px solid #f44336' : '2px solid #4caf50', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: '#f0fdf4' }}
                     >
                       <option value="">Select Center Code *</option>
                       {centers.map(center => (
-                        <option key={center.centerCode} value={center.centerCode}>
-                          {center.centerCode} - {center.centerName}
-                        </option>
+                        <option key={center.centerCode} value={center.centerCode}>{center.centerCode} - {center.centerName}</option>
                       ))}
                     </select>
                     {!editForm.centerCode && <div className="error-text">Center Code required for Center User</div>}
@@ -1013,34 +994,14 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
                   </div>
                 )}
 
-    
-            {/* Replace Old Name - for hierarchy roles */}
-            {['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'].includes(newUserForm.Role) && (
-              <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
-                <label style={{ color: '#e65100', fontWeight: '700' }}>
-                  🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder={`Enter old ${newUserForm.Role} name to replace (e.g. "Shweta")`}
-                  value={newUserForm.replaceOldName}
-                  onChange={(e) => setNewUserForm({...newUserForm, replaceOldName: e.target.value})}
-                  style={{ width: '100%', padding: '10px 14px', border: '2px solid #ffcc02', borderRadius: '8px', fontSize: '14px', marginTop: '6px' }}
-                />
-                <div style={{ fontSize: '12px', color: '#e65100', marginTop: '6px' }}>
-                  ⚠️ Agar koi purana {newUserForm.Role} tha — uska naam yahan daalo. Naye user ka naam ({newUserForm.firstname || '?'}) saare Centers aur Audit Reports mein replace ho jaayega.
-                </div>
-              </div>
-            )}
-
-            <div className="btn-group">
+                <div className="btn-group">
                   <button type="button" className="btn-green" onClick={handleUpdate} disabled={loading}>
                     {loading ? '⏳' : '✅ Update'}
                   </button>
                   <button type="button" className="btn-red" onClick={handleDelete} disabled={loading}>
                     🗑️ Delete
                   </button>
-                  <button type="button" className="btn-gray" onClick={() => { setSelectedUser(null); setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' }); }}>
+                  <button type="button" className="btn-gray" onClick={() => { setSelectedUser(null); setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' }); setEditPasswordStrength({ message: '', color: '' }); }}>
                     ❌ Cancel
                   </button>
                 </div>
@@ -1057,4 +1018,4 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   );
 };
 
-export default UserManagement;  
+export default UserManagement;
