@@ -177,6 +177,132 @@ const COL = {
   chr: { x: ML+434,   w: 111 },
 };
 
+const TH = 22;
+const FOOTER_H = 18;
+const HDRS = [
+  ['S.No', COL.sno], ['Checkpoint', COL.cp], ['Wt.', COL.wt],
+  ['Max\nScore', COL.max], ['Total\nSamples', COL.tot], ['Compliant', COL.com],
+  ['%', COL.pct], ['Score', COL.sc], ['Remarks', COL.rem],
+  ['Center Head\nRemarks', COL.chr],
+];
+
+// Draws the table header row at yy, returns the y position just below it
+function drawTableHeader(doc, yy) {
+  fillRect(doc, ML, yy, TW, TH, C.purple);
+  fillRect(doc, COL.chr.x, yy, COL.chr.w, TH, '#15803d');
+  HDRS.forEach(([lbl, c]) => {
+    doc.font('Helvetica-Bold').fontSize(6).fillColor(C.white)
+      .text(lbl, c.x + 1, yy + 4, { width: c.w - 2, align: 'center' });
+  });
+  return yy + TH;
+}
+
+// If `need` more px won't fit on the page, starts a new page (with a fresh table
+// header) and returns the new y; otherwise returns currentY unchanged
+function ensureSpace(doc, currentY, need) {
+  if (currentY + need > PG_H - FOOTER_H - 4) {
+    doc.addPage();
+    return drawTableHeader(doc, MT);
+  }
+  return currentY;
+}
+
+// Draws one checkpoint row, returns the updated { y, rowIdx }
+function drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx) {
+  const cp     = reportData[cpCfg.id] || {};
+  const score  = parseFloat(cp.score) || 0;
+  const maxSc  = cpCfg.max || 0;
+  const pct    = cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '-';
+  const rem    = safe(cp.remarks);
+  const chrRem = (cp.centerHeadRemarks && cp.centerHeadRemarks.trim()) ? cp.centerHeadRemarks.trim() : '';
+
+  // Row height = tallest cell
+  const cpLines  = Math.ceil((cpCfg.name || '').length / 21);
+  const remLines = Math.ceil(rem.replace(/-/g,'').length / 13);
+  const chrLines = chrRem ? Math.ceil(chrRem.length / 16) : 1;
+  const rowH = Math.max(cpLines, remLines, chrLines, 1) * 10 + 6;
+
+  y = ensureSpace(doc, y, rowH);
+  rowIdx++;
+
+  fillRect(doc, ML, y, TW, rowH, rowIdx % 2 === 0 ? '#f5f3ff' : C.white);
+  fillRect(doc, COL.chr.x, y, COL.chr.w, rowH, chrRem ? '#f0fdf4' : '#fafafa');
+  strokeRect(doc, ML, y, TW, rowH, C.grayBorder, 0.3);
+
+  // Vertical dividers
+  Object.values(COL).forEach(c => {
+    doc.save().moveTo(c.x, y).lineTo(c.x, y + rowH)
+      .strokeColor(C.grayBorder).lineWidth(0.3).stroke().restore();
+  });
+  doc.save().moveTo(ML + TW, y).lineTo(ML + TW, y + rowH)
+    .strokeColor(C.grayBorder).lineWidth(0.3).stroke().restore();
+
+  cellTxt(doc, String(i + 1),             COL.sno.x, y, COL.sno.w, { align:'center', sz:7 });
+  cellTxt(doc, cpCfg.name || cpCfg.id,    COL.cp.x,  y, COL.cp.w,  { sz:7 });
+  cellTxt(doc, cpCfg.wt || '-',           COL.wt.x,  y, COL.wt.w,  { align:'center', sz:7 });
+  cellTxt(doc, String(maxSc),             COL.max.x, y, COL.max.w, { align:'center', sz:7 });
+  cellTxt(doc, safe(cp.totalSamples),     COL.tot.x, y, COL.tot.w, { align:'center', sz:7 });
+  cellTxt(doc, safe(cp.samplesCompliant), COL.com.x, y, COL.com.w, { align:'center', sz:7 });
+  cellTxt(doc, pct,                       COL.pct.x, y, COL.pct.w, { align:'center', sz:7 });
+  cellTxt(doc, score.toFixed(2),          COL.sc.x,  y, COL.sc.w,
+    { align:'center', sz:8, bold:true, color: scoreColor(score, maxSc) });
+  cellTxt(doc, rem,                       COL.rem.x, y, COL.rem.w, { sz:6.5, color: C.gray });
+  cellTxt(doc,
+    chrRem || 'No remarks',
+    COL.chr.x, y, COL.chr.w,
+    { sz:6.5, color: chrRem ? '#166534' : '#9ca3af' }
+  );
+
+  y += rowH;
+  return { y, rowIdx };
+}
+
+// Draws one area's sub-header, checkpoint rows (or N/A notice), and area-total row.
+// Returns the updated { y, rowIdx }.
+function drawAreaBlock(doc, area, reportData, y, rowIdx) {
+  const isPlacement = area.label === 'Placement Process';
+  const na = isPlacement && reportData.placementApplicable === 'no';
+  const aScore = area.keys.reduce((s, k) => s + (parseFloat((reportData[k.id] || {}).score) || 0), 0);
+
+  // Area sub-header
+  y = ensureSpace(doc, y, 16);
+  fillRect(doc, ML, y, TW, 16, C.purpleLight);
+  strokeRect(doc, ML, y, TW, 16, C.purpleMid, 0.5);
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(C.purpleMid)
+    .text(`Area: ${area.label}  (Max Score: ${area.max})`, ML + 5, y + 4, { width: TW * 0.6 });
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(C.purpleMid)
+    .text(na ? 'N/A' : `Score: ${aScore.toFixed(2)}`, ML + TW * 0.6, y + 4, { width: TW * 0.38, align: 'right' });
+  y += 16;
+
+  if (na) {
+    y = ensureSpace(doc, y, 14);
+    fillRect(doc, ML, y, TW, 14, C.grayLight);
+    strokeRect(doc, ML, y, TW, 14, C.grayBorder);
+    doc.font('Helvetica').fontSize(8).fillColor(C.gray)
+      .text('Placement Process — NOT APPLICABLE', ML + 6, y + 3, { width: TW });
+    y += 14;
+  } else {
+    area.keys.forEach((cpCfg, i) => {
+      const result = drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx);
+      y = result.y;
+      rowIdx = result.rowIdx;
+    });
+  }
+
+  // Area total
+  y = ensureSpace(doc, y, 15);
+  fillRect(doc, ML, y, TW, 15, C.blueSoft);
+  strokeRect(doc, ML, y, TW, 15, C.blueMid, 0.6);
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(C.blue)
+    .text(`${area.label} — Total Score:`, ML + 6, y + 3, { width: TW - 95 });
+  doc.font('Helvetica-Bold').fontSize(9)
+    .fillColor(na ? C.gray : scoreColor(aScore, area.max))
+    .text(na ? 'N/A' : `${aScore.toFixed(2)} / ${area.max}`, ML + TW - 95, y + 2, { width: 89, align:'right' });
+  y += 20;
+
+  return { y, rowIdx };
+}
+
 async function generatePDF(reportData) {
   return new Promise(async (resolve, reject) => {
     try {
@@ -205,7 +331,6 @@ async function generatePDF(reportData) {
       const grand = parseFloat(reportData.grandTotal) || 0;
       const status = grand >= 80 ? 'Compliant' : grand >= 65 ? 'Amber' : 'Non-Compliant';
       const stCol  = grand >= 80 ? C.greenText : grand >= 65 ? C.amberText : C.redText;
-      const FOOTER_H = 18;
 
       // ══════════════════════════════════════════════
       // HEADER with logo
@@ -290,36 +415,7 @@ async function generatePDF(reportData) {
         .text('Detailed Checkpoint Report', ML + 6, y + 5, { width: TW });
       y += 22;
 
-      // ══════════════════════════════════════════════
-      // TABLE HEADER FUNCTION
-      // ══════════════════════════════════════════════
-      const TH = 22;
-      const HDRS = [
-        ['S.No', COL.sno], ['Checkpoint', COL.cp], ['Wt.', COL.wt],
-        ['Max\nScore', COL.max], ['Total\nSamples', COL.tot], ['Compliant', COL.com],
-        ['%', COL.pct], ['Score', COL.sc], ['Remarks', COL.rem],
-        ['Center Head\nRemarks', COL.chr],
-      ];
-
-      const drawTableHeader = (yy) => {
-        fillRect(doc, ML, yy, TW, TH, C.purple);
-        fillRect(doc, COL.chr.x, yy, COL.chr.w, TH, '#15803d');
-        HDRS.forEach(([lbl, c]) => {
-          doc.font('Helvetica-Bold').fontSize(6).fillColor(C.white)
-            .text(lbl, c.x + 1, yy + 4, { width: c.w - 2, align: 'center' });
-        });
-        return yy + TH;
-      };
-
-      y = drawTableHeader(y);
-
-      const ensureSpace = (need) => {
-        if (y + need > PG_H - FOOTER_H - 4) {
-          doc.addPage();
-          y = MT;
-          y = drawTableHeader(y);
-        }
-      };
+      y = drawTableHeader(doc, y);
 
       // ══════════════════════════════════════════════
       // ROWS
@@ -328,93 +424,15 @@ async function generatePDF(reportData) {
       const AREAS = getAreasDef(reportData.centerType);
 
       AREAS.forEach(area => {
-        const isPlacement = area.label === 'Placement Process';
-        const na = isPlacement && reportData.placementApplicable === 'no';
-        const aScore = area.keys.reduce((s, k) => s + (parseFloat((reportData[k.id] || {}).score) || 0), 0);
-
-        // Area sub-header
-        ensureSpace(16);
-        fillRect(doc, ML, y, TW, 16, C.purpleLight);
-        strokeRect(doc, ML, y, TW, 16, C.purpleMid, 0.5);
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.purpleMid)
-          .text(`Area: ${area.label}  (Max Score: ${area.max})`, ML + 5, y + 4, { width: TW * 0.6 });
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.purpleMid)
-          .text(na ? 'N/A' : `Score: ${aScore.toFixed(2)}`, ML + TW * 0.6, y + 4, { width: TW * 0.38, align: 'right' });
-        y += 16;
-
-        if (na) {
-          ensureSpace(14);
-          fillRect(doc, ML, y, TW, 14, C.grayLight);
-          strokeRect(doc, ML, y, TW, 14, C.grayBorder);
-          doc.font('Helvetica').fontSize(8).fillColor(C.gray)
-            .text('Placement Process — NOT APPLICABLE', ML + 6, y + 3, { width: TW });
-          y += 14;
-        } else {
-          area.keys.forEach((cpCfg, i) => {
-            const cp     = reportData[cpCfg.id] || {};
-            const score  = parseFloat(cp.score) || 0;
-            const maxSc  = cpCfg.max || 0;
-            const pct    = cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '-';
-            const rem    = safe(cp.remarks);
-            const chrRem = (cp.centerHeadRemarks && cp.centerHeadRemarks.trim()) ? cp.centerHeadRemarks.trim() : '';
-
-            // Row height = tallest cell
-            const cpLines  = Math.ceil((cpCfg.name || '').length / 21);
-            const remLines = Math.ceil(rem.replace(/-/g,'').length / 13);
-            const chrLines = chrRem ? Math.ceil(chrRem.length / 16) : 1;
-            const rowH = Math.max(cpLines, remLines, chrLines, 1) * 10 + 6;
-
-            ensureSpace(rowH);
-            rowIdx++;
-
-            fillRect(doc, ML, y, TW, rowH, rowIdx % 2 === 0 ? '#f5f3ff' : C.white);
-            fillRect(doc, COL.chr.x, y, COL.chr.w, rowH, chrRem ? '#f0fdf4' : '#fafafa');
-            strokeRect(doc, ML, y, TW, rowH, C.grayBorder, 0.3);
-
-            // Vertical dividers
-            Object.values(COL).forEach(c => {
-              doc.save().moveTo(c.x, y).lineTo(c.x, y + rowH)
-                .strokeColor(C.grayBorder).lineWidth(0.3).stroke().restore();
-            });
-            doc.save().moveTo(ML + TW, y).lineTo(ML + TW, y + rowH)
-              .strokeColor(C.grayBorder).lineWidth(0.3).stroke().restore();
-
-            cellTxt(doc, String(i + 1),             COL.sno.x, y, COL.sno.w, { align:'center', sz:7 });
-            cellTxt(doc, cpCfg.name || cpCfg.id,    COL.cp.x,  y, COL.cp.w,  { sz:7 });
-            cellTxt(doc, cpCfg.wt || '-',           COL.wt.x,  y, COL.wt.w,  { align:'center', sz:7 });
-            cellTxt(doc, String(maxSc),             COL.max.x, y, COL.max.w, { align:'center', sz:7 });
-            cellTxt(doc, safe(cp.totalSamples),     COL.tot.x, y, COL.tot.w, { align:'center', sz:7 });
-            cellTxt(doc, safe(cp.samplesCompliant), COL.com.x, y, COL.com.w, { align:'center', sz:7 });
-            cellTxt(doc, pct,                       COL.pct.x, y, COL.pct.w, { align:'center', sz:7 });
-            cellTxt(doc, score.toFixed(2),          COL.sc.x,  y, COL.sc.w,
-              { align:'center', sz:8, bold:true, color: scoreColor(score, maxSc) });
-            cellTxt(doc, rem,                       COL.rem.x, y, COL.rem.w, { sz:6.5, color: C.gray });
-            cellTxt(doc,
-              chrRem || 'No remarks',
-              COL.chr.x, y, COL.chr.w,
-              { sz:6.5, color: chrRem ? '#166534' : '#9ca3af' }
-            );
-
-            y += rowH;
-          });
-        }
-
-        // Area total
-        ensureSpace(15);
-        fillRect(doc, ML, y, TW, 15, C.blueSoft);
-        strokeRect(doc, ML, y, TW, 15, C.blueMid, 0.6);
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.blue)
-          .text(`${area.label} — Total Score:`, ML + 6, y + 3, { width: TW - 95 });
-        doc.font('Helvetica-Bold').fontSize(9)
-          .fillColor(na ? C.gray : scoreColor(aScore, area.max))
-          .text(na ? 'N/A' : `${aScore.toFixed(2)} / ${area.max}`, ML + TW - 95, y + 2, { width: 89, align:'right' });
-        y += 20;
+        const result = drawAreaBlock(doc, area, reportData, y, rowIdx);
+        y = result.y;
+        rowIdx = result.rowIdx;
       });
 
       // ══════════════════════════════════════════════
       // GRAND TOTAL BAR
       // ══════════════════════════════════════════════
-      ensureSpace(32);
+      y = ensureSpace(doc, y, 32);
       fillRect(doc, ML, y, TW, 30, '#1e1b4b');
       strokeRect(doc, ML, y, TW, 30, '#312e81', 1);
       doc.font('Helvetica-Bold').fontSize(11).fillColor(C.white)
