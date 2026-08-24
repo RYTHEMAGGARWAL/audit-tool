@@ -54,6 +54,22 @@ const generateToken = (user) => jwt.sign(
   { expiresIn: PASSWORD_POLICY.jwtExpiry }
 );
 
+// Verifies the Authorization: Bearer <token> header and attaches the decoded
+// payload (id, username, role) to req.user. Rejects the request if the token
+// is missing or invalid, so route handlers can trust req.user.role instead
+// of any role/flag the client sends in the request body.
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    req.user = jwt.verify(token, PASSWORD_POLICY.jwtSecret);
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid or expired session, please log in again' });
+  }
+};
+
 
 // ========================================
 // NODEMAILER EMAIL CONFIGURATION
@@ -880,12 +896,13 @@ app.get('/api/centers', async (req, res) => {
   }
 });
 // PUT update center
-app.put('/api/centers/:id', async (req, res) => {
+app.put('/api/centers/:id', requireAuth, async (req, res) => {
   try {
     const updateData = req.body;
+    const isAdmin = req.user.role === 'Admin';
 
-    // Audit User edit request - store as pending, don't apply immediately
-    if (updateData.editApprovalStatus === 'pending') {
+    // Non-admins can never apply changes directly — always stored as a pending edit request
+    if (!isAdmin) {
       const { editRequestBy, editRequestDate, editApprovalStatus, changedFields, _id, __v, createdAt, updatedAt, ...actualEditData } = updateData;
       console.log('📝 Changed fields received:', JSON.stringify(changedFields));
       const updated = await Center.findByIdAndUpdate(
@@ -923,8 +940,9 @@ app.put('/api/centers/:id', async (req, res) => {
 });
 
 // DELETE center
-app.delete('/api/centers/:id', async (req, res) => {
+app.delete('/api/centers/:id', requireAuth, async (req, res) => {
   try {
+    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Only Admin can delete centers' });
     const deletedCenter = await Center.findByIdAndDelete(req.params.id);
     if (!deletedCenter) {
       return res.status(404).json({ error: 'Center not found' });
@@ -938,18 +956,28 @@ app.delete('/api/centers/:id', async (req, res) => {
 });
 
 // Create center
-app.post('/api/centers', async (req, res) => {
+app.post('/api/centers', requireAuth, async (req, res) => {
   try {
-    const centerData = {
-      ...req.body,
-      centerCode: req.body.centerCode.toUpperCase()
-    };
+    // Only these profile fields can be set by the client — approval/status
+    // fields below are controlled by server logic, never taken from req.body directly
+    const ALLOWED_CENTER_FIELDS = [
+      'centerCode', 'centerName', 'projectName', 'zmName', 'regionHeadName',
+      'areaClusterManager', 'areaManager', 'clusterManager', 'placementCoordinator',
+      'seniorManagerPlacement', 'nationalHeadPlacement', 'placementApplicable',
+      'centerHeadName', 'centerType', 'location', 'zonalHeadName', 'auditedBy',
+      'auditPeriod', 'chName', 'geolocation'
+    ];
+    const centerData = {};
+    ALLOWED_CENTER_FIELDS.forEach(field => {
+      if (req.body[field] !== undefined) centerData[field] = req.body[field];
+    });
+    centerData.centerCode = String(req.body.centerCode || '').toUpperCase();
 
-    // Agar Audit User ne banaya toh pending approval
-    if (req.body.createdByRole === 'Audit User') {
+    // Non-admins always create centers pending approval, regardless of what the client claims
+    if (req.user.role !== 'Admin') {
       centerData.approvalStatus = 'pending';
       centerData.isActive = false; // Admin approve kare tabhi active
-      centerData.approvalRequestedBy = req.body.createdBy || 'Audit User';
+      centerData.approvalRequestedBy = req.user.username || 'Audit User';
     }
 
     const center = new Center(centerData);
