@@ -776,8 +776,8 @@ app.post('/api/hierarchy-emails', async (req, res) => {
       const parts = name.trim().split(' ').filter(p => p.length > 1 && !/^(md|mr|ms|dr)\.?$/i.test(p));
       if (!parts.length) return;
       const orConds = parts.flatMap(p => [
-        { firstname: new RegExp('^' + p + '$', 'i') },
-        { username:  new RegExp('^' + p + '$', 'i') }
+        { firstname: new RegExp('^' + escapeRegex(p) + '$', 'i') },
+        { username:  new RegExp('^' + escapeRegex(p) + '$', 'i') }
       ]);
       // Try 1: role + name match
       let user = await User.findOne({ role: Role, isActive: true, $or: orConds });
@@ -824,16 +824,16 @@ app.get('/api/my-requests/:createdBy', async (req, res) => {
     // My center requests (new + edit)
     const centers = await Center.find({
       $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
-        { editRequestBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
+        { editRequestBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
       ]
     }).sort({ createdAt: -1 });
 
     // My user requests (new + modify)
     const users = await User.find({
       $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
-        { modifiedBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
+        { modifiedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
       ]
     }).sort({ createdAt: -1 });
 
@@ -1869,7 +1869,7 @@ async function sendAuditorReminderEmail(report, daysLeft) {
     // auditedBy mein "Firstname Lastname" ya sirf "Firstname" ho sakta hai
     const firstName = report.auditedBy.split(' ')[0].trim();
     const auditorUser = await User.findOne({
-      firstname: { $regex: new RegExp(`^${firstName}$`, 'i') },
+      firstname: { $regex: new RegExp(`^${escapeRegex(firstName)}$`, 'i') },
       role: { $in: ['Audit User', 'Admin'] },
       isActive: true
     });
@@ -2155,8 +2155,8 @@ app.post('/api/hierarchy-emails', async (req, res) => {
       const parts = name.trim().split(' ').filter(p => p.length > 1 && !/^(md|mr|ms|dr)\.?$/i.test(p));
       if (!parts.length) return;
       const orConds = parts.flatMap(p => [
-        { firstname: new RegExp('^' + p + '$', 'i') },
-        { username:  new RegExp('^' + p + '$', 'i') }
+        { firstname: new RegExp('^' + escapeRegex(p) + '$', 'i') },
+        { username:  new RegExp('^' + escapeRegex(p) + '$', 'i') }
       ]);
       // Try 1: role + name match
       let user = await User.findOne({ role: Role, isActive: true, $or: orConds });
@@ -2202,16 +2202,16 @@ app.get('/api/my-requests/:createdBy', async (req, res) => {
     // My center requests (new + edit)
     const centers = await Center.find({
       $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
-        { editRequestBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
+        { editRequestBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
       ]
     }).sort({ createdAt: -1 });
 
     // My user requests (new + modify)
     const users = await User.find({
       $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${name}$`, 'i') } },
-        { modifiedBy: { $regex: new RegExp(`^${name}$`, 'i') } }
+        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
+        { modifiedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
       ]
     }).sort({ createdAt: -1 });
 
@@ -2562,6 +2562,12 @@ const HOLIDAYS_SERVER = {
          '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
          '2026-11-24','2026-12-25']
 };
+
+// Escapes regex special characters so user input can't break out of a ^...$ pattern
+// or trigger catastrophic backtracking (ReDoS)
+function escapeRegex(str) {
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function isWorkingDaySrv(date) {
   const d = new Date(date);
