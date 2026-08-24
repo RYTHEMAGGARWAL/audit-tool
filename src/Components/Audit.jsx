@@ -810,7 +810,7 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
     border: '2px solid #2196f3'
   }}>
     <label style={{ 
-      fontSize: '18px', 
+      fontSize: '16px', 
       fontWeight: 'bold', 
       color: '#1976d2',
       whiteSpace: 'nowrap'
