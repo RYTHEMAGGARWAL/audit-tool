@@ -3204,10 +3204,12 @@ app.post('/api/pending-approvals/center/:id/reject', async (req, res) => {
 // ========================================
 // Builds a case-insensitive $regex filter on `field` from name/firstname (or $or of both if they differ)
 function buildNameFilter(field, name, firstname) {
+  const safeName = String(name || '').trim();
+  const safeFirstname = String(firstname || '').trim();
   const patterns = [];
-  if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
-  if (firstname && firstname.trim() && firstname.trim() !== name?.trim())
-    patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
+  if (safeName) patterns.push({ [field]: { $regex: escapeRegex(safeName), $options: 'i' } });
+  if (safeFirstname && safeFirstname !== safeName)
+    patterns.push({ [field]: { $regex: escapeRegex(safeFirstname), $options: 'i' } });
   return patterns.length === 1 ? patterns[0] : { $or: patterns };
 }
 
@@ -3221,17 +3223,18 @@ const HIERARCHY_ROLE_FIELD_MAP = {
 
 // Builds the Mongo filter for a hierarchy role, or flags an error status if role/name is invalid
 function buildHierarchyRoleFilter(role, name, firstname) {
+  const safeRole = String(role || '');
   const hasName = !!(name || firstname);
-  if (role === 'Operation Head') return { filter: {} };
-  if (role === 'Area Manager' || role === 'Cluster Manager') {
+  if (safeRole === 'Operation Head') return { filter: {} };
+  if (safeRole === 'Area Manager' || safeRole === 'Cluster Manager') {
     if (!hasName) return { error: 400 };
     const f1 = buildNameFilter('areaClusterManager', name, firstname);
-    const f2 = buildNameFilter(role === 'Area Manager' ? 'areaManager' : 'clusterManager', name, firstname);
+    const f2 = buildNameFilter(safeRole === 'Area Manager' ? 'areaManager' : 'clusterManager', name, firstname);
     return { filter: { $or: [...(f1.$or || [f1]), ...(f2.$or || [f2])] } };
   }
-  if (HIERARCHY_ROLE_FIELD_MAP[role]) {
+  if (HIERARCHY_ROLE_FIELD_MAP[safeRole]) {
     if (!hasName) return { error: 400 };
-    return { filter: buildNameFilter(HIERARCHY_ROLE_FIELD_MAP[role], name, firstname) };
+    return { filter: buildNameFilter(HIERARCHY_ROLE_FIELD_MAP[safeRole], name, firstname) };
   }
   return { error: 400 };
 }
@@ -3240,9 +3243,12 @@ app.get('/api/hierarchy-reports', async (req, res) => {
   try {
     const { role, name, firstname, fy, status, centerType } = req.query;
     let filter = {};
-    if (fy && fy !== 'All') filter.financialYear = fy;
-    if (status && status !== 'All') filter.currentStatus = status;
-    if (centerType && centerType !== 'All') filter.centerType = centerType;
+    const safeFy = String(fy || '');
+    const safeStatus = String(status || '');
+    const safeCenterType = String(centerType || '');
+    if (safeFy && safeFy !== 'All') filter.financialYear = safeFy;
+    if (safeStatus && safeStatus !== 'All') filter.currentStatus = safeStatus;
+    if (safeCenterType && safeCenterType !== 'All') filter.centerType = safeCenterType;
 
     const roleResult = buildHierarchyRoleFilter(role, name, firstname);
     if (roleResult.error) return res.status(roleResult.error).json({ error: 'Invalid role or missing name' });
