@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
-const MONGODB_URI = 'mongodb+srv://rythemaggarwal7740_db_user:CARdq_7840.@niit-audit-cluster.tn2rvlx.mongodb.net/niit_audit?retryWrites=true&w=majority&appName=niit-audit-cluster';
+
+// Password ab code mein nahi — .env file se aayega. Root mein .env file banao aur ye line daalo:
+// MONGODB_URI=mongodb+srv://<user>:<password>@niit-audit-cluster.tn2rvlx.mongodb.net/niit_audit?retryWrites=true&w=majority&appName=niit-audit-cluster
+require('dotenv').config();
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI env variable set nahi hai. .env file check karo.');
+  process.exit(1);
+}
 
 async function fix() {
   await mongoose.connect(MONGODB_URI);

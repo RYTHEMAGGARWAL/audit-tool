@@ -93,7 +93,7 @@ const addWorkingDays = (startDate, days) => {
   let count = 0;
 
   while (count < days) {
-    d.setDate(d.getDate() + 1);
+    d = new Date(d.setDate(d.getDate() + 1));
     if (isWorkingDay(d)) count++;
   }
 
@@ -111,7 +111,7 @@ const countWorkingDays = (startDate, endDate) => {
 
   let count = 0;
   while (d < end) {
-    d.setDate(d.getDate() + 1);
+    d = new Date(d.setDate(d.getDate() + 1));
     if (isWorkingDay(d)) count++;
   }
   return count;

@@ -37,17 +37,18 @@ const CHECKPOINT_META = {
 
 const getMaxScore = (cpId, placementApplicable) => {
   const isNA = placementApplicable === 'no';
+  const pick = (whenNA, whenElse) => isNA ? whenNA : whenElse;
   const map = {
-    FO1: isNA ? 10.5 : 9,   FO2: isNA ? 7 : 6,    FO3: 0,
-    FO4: isNA ? 14 : 12,    FO5: isNA ? 3.5 : 3,
-    DP1: isNA ? 6.75 : 6,   DP2: isNA ? 4.5 : 4,   DP3: isNA ? 6.75 : 6,
-    DP4: isNA ? 2.25 : 2,   DP5: isNA ? 4.5 : 4,   DP6: 0,
-    DP7: isNA ? 4.5 : 4,    DP8: isNA ? 2.25 : 2,  DP9: isNA ? 4.5 : 4,
-    DP10: isNA ? 4.5 : 4,   DP11: isNA ? 4.5 : 4,
+    FO1: pick(10.5, 9),   FO2: pick(7, 6),    FO3: 0,
+    FO4: pick(14, 12),    FO5: pick(3.5, 3),
+    DP1: pick(6.75, 6),   DP2: pick(4.5, 4),   DP3: pick(6.75, 6),
+    DP4: pick(2.25, 2),   DP5: pick(4.5, 4),   DP6: 0,
+    DP7: pick(4.5, 4),    DP8: pick(2.25, 2),  DP9: pick(4.5, 4),
+    DP10: pick(4.5, 4),   DP11: pick(4.5, 4),
     PP1: 2.25, PP2: 1.50,   PP3: 2.25, PP4: 9.00,
-    MP1: isNA ? 1.25 : 0.75, MP2: isNA ? 5 : 3,    MP3: isNA ? 7.5 : 4.5,
-    MP4: isNA ? 6.25 : 3.75, MP5: isNA ? 2.5 : 1.5,
-    MP6: isNA ? 1.25 : 0.75, MP7: isNA ? 1.25 : 0.75,
+    MP1: pick(1.25, 0.75), MP2: pick(5, 3),    MP3: pick(7.5, 4.5),
+    MP4: pick(6.25, 3.75), MP5: pick(2.5, 1.5),
+    MP6: pick(1.25, 0.75), MP7: pick(1.25, 0.75),
   };
   return map[cpId] ?? '-';
 };
@@ -72,10 +73,10 @@ const getRemainingWorkingDays = (deadlineDate) => {
   const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
   let count = 0, d = new Date(today);
   if (today > deadline) {
-    while (d > deadline) { d.setDate(d.getDate()-1); if (isWorkingDay(d)) count++; }
+    while (d > deadline) { d = new Date(d.setDate(d.getDate() - 1)); if (isWorkingDay(d)) count++; }
     return -count;
   }
-  while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) count++; }
+  while (d < deadline) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
   return count;
 };
 // Returns deadline Date (3 working days from placementRemarksDate)
@@ -90,7 +91,7 @@ const getEditDeadline = (dateStr) => {
   if (!base || isNaN(base)) return null;
   let d = new Date(base); d.setHours(0,0,0,0);
   let count = 0;
-  while (count < 3) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) count++; }
+  while (count < 3) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
   return d;
 };
 const getEditWindowBadge = (dateStr) => {
@@ -110,6 +111,290 @@ const ALL_AREAS = [
   { label: 'Placement Process', keys: ['PP1','PP2','PP3','PP4'], isPlacement: true },
   { label: 'Management Process', keys: ['MP1','MP2','MP3','MP4','MP5','MP6','MP7'] },
 ];
+
+
+// One placement area section (header + checkpoint rows + area total) —
+// extracted so the parent render doesn't carry this nested map's branching
+// in its own complexity.
+// One checkpoint row inside a placement area — extracted out of the nested
+// map so PlacementAreaSection doesn't carry this row's branching too.
+// Alternating row background, different palette for the placement area
+const getCheckpointRowBg = (isPlacementArea, i) => {
+  if (isPlacementArea) return i % 2 === 0 ? '#fffbf0' : '#fff8e1';
+  return i % 2 === 0 ? '#fff' : '#f8f9ff';
+};
+
+// Editable textarea, read-only remarks text, or "Read only" placeholder
+const CheckpointRemarksCell = ({ isEditable, isPlacementArea, cpId, cp, ppRemarks, setPpRemarks, isLocked }) => {
+  if (isEditable) {
+    return (
+      <textarea
+        rows={2}
+        placeholder={`Remark for ${cpId}...`}
+        value={ppRemarks[cpId] || ''}
+        onChange={e => setPpRemarks(prev => ({ ...prev, [cpId]: e.target.value }))}
+        style={{ width: '100%', padding: '6px 8px', border: '2px solid #ffcc80', borderRadius: '6px', fontSize: '12px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', background: '#fffdf5' }}
+      />
+    );
+  }
+  if (isPlacementArea) {
+    const text = ppRemarks[cpId] || (cp.centerHeadRemarks ? cp.centerHeadRemarks : (isLocked ? '🔒 Locked' : 'No remarks'));
+    return <span style={{ color: isLocked ? '#c62828' : '#999', fontSize: '12px', fontStyle: 'italic' }}>{text}</span>;
+  }
+  return <span style={{ color: '#bbb', fontSize: '11px', fontStyle: 'italic' }}>Read only</span>;
+};
+
+const PlacementCheckpointRow = ({ cpId, i, area, selectedReport, isLocked, ppRemarks, setPpRemarks, tdStyle }) => {
+  const cp = selectedReport[cpId] || {};
+  const meta = CHECKPOINT_META[cpId] || {};
+  const score = parseFloat(cp.score) || 0;
+  const maxScore = getMaxScore(cpId, selectedReport.placementApplicable);
+  const isEditable = area.isPlacement && !isLocked;
+  const rowBg = getCheckpointRowBg(area.isPlacement, i);
+  return (
+    <tr style={{ background: rowBg }}>
+      <td style={tdStyle}>{i + 1}</td>
+      <td style={{ ...tdStyle, textAlign: 'left', fontWeight: area.isPlacement ? '600' : '400' }}>{meta.name || cpId}</td>
+      <td style={tdStyle}>{meta.weightage != null ? `${meta.weightage}%` : '-'}</td>
+      <td style={tdStyle}>{maxScore}</td>
+      <td style={tdStyle}>{cp.totalSamples || '-'}</td>
+      <td style={tdStyle}>{cp.samplesCompliant || cp.compliantSamples || '-'}</td>
+      <td style={{ ...tdStyle, color: '#667eea', fontWeight: '600' }}>{cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '0%'}</td>
+      <td style={{ ...tdStyle, fontWeight: '800', color: score > 0 ? '#2e7d32' : '#c62828' }}>{score.toFixed(2)}</td>
+      <td style={{ ...tdStyle, color: '#555', textAlign: 'left', fontSize: '12px' }}>{cp.remarks || '-'}</td>
+      <td style={{ ...tdStyle, minWidth: '180px' }}>
+        <CheckpointRemarksCell
+          isEditable={isEditable}
+          isPlacementArea={area.isPlacement}
+          cpId={cpId}
+          cp={cp}
+          ppRemarks={ppRemarks}
+          setPpRemarks={setPpRemarks}
+          isLocked={isLocked}
+        />
+      </td>
+    </tr>
+  );
+};
+
+
+
+const PlacementAreaSection = ({ area, selectedReport, isLocked, tdStyle, ppRemarks, setPpRemarks }) => {
+                    const areaTotal = area.keys.reduce((s, k) => s + (parseFloat((selectedReport[k]||{}).score)||0), 0);
+                    const isNA = area.isPlacement && selectedReport.placementApplicable === 'no';
+                    return (
+                      <React.Fragment key={area.label}>
+                        {/* Area header */}
+                        <tr>
+                          <td colSpan={10} style={{ padding: '10px 14px', background: 'linear-gradient(135deg, #5b21b6, #7c3aed)', color: 'white', fontWeight: '700', fontSize: '14px' }}>
+                            {area.label} — Total: {isNA ? 'N/A' : areaTotal.toFixed(2)}
+                            {area.isPlacement && !isLocked && !isNA && (
+                              <span style={{ marginLeft: '12px', background: 'rgba(255,255,255,0.25)', padding: '2px 10px', borderRadius: '12px', fontSize: '11px' }}>✏️ Editable</span>
+                            )}
+                          </td>
+                        </tr>
+                        {isNA ? (
+                          <tr><td colSpan={10} style={{ ...tdStyle, color: '#999', fontStyle: 'italic' }}>Placement Process — Not Applicable</td></tr>
+                        ) : (
+                          area.keys.map((cpId, i) => (
+                            <PlacementCheckpointRow
+                              key={cpId}
+                              cpId={cpId}
+                              i={i}
+                              area={area}
+                              selectedReport={selectedReport}
+                              isLocked={isLocked}
+                              ppRemarks={ppRemarks}
+                              setPpRemarks={setPpRemarks}
+                              tdStyle={tdStyle}
+                            />
+                          ))
+                        )}
+                        {/* Area total row */}
+                        <tr style={{ background: '#dbeafe' }}>
+                          <td colSpan={7} style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', color: '#1e40af' }}>{area.label} Total:</td>
+                          <td colSpan={3} style={{ ...tdStyle, fontWeight: '800', color: '#1e40af', fontSize: '14px' }}>{isNA ? 'N/A' : areaTotal.toFixed(2)}</td>
+                        </tr>
+                      </React.Fragment>
+                    );
+
+};
+
+
+// One row in the placement coordinator's reports table — extracted so the
+// parent render doesn't carry this row's branching in its own complexity.
+// Center-type chip colors
+const getCenterTypeBadgeStyle = (centerType) => {
+  if (centerType === 'CDC') return { background: '#e3f2fd', color: '#1565c0' };
+  if (centerType === 'SDC') return { background: '#f3e5f5', color: '#6a1b9a' };
+  return { background: '#e8f5e9', color: '#2e7d32' };
+};
+
+// Score-status chip background
+const getScoreBadgeBackground = (s) => {
+  if (s >= 80) return '#e8f5e9';
+  if (s >= 65) return '#fff3e0';
+  return '#fce4ec';
+};
+
+// Remarks-status chip: locked / edit-requested / submitted / pending
+const RemarksStatusBadge = ({ r, ppSubmitted, chLocked, ppEdited, getEditWindowBadge }) => {
+  if (chLocked) return <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#ede7f6', color: '#4527a0', border: '1px solid #7b1fa2' }}>🔒 CH Locked</span>;
+  if (ppEdited) return <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#fce4ec', color: '#c62828', border: '1px solid #ef9a9a' }}>🔒 Perm. Locked</span>;
+  if (r.placementEditRequest) return <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#dbeafe', color: '#1e40af', border: '1px solid #3b82f6' }}>⏳ Edit Requested</span>;
+  if (ppSubmitted) {
+    const b = getEditWindowBadge(r.placementRemarksDate);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+        <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#e8f5e9', color: '#2e7d32', border: '1px solid #4caf50' }}>✅ Submitted</span>
+        {b && <span style={{ fontSize: '10px', fontWeight: '700', color: b.color }}>{b.text}</span>}
+      </div>
+    );
+  }
+  return <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#fff3cd', color: '#856404', border: '1px solid #ffc107' }}>⏳ Pending</span>;
+};
+
+const PlacementReportRow = ({ r, idx, getScore, getStatusColor, getStatusLabel, getEditWindowBadge, handleViewReport }) => {
+                        const s = getScore(r);
+                        const ppSubmitted = r.placementRemarksSubmitted;
+                        const chLocked = r.centerHeadRemarksLocked;
+                        const ppEdited = r.placementRemarksEditedOnce;
+                        const centerTypeStyle = getCenterTypeBadgeStyle(r.centerType);
+                        return (
+                          <tr key={r._id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8f9ff', borderBottom: '1px solid #f0f0f0' }}>
+                            <td style={{ padding: '12px 14px' }}>{idx + 1}</td>
+                            <td style={{ padding: '12px 14px', fontWeight: '700', color: '#3949ab' }}>{r.centerCode}</td>
+                            <td style={{ padding: '12px 14px' }}>{r.centerName}</td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: centerTypeStyle.background, color: centerTypeStyle.color }}>{r.centerType}</span>
+                            </td>
+                            <td style={{ padding: '12px 14px', fontWeight: '600', color: '#1565c0' }}>{r.financialYear}</td>
+                            <td style={{ padding: '12px 14px', fontWeight: '800', color: getStatusColor(s) }}>{s.toFixed(2)}</td>
+                            <td style={{ padding: '12px 14px', color: '#e65100', fontWeight: '700' }}>{parseFloat(r.placementScore||0).toFixed(2)}/15</td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', background: getScoreBadgeBackground(s), color: getStatusColor(s) }}>
+                                {getStatusLabel(s)}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <RemarksStatusBadge r={r} ppSubmitted={ppSubmitted} chLocked={chLocked} ppEdited={ppEdited} getEditWindowBadge={getEditWindowBadge} />
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <button
+                                onClick={() => handleViewReport(r)}
+                                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
+                                👁️ View
+                              </button>
+                            </td>
+                          </tr>
+                        );
+
+};
+
+// Shows the "remarks submitted, edit window countdown" badge after first submit
+const SubmittedRemarksTimer = ({ remarksDate, getEditWindowBadge }) => {
+  const badge = getEditWindowBadge(remarksDate);
+  const isExpired = badge?.text?.includes('Closed');
+  return (
+    <div style={{ background: isExpired ? '#f1f5f9' : '#d4edda', border: `2px solid ${isExpired ? '#cbd5e1' : '#28a745'}`, borderRadius: '8px', padding: '14px 18px', marginBottom: '16px' }}>
+      <div style={{ color: isExpired ? '#64748b' : '#155724', fontWeight: '700', marginBottom: badge ? '8px' : 0, fontSize: '14px' }}>
+        ✅ Remarks submitted on {remarksDate || ''}.
+        {!isExpired && <span> You can request <strong>one more edit</strong> from admin.</span>}
+      </div>
+      {badge && (
+        <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700',
+          color: badge.color, background: badge.bg, border: `1px solid ${badge.border}` }}>
+          {badge.text}
+        </span>
+      )}
+    </div>
+  );
+};
+
+// Either "window closed" notice or the Request Edit button + countdown
+const RequestEditAction = ({ remarksDate, getEditWindowBadge, handleRequestEdit }) => {
+  const badge = getEditWindowBadge(remarksDate);
+  const isExpired = badge?.text?.includes('Closed');
+  if (isExpired) return (
+    <div style={{ padding: '12px 24px', background: '#f1f5f9', border: '2px solid #cbd5e1', borderRadius: '8px', color: '#64748b', fontWeight: '700', fontSize: '14px' }}>
+      🔒 Edit Window Closed (3 days expired)
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+      <button onClick={handleRequestEdit}
+        style={{ padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+        ✏️ Request Edit Permission
+      </button>
+      {badge && <span style={{ fontSize: '11px', fontWeight: '700', color: badge.color }}>{badge.text}</span>}
+    </div>
+  );
+};
+
+// Top status banner — shows exactly one of: CH-locked, permanently-locked,
+// edit-pending, submitted-timer, or first-time-info, in priority order.
+const StatusBanner = ({ chSubmitted, editedOnce, requestPending, locked, submitted, isLocked, remarksDate, getEditWindowBadge }) => {
+  if (chSubmitted) {
+    return (
+      <div style={{ background: '#ede7f6', border: '2px solid #7b1fa2', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#4527a0', fontWeight: '700', fontSize: '14px' }}>
+        🔒 Center Head has submitted remarks. Placement remarks are permanently locked.
+      </div>
+    );
+  }
+  if (editedOnce) {
+    return (
+      <div style={{ background: '#fce4ec', border: '2px solid #ef9a9a', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#c62828', fontWeight: '700', fontSize: '14px' }}>
+        🔒 Permanently locked — you have already used your one edit. No further edits allowed.
+      </div>
+    );
+  }
+  if (requestPending) {
+    return (
+      <div style={{ background: '#dbeafe', border: '2px solid #3b82f6', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#1e40af', fontWeight: '700', fontSize: '14px' }}>
+        ⏳ Edit request sent to admin — awaiting approval.
+      </div>
+    );
+  }
+  if (locked && submitted) {
+    return <SubmittedRemarksTimer remarksDate={remarksDate} getEditWindowBadge={getEditWindowBadge} />;
+  }
+  if (!submitted && !isLocked) {
+    return (
+      <div style={{ background: '#e3f2fd', border: '2px solid #2196f3', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#1565c0', fontWeight: '600', fontSize: '14px' }}>
+        ℹ️ Only <strong>Placement Process (PP1–PP4)</strong> fields are editable. All other fields are read-only.
+      </div>
+    );
+  }
+  return null;
+};
+
+// Bottom action area — shows exactly one of: locked notice, pending notice,
+// request-edit action, or the submit button, in priority order.
+const ActionButtonsArea = ({ chSubmitted, editedOnce, locked, requestPending, remarksDate, getEditWindowBadge, handleRequestEdit, handleSave, saving }) => {
+  if (chSubmitted || editedOnce) {
+    return (
+      <div style={{ padding: '12px 24px', background: '#f1f5f9', border: '2px solid #cbd5e1', borderRadius: '8px', color: '#64748b', fontWeight: '700', fontSize: '14px' }}>
+        🔒 {chSubmitted ? 'CH Locked — No Further Edits' : 'Permanently Locked'}
+      </div>
+    );
+  }
+  if (locked && requestPending) {
+    return (
+      <div style={{ padding: '12px 24px', background: '#dbeafe', border: '2px solid #3b82f6', borderRadius: '8px', color: '#1e40af', fontWeight: '700', fontSize: '14px' }}>
+        ⏳ Edit Request Pending
+      </div>
+    );
+  }
+  if (locked) {
+    return <RequestEditAction remarksDate={remarksDate} getEditWindowBadge={getEditWindowBadge} handleRequestEdit={handleRequestEdit} />;
+  }
+  return (
+    <button onClick={handleSave} disabled={saving}
+      style={{ padding: '12px 28px', background: saving ? '#ccc' : 'linear-gradient(135deg, #11998e, #38ef7d)', color: 'white', border: 'none', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '15px' }}>
+      {saving ? '⏳ Saving...' : '✅ Submit Placement Remarks'}
+    </button>
+  );
+};
 
 const PlacementDashboard = () => {
   const navigate = useNavigate();
@@ -169,6 +454,14 @@ const PlacementDashboard = () => {
     } catch (e) { setPpRemarks({}); }
   };
 
+  // Maps a failed save response to a user-facing message
+  const getSaveErrorMessage = (err) => {
+    if (err.permanentlyLocked) return '🔒 Permanently locked. No further edits allowed.';
+    if (err.centerHeadLocked) return '🔒 Center Head has submitted. Locked permanently.';
+    if (err.requestPending) return '⏳ Edit request pending admin approval.';
+    return '❌ ' + (err.error || 'Failed');
+  };
+
   const handleSave = async () => {
     if (!selectedReport) return;
     setSaving(true);
@@ -190,15 +483,20 @@ const PlacementDashboard = () => {
         loadReports();
       } else {
         const err = await res.json().catch(() => ({}));
-        if (err.permanentlyLocked) showMsg('🔒 Permanently locked. No further edits allowed.', 'error');
-        else if (err.centerHeadLocked) showMsg('🔒 Center Head has submitted. Locked permanently.', 'error');
-        else if (err.requestPending) showMsg('⏳ Edit request pending admin approval.', 'error');
-        else showMsg('❌ ' + (err.error || 'Failed'), 'error');
+        showMsg(getSaveErrorMessage(err), 'error');
         // Refresh state from server
         handleViewReport(selectedReport);
       }
     } catch (e) { showMsg('❌ Error saving', 'error'); }
     setSaving(false);
+  };
+
+  // Maps a failed edit-request response to a user-facing message
+  const getRequestEditErrorMessage = (err) => {
+    if (err.permanentlyLocked) return '🔒 Permanently locked. No edit requests allowed.';
+    if (err.alreadyPending) return '⏳ Request already pending admin approval.';
+    if (err.centerHeadLocked) return '🔒 Center Head submitted. Cannot request edit.';
+    return '❌ ' + (err.error || 'Failed');
   };
 
   const handleRequestEdit = async () => {
@@ -216,10 +514,7 @@ const PlacementDashboard = () => {
         showMsg('✅ Edit request sent to admin!', 'success');
       } else {
         const err = await res.json().catch(() => ({}));
-        if (err.permanentlyLocked) showMsg('🔒 Permanently locked. No edit requests allowed.', 'error');
-        else if (err.alreadyPending) showMsg('⏳ Request already pending admin approval.', 'error');
-        else if (err.centerHeadLocked) showMsg('🔒 Center Head submitted. Cannot request edit.', 'error');
-        else showMsg('❌ ' + (err.error || 'Failed'), 'error');
+        showMsg(getRequestEditErrorMessage(err), 'error');
       }
     } catch (e) { showMsg('❌ Network error', 'error'); }
   };
@@ -277,55 +572,17 @@ const PlacementDashboard = () => {
               </button>
             </div>
 
-            {/* ── Status Banners — Priority order ── */}
-
-            {/* CASE 1: CH submitted → Placement permanently locked */}
-            {chSubmitted && (
-              <div style={{ background: '#ede7f6', border: '2px solid #7b1fa2', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#4527a0', fontWeight: '700', fontSize: '14px' }}>
-                🔒 Center Head has submitted remarks. Placement remarks are permanently locked.
-              </div>
-            )}
-
-            {/* CASE 2: Own permanent lock (edited once) */}
-            {!chSubmitted && editedOnce && (
-              <div style={{ background: '#fce4ec', border: '2px solid #ef9a9a', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#c62828', fontWeight: '700', fontSize: '14px' }}>
-                🔒 Permanently locked — you have already used your one edit. No further edits allowed.
-              </div>
-            )}
-
-            {/* CASE 3: Edit request pending */}
-            {!chSubmitted && !editedOnce && requestPending && (
-              <div style={{ background: '#dbeafe', border: '2px solid #3b82f6', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#1e40af', fontWeight: '700', fontSize: '14px' }}>
-                ⏳ Edit request sent to admin — awaiting approval.
-              </div>
-            )}
-
-            {/* CASE 4: Locked after 1st submit — show timer */}
-            {!chSubmitted && !editedOnce && !requestPending && locked && submitted && (() => {
-              const badge = getEditWindowBadge(remarksDate);
-              const isExpired = badge?.text?.includes('Closed');
-              return (
-                <div style={{ background: isExpired ? '#f1f5f9' : '#d4edda', border: `2px solid ${isExpired ? '#cbd5e1' : '#28a745'}`, borderRadius: '8px', padding: '14px 18px', marginBottom: '16px' }}>
-                  <div style={{ color: isExpired ? '#64748b' : '#155724', fontWeight: '700', marginBottom: badge ? '8px' : 0, fontSize: '14px' }}>
-                    ✅ Remarks submitted on {remarksDate || ''}.
-                    {!isExpired && <span> You can request <strong>one more edit</strong> from admin.</span>}
-                  </div>
-                  {badge && (
-                    <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700',
-                      color: badge.color, background: badge.bg, border: `1px solid ${badge.border}` }}>
-                      {badge.text}
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* CASE 5: First time — editable info */}
-            {!submitted && !isLocked && (
-              <div style={{ background: '#e3f2fd', border: '2px solid #2196f3', borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', color: '#1565c0', fontWeight: '600', fontSize: '14px' }}>
-                ℹ️ Only <strong>Placement Process (PP1–PP4)</strong> fields are editable. All other fields are read-only.
-              </div>
-            )}
+            {/* ── Status Banner — Priority order ── */}
+            <StatusBanner
+              chSubmitted={chSubmitted}
+              editedOnce={editedOnce}
+              requestPending={requestPending}
+              locked={locked}
+              submitted={submitted}
+              isLocked={isLocked}
+              remarksDate={remarksDate}
+              getEditWindowBadge={getEditWindowBadge}
+            />
 
             {/* Center Info */}
             <div style={{ background: '#e8f4fd', borderRadius: '10px', padding: '16px', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px' }}>
@@ -366,122 +623,39 @@ const PlacementDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {ALL_AREAS.map((area) => {
-                    const areaTotal = area.keys.reduce((s, k) => s + (parseFloat((selectedReport[k]||{}).score)||0), 0);
-                    const isNA = area.isPlacement && selectedReport.placementApplicable === 'no';
-                    return (
-                      <React.Fragment key={area.label}>
-                        {/* Area header */}
-                        <tr>
-                          <td colSpan={10} style={{ padding: '10px 14px', background: 'linear-gradient(135deg, #5b21b6, #7c3aed)', color: 'white', fontWeight: '700', fontSize: '14px' }}>
-                            {area.label} — Total: {isNA ? 'N/A' : areaTotal.toFixed(2)}
-                            {area.isPlacement && !isLocked && !isNA && (
-                              <span style={{ marginLeft: '12px', background: 'rgba(255,255,255,0.25)', padding: '2px 10px', borderRadius: '12px', fontSize: '11px' }}>✏️ Editable</span>
-                            )}
-                          </td>
-                        </tr>
-                        {isNA ? (
-                          <tr><td colSpan={10} style={{ ...tdStyle, color: '#999', fontStyle: 'italic' }}>Placement Process — Not Applicable</td></tr>
-                        ) : (
-                          area.keys.map((cpId, i) => {
-                            const cp = selectedReport[cpId] || {};
-                            const meta = CHECKPOINT_META[cpId] || {};
-                            const score = parseFloat(cp.score) || 0;
-                            const maxScore = getMaxScore(cpId, selectedReport.placementApplicable);
-                            const isEditable = area.isPlacement && !isLocked;
-                            const rowBg = area.isPlacement ? (i % 2 === 0 ? '#fffbf0' : '#fff8e1') : (i % 2 === 0 ? '#fff' : '#f8f9ff');
-                            return (
-                              <tr key={cpId} style={{ background: rowBg }}>
-                                <td style={tdStyle}>{i + 1}</td>
-                                <td style={{ ...tdStyle, textAlign: 'left', fontWeight: area.isPlacement ? '600' : '400' }}>{meta.name || cpId}</td>
-                                <td style={tdStyle}>{meta.weightage != null ? `${meta.weightage}%` : '-'}</td>
-                                <td style={tdStyle}>{maxScore}</td>
-                                <td style={tdStyle}>{cp.totalSamples || '-'}</td>
-                                <td style={tdStyle}>{cp.samplesCompliant || cp.compliantSamples || '-'}</td>
-                                <td style={{ ...tdStyle, color: '#667eea', fontWeight: '600' }}>{cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '0%'}</td>
-                                <td style={{ ...tdStyle, fontWeight: '800', color: score > 0 ? '#2e7d32' : '#c62828' }}>{score.toFixed(2)}</td>
-                                <td style={{ ...tdStyle, color: '#555', textAlign: 'left', fontSize: '12px' }}>{cp.remarks || '-'}</td>
-                                <td style={{ ...tdStyle, minWidth: '180px' }}>
-                                  {isEditable ? (
-                                    <textarea
-                                      rows={2}
-                                      placeholder={`Remark for ${cpId}...`}
-                                      value={ppRemarks[cpId] || ''}
-                                      onChange={e => setPpRemarks(prev => ({ ...prev, [cpId]: e.target.value }))}
-                                      style={{ width: '100%', padding: '6px 8px', border: '2px solid #ffcc80', borderRadius: '6px', fontSize: '12px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', background: '#fffdf5' }}
-                                    />
-                                  ) : area.isPlacement ? (
-                                    <span style={{ color: isLocked ? '#c62828' : '#999', fontSize: '12px', fontStyle: 'italic' }}>
-                                      {ppRemarks[cpId] || (cp.centerHeadRemarks ? cp.centerHeadRemarks : (isLocked ? '🔒 Locked' : 'No remarks'))}
-                                    </span>
-                                  ) : (
-                                    <span style={{ color: '#bbb', fontSize: '11px', fontStyle: 'italic' }}>Read only</span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                        {/* Area total row */}
-                        <tr style={{ background: '#dbeafe' }}>
-                          <td colSpan={7} style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', color: '#1e40af' }}>{area.label} Total:</td>
-                          <td colSpan={3} style={{ ...tdStyle, fontWeight: '800', color: '#1e40af', fontSize: '14px' }}>{isNA ? 'N/A' : areaTotal.toFixed(2)}</td>
-                        </tr>
-                      </React.Fragment>
-                    );
-                  })}
+                  {ALL_AREAS.map((area) => (
+                    <PlacementAreaSection
+                      key={area.label}
+                      area={area}
+                      selectedReport={selectedReport}
+                      isLocked={isLocked}
+                      tdStyle={tdStyle}
+                      ppRemarks={ppRemarks}
+                      setPpRemarks={setPpRemarks}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
 
-            {/* ── Action Buttons — 4-case logic ── */}
+            {/* ── Action Buttons — priority order ── */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={() => setSelectedReport(null)}
                 style={{ padding: '12px 24px', background: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>
                 ← Back
               </button>
 
-              {/* CASE 1: CH submitted OR permanently locked */}
-              {(chSubmitted || editedOnce) && (
-                <div style={{ padding: '12px 24px', background: '#f1f5f9', border: '2px solid #cbd5e1', borderRadius: '8px', color: '#64748b', fontWeight: '700', fontSize: '14px' }}>
-                  🔒 {chSubmitted ? 'CH Locked — No Further Edits' : 'Permanently Locked'}
-                </div>
-              )}
-
-              {/* CASE 2: Locked + request pending */}
-              {!chSubmitted && !editedOnce && locked && requestPending && (
-                <div style={{ padding: '12px 24px', background: '#dbeafe', border: '2px solid #3b82f6', borderRadius: '8px', color: '#1e40af', fontWeight: '700', fontSize: '14px' }}>
-                  ⏳ Edit Request Pending
-                </div>
-              )}
-
-              {/* CASE 3: Locked + no request → Request Edit button (3-day window) */}
-              {!chSubmitted && !editedOnce && locked && !requestPending && (() => {
-                const badge = getEditWindowBadge(remarksDate);
-                const isExpired = badge?.text?.includes('Closed');
-                if (isExpired) return (
-                  <div style={{ padding: '12px 24px', background: '#f1f5f9', border: '2px solid #cbd5e1', borderRadius: '8px', color: '#64748b', fontWeight: '700', fontSize: '14px' }}>
-                    🔒 Edit Window Closed (3 days expired)
-                  </div>
-                );
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <button onClick={handleRequestEdit}
-                      style={{ padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                      ✏️ Request Edit Permission
-                    </button>
-                    {badge && <span style={{ fontSize: '11px', fontWeight: '700', color: badge.color }}>{badge.text}</span>}
-                  </div>
-                );
-              })()}
-
-              {/* CASE 4: Unlocked (first time OR admin approved edit) → Submit */}
-              {!chSubmitted && !editedOnce && !locked && (
-                <button onClick={handleSave} disabled={saving}
-                  style={{ padding: '12px 28px', background: saving ? '#ccc' : 'linear-gradient(135deg, #11998e, #38ef7d)', color: 'white', border: 'none', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '15px' }}>
-                  {saving ? '⏳ Saving...' : '✅ Submit Placement Remarks'}
-                </button>
-              )}
+              <ActionButtonsArea
+                chSubmitted={chSubmitted}
+                editedOnce={editedOnce}
+                locked={locked}
+                requestPending={requestPending}
+                remarksDate={remarksDate}
+                getEditWindowBadge={getEditWindowBadge}
+                handleRequestEdit={handleRequestEdit}
+                handleSave={handleSave}
+                saving={saving}
+              />
             </div>
           </div>
         ) : (
@@ -512,53 +686,18 @@ const PlacementDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {reports.map((r, idx) => {
-                        const s = getScore(r);
-                        const ppSubmitted = r.placementRemarksSubmitted;
-                        const chLocked = r.centerHeadRemarksLocked;
-                        const ppEdited = r.placementRemarksEditedOnce;
-                        const isFullLocked = chLocked || ppEdited;
-                        return (
-                          <tr key={r._id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8f9ff', borderBottom: '1px solid #f0f0f0' }}>
-                            <td style={{ padding: '12px 14px' }}>{idx + 1}</td>
-                            <td style={{ padding: '12px 14px', fontWeight: '700', color: '#3949ab' }}>{r.centerCode}</td>
-                            <td style={{ padding: '12px 14px' }}>{r.centerName}</td>
-                            <td style={{ padding: '12px 14px' }}>
-                              <span style={{ padding: '3px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: r.centerType==='CDC'?'#e3f2fd':r.centerType==='SDC'?'#f3e5f5':'#e8f5e9', color: r.centerType==='CDC'?'#1565c0':r.centerType==='SDC'?'#6a1b9a':'#2e7d32' }}>{r.centerType}</span>
-                            </td>
-                            <td style={{ padding: '12px 14px', fontWeight: '600', color: '#1565c0' }}>{r.financialYear}</td>
-                            <td style={{ padding: '12px 14px', fontWeight: '800', color: getStatusColor(s) }}>{s.toFixed(2)}</td>
-                            <td style={{ padding: '12px 14px', color: '#e65100', fontWeight: '700' }}>{parseFloat(r.placementScore||0).toFixed(2)}/15</td>
-                            <td style={{ padding: '12px 14px' }}>
-                              <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', background: s>=80?'#e8f5e9':s>=65?'#fff3e0':'#fce4ec', color: getStatusColor(s) }}>
-                                {getStatusLabel(s)}
-                              </span>
-                            </td>
-                            <td style={{ padding: '12px 14px' }}>
-                              {chLocked
-                                ? <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#ede7f6', color: '#4527a0', border: '1px solid #7b1fa2' }}>🔒 CH Locked</span>
-                                : ppEdited
-                                ? <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#fce4ec', color: '#c62828', border: '1px solid #ef9a9a' }}>🔒 Perm. Locked</span>
-                                : r.placementEditRequest
-                                ? <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#dbeafe', color: '#1e40af', border: '1px solid #3b82f6' }}>⏳ Edit Requested</span>
-                                : ppSubmitted
-                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
-                                    <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#e8f5e9', color: '#2e7d32', border: '1px solid #4caf50' }}>✅ Submitted</span>
-                                    {(() => { const b = getEditWindowBadge(r.placementRemarksDate); return b ? <span style={{ fontSize: '10px', fontWeight: '700', color: b.color }}>{b.text}</span> : null; })()}
-                                  </div>
-                                : <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#fff3cd', color: '#856404', border: '1px solid #ffc107' }}>⏳ Pending</span>
-                              }
-                            </td>
-                            <td style={{ padding: '12px 14px' }}>
-                              <button
-                                onClick={() => handleViewReport(r)}
-                                style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-                                👁️ View
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {reports.map((r, idx) => (
+                        <PlacementReportRow
+                          key={r._id}
+                          r={r}
+                          idx={idx}
+                          getScore={getScore}
+                          getStatusColor={getStatusColor}
+                          getStatusLabel={getStatusLabel}
+                          getEditWindowBadge={getEditWindowBadge}
+                          handleViewReport={handleViewReport}
+                        />
+                      ))}
                     </tbody>
                   </table>
                 </div>

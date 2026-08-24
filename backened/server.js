@@ -81,7 +81,11 @@ console.log('📧 Port:', process.env.SMTP_PORT);
 // ========================================
 // MONGODB CONNECTION
 // ========================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rythemaggarwal7740_db_user:CARdq_7840.@niit-audit-cluster.tn2rvlx.mongodb.net/niit_audit?retryWrites=true&w=majority&appName=niit-audit-cluster';
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI env variable set nahi hai. .env file check karo.');
+  process.exit(1);
+}
 
 mongoose.connect(MONGODB_URI)
   .then(() => {
@@ -2273,57 +2277,50 @@ app.get('/fix-fy', async (req, res) => {
 });
 // Fix missing centerCodes
 // Better fix - logs everything
+// Finds a centerCode for a report missing one: from its name (CC### pattern) or a manual mapping
+function findCenterCodeFor(report) {
+  if (report.centerName.includes('CC')) {
+    const match = report.centerName.match(/CC\d+/);
+    if (match) return match[0];
+  }
+  const mapping = {
+    'khn': 'CC001',
+    'tigri': 'CC002',
+    'lkhanpur': 'CC003',
+    'NIIT Bangalore': 'CC003',
+    'NIIT Mumbai': 'CC002'
+  };
+  return mapping[report.centerName] || null;
+}
+
 app.post('/api/fix-center-codes', async (req, res) => {
   try {
     console.log('🔧 Starting centerCode fix...');
-    
+
     const reports = await AuditReport.find({});
     console.log(`📊 Total reports: ${reports.length}`);
-    
+
     let fixed = 0;
     for (const report of reports) {
       console.log(`\n📋 Checking: "${report.centerName}"`);
       console.log(`   Current centerCode: "${report.centerCode || 'EMPTY'}"`);
-      
-      // If centerCode is missing or empty
-      if (!report.centerCode || report.centerCode === '') {
-        // Try to get from centerName if it has format "CC007 - Name"
-        let newCode = null;
-        
-        // Check if centerName already has code
-        if (report.centerName.includes('CC')) {
-          const match = report.centerName.match(/CC\d+/);
-          if (match) {
-            newCode = match[0];
-          }
-        }
-        
-        // Manual mapping for centers without CC in name
-        const mapping = {
-          'khn': 'CC001',
-          'tigri': 'CC002',
-          'lkhanpur': 'CC003',
-          'NIIT Bangalore': 'CC003',
-          'NIIT Mumbai': 'CC002'
-        };
-        
-        if (!newCode && mapping[report.centerName]) {
-          newCode = mapping[report.centerName];
-        }
-        
-        if (newCode) {
-          report.centerCode = newCode;
-          await report.save();
-          console.log(`   ✅ UPDATED to: ${newCode}`);
-          fixed++;
-        } else {
-          console.log(`   ⚠️ NO MAPPING FOUND`);
-        }
-      } else {
+
+      if (report.centerCode) {
         console.log(`   ℹ️ Already has centerCode`);
+        continue;
+      }
+
+      const newCode = findCenterCodeFor(report);
+      if (newCode) {
+        report.centerCode = newCode;
+        await report.save();
+        console.log(`   ✅ UPDATED to: ${newCode}`);
+        fixed++;
+      } else {
+        console.log(`   ⚠️ NO MAPPING FOUND`);
       }
     }
-    
+
     console.log(`\n✅ Fixed ${fixed} reports`);
     res.json({ success: true, fixed, total: reports.length });
   } catch (err) {
@@ -2575,145 +2572,140 @@ function isWorkingDaySrv(date) {
 function addWorkingDaysSrv(startDate, days) {
   let d = new Date(startDate); d.setHours(0,0,0,0);
   let count = 0;
-  while (count < days) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) count++; }
+  while (count < days) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDaySrv(d)) count++; }
   return d;
 }
 
 // ========================================
 // AUTO-CLOSE DEADLINE CHECK
 // ========================================
+// [check-deadlines route] Job 2: lock center remarks past deadline (no centerRemarksDate check here)
+async function lockOverdueCenterRemarksManual(now) {
+  let count = 0;
+  const centerOverdue = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerDeadline: { $lt: now },
+    centerHeadRemarksLocked: false
+  });
+  for (const report of centerOverdue) {
+    report.centerHeadRemarksLocked = true;
+    if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
+    report.autoClosedDate = now.toLocaleDateString('en-GB');
+    await report.save();
+    count++;
+    console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+  }
+  return count;
+}
+
+// [check-deadlines route] Job 3: reminder emails as the center's remarks deadline approaches
+// Remaining working days to a deadline, or -1 if already overdue
+function remainingWorkingDaysOrOverdue(now, deadlineDate) {
+  const deadline = new Date(deadlineDate); deadline.setHours(0, 0, 0, 0);
+  if (now > deadline) return -1;
+  return remainingWorkingDaysFrom(now, deadlineDate);
+}
+
+// Sends a reminder via sendFn if rem matches an unsent threshold; returns true if one was sent
+async function sendReminderIfDue(report, rem, thresholds, sentArr, sendFn, sentField) {
+  for (const threshold of thresholds) {
+    if (rem === threshold && !sentArr.includes(threshold)) {
+      const sent = await sendFn(report, threshold);
+      if (sent) {
+        report[sentField] = [...sentArr, threshold];
+        await report.save();
+        return true;
+      }
+      break;
+    }
+  }
+  return false;
+}
+
+async function sendCenterReminderEmailsManual(now) {
+  let count = 0;
+  const activeReports = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerHeadRemarksLocked: false,
+    centerRemarksDate: { $in: [null, ''] },
+    centerDeadline: { $exists: true, $ne: null, $gte: now }
+  });
+
+  for (const report of activeReports) {
+    if (!report.centerDeadline) continue;
+    const rem = remainingWorkingDaysOrOverdue(now, report.centerDeadline);
+    const sent = await sendReminderIfDue(report, rem, [4, 2, 1, 0], report.remindersSent || [], sendReminderEmail, 'remindersSent');
+    if (sent) count++;
+  }
+  return count;
+}
+
+// [check-deadlines route] Job 4: "closed" notice once the remarks window has fully lapsed
+async function sendClosedNoticeEmailsManual(now) {
+  let count = 0;
+  const overdueReports = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerDeadline: { $lt: now },
+    centerHeadRemarksLocked: false,
+    centerRemarksDate: { $in: [null, ''] },
+    reminderClosedSent: { $ne: true }
+  });
+
+  for (const report of overdueReports) {
+    report.centerHeadRemarksLocked = true;
+    const sent = await sendReminderEmail(report, 'closed');
+    if (sent) {
+      report.reminderClosedSent = true;
+    }
+    await report.save();
+    count++;
+    console.log(`🔒 Closed (no remarks submitted): ${report.centerCode}`);
+  }
+  return count;
+}
+
+// [check-deadlines route] Job 5: auto-close reports 5 working days after center submits, notify center user
+async function autoCloseReviewOverdueReports(now) {
+  let count = 0;
+  const reviewOverdue = await AuditReport.find({
+    currentStatus: 'Approved',
+    centerHeadRemarksLocked: true,
+    centerRemarksDate: { $exists: true, $ne: '' },
+    auditorReviewDeadline: { $exists: true, $lt: now },
+    auditorClosedDate: { $in: [null, ''] }
+  });
+
+  for (const report of reviewOverdue) {
+    report.currentStatus = 'Closed';
+    report.auditorClosedDate = now.toLocaleDateString('en-GB');
+    report.auditorClosedBy = 'Auto-closed (5 day review period expired)';
+    await report.save();
+    count++;
+    console.log(`🔒 Auto-closed (review expired): ${report.centerCode}`);
+
+    const centerUser = await User.findOne({
+      centerCode: report.centerCode.toUpperCase(),
+      role: 'Center User', isActive: true
+    });
+    if (centerUser?.email) {
+      await sendReminderEmail(report, 'closed').catch(e => console.log('Email err:', e.message));
+    }
+  }
+  return count;
+}
+
 app.post('/api/audit-reports/check-deadlines', async (req, res) => {
   try {
     const now = new Date(); now.setHours(0,0,0,0);
-    let auditorClosed = 0, centerClosed = 0, editWindowClosed = 0;
 
-    // 1. AUDITOR DEADLINE: 15 working days - close Not Submitted reports
-    const auditorOverdue = await AuditReport.find({
-      currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
-      auditorDeadline: { $lt: now },
-      autoClosedBy: { $not: { $regex: 'auditor_deadline' } }
-    });
-    for (const report of auditorOverdue) {
-      report.currentStatus = 'Closed';
-      report.autoClosedBy = 'auditor_deadline';
-      report.autoClosedDate = now.toLocaleDateString('en-GB');
-      await report.save();
-      auditorClosed++;
-      console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
-    }
-
-    // 2. CENTER REMARKS DEADLINE: 7 working days - lock remarks window
-    const centerOverdue = await AuditReport.find({
-      currentStatus: 'Approved',
-      emailSent: true,
-      centerDeadline: { $lt: now },
-      centerHeadRemarksLocked: false
-    });
-    for (const report of centerOverdue) {
-      report.centerHeadRemarksLocked = true;
-      if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
-      report.autoClosedDate = now.toLocaleDateString('en-GB');
-      await report.save();
-      centerClosed++;
-      console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
-    }
-
-    // Note: Edit request window (3 days) is handled on frontend only
-
-    // ── 3. CENTER REMINDER EMAILS ──
-    // Find all approved reports where email was sent but remarks not yet submitted
-    let remindersSent = 0;
-    let closedEmailsSent = 0;
-
-    const activeReports = await AuditReport.find({
-      currentStatus: 'Approved',
-      emailSent: true,
-      centerHeadRemarksLocked: false,  // remarks not yet submitted
-      centerRemarksDate: { $in: [null, ''] }, // Double check - koi remarks nahi
-      centerDeadline: { $exists: true, $ne: null, $gte: now } // deadline abhi future mein hai
-    });
-
-    for (const report of activeReports) {
-      if (!report.centerDeadline) continue;
-
-      // Calculate remaining working days
-      const deadline = new Date(report.centerDeadline); deadline.setHours(0,0,0,0);
-      let rem = 0;
-      let d = new Date(now);
-      if (now <= deadline) {
-        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
-      } else {
-        rem = -1; // overdue
-      }
-
-      // Reminder thresholds: send at 4 days left, 2 days left, 1 day left, 0 days left
-      const thresholds = [4, 2, 1, 0];
-      const remindersSentArr = report.remindersSent || [];
-
-      for (const threshold of thresholds) {
-        if (rem === threshold && !remindersSentArr.includes(threshold)) {
-          const sent = await sendReminderEmail(report, threshold);
-          if (sent) {
-            report.remindersSent = [...remindersSentArr, threshold];
-            await report.save();
-            remindersSent++;
-          }
-          break;
-        }
-      }
-    }
-
-    // ── 4. CLOSED EMAIL — after deadline, send closed notice once ──
-    const overdueReports = await AuditReport.find({
-      currentStatus: 'Approved',
-      emailSent: true,
-      centerDeadline: { $lt: now },
-      centerHeadRemarksLocked: false,  // ✅ Sirf tab jab remarks submit NAHI hui
-      centerRemarksDate: { $in: [null, ''] }, // Double check - remarks nahi bhara
-      reminderClosedSent: { $ne: true }
-    });
-
-    for (const report of overdueReports) {
-      // Lock remarks (deadline cross ho gayi, ab lock karo)
-      report.centerHeadRemarksLocked = true;
-      // Send closed email
-      const sent = await sendReminderEmail(report, 'closed');
-      if (sent) {
-        report.reminderClosedSent = true;
-      }
-      await report.save();
-      closedEmailsSent++;
-      console.log(`🔒 Closed (no remarks submitted): ${report.centerCode}`);
-    }
-
-    // ── 5. AUDITOR REVIEW AUTO-CLOSE: 5 working days after center submits ──
-    let auditorReviewAutoClosed = 0;
-
-    const reviewOverdue = await AuditReport.find({
-      currentStatus: 'Approved',
-      centerHeadRemarksLocked: true,
-      centerRemarksDate: { $exists: true, $ne: '' },
-      auditorReviewDeadline: { $exists: true, $lt: now },
-      auditorClosedDate: { $in: [null, ''] }  // not yet manually closed
-    });
-
-    for (const report of reviewOverdue) {
-      report.currentStatus = 'Closed';
-      report.auditorClosedDate = now.toLocaleDateString('en-GB');
-      report.auditorClosedBy = 'Auto-closed (5 day review period expired)';
-      await report.save();
-      auditorReviewAutoClosed++;
-      console.log(`🔒 Auto-closed (review expired): ${report.centerCode}`);
-
-      // Send closed email
-      const centerUser = await User.findOne({
-        centerCode: report.centerCode.toUpperCase(),
-        role: 'Center User', isActive: true
-      });
-      if (centerUser?.email) {
-        await sendReminderEmail(report, 'closed').catch(e => console.log('Email err:', e.message));
-      }
-    }
+    const auditorClosed = await closeOverdueAuditorReports(now);
+    const centerClosed = await lockOverdueCenterRemarksManual(now);
+    const remindersSent = await sendCenterReminderEmailsManual(now);
+    const closedEmailsSent = await sendClosedNoticeEmailsManual(now);
+    const auditorReviewAutoClosed = await autoCloseReviewOverdueReports(now);
 
     console.log(`✅ Deadlines: auditor=${auditorClosed}, center=${centerClosed}, reminders=${remindersSent}, closedEmails=${closedEmailsSent}, autoReviewClosed=${auditorReviewAutoClosed}`);
     res.json({ success: true, auditorClosed, centerClosed, remindersSent, closedEmailsSent, auditorReviewAutoClosed });
@@ -2862,7 +2854,7 @@ app.post('/api/audit-reports/:id/reopen', async (req, res) => {
       let d = new Date(startDate);
       let added = 0;
       while (added < days) {
-        d.setDate(d.getDate() + 1);
+        d = new Date(d.setDate(d.getDate() + 1));
         const day = d.getDay();
         if (day !== 0 && day !== 6) added++;
       }
@@ -3084,32 +3076,36 @@ app.get('/api/pending-approvals/centers', async (req, res) => {
 });
 
 // Approve user (new OR modify request)
+// Applies a user's pending profile-modify request (role/center/contact/password changes)
+async function applyPendingUserModify(user) {
+  const { Role, centerCode, firstname, lastname, email, mobile, password } = user.pendingModifyData;
+  if (Role) user.role = Role;
+  if (centerCode !== undefined) user.centerCode = centerCode;
+  if (firstname) user.firstname = firstname;
+  if (lastname) user.lastname = lastname;
+  if (email) user.email = email;
+  if (mobile) user.mobile = mobile;
+  if (password) {
+    if (!password.startsWith('$2b$') && !password.startsWith('$2a$')) {
+      user.password = await hashPassword(password);
+      user.isPasswordHashed = true;
+      user.forcePasswordChange = true;
+    } else {
+      user.password = password;
+    }
+  }
+  user.modifyApprovalStatus = 'approved';
+  user.pendingModifyData = null;
+  user.approvalDate = new Date().toLocaleDateString('en-GB');
+}
+
 app.post('/api/pending-approvals/user/:id/approve', async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (user.modifyApprovalStatus === 'pending' && user.pendingModifyData) {
-      // Apply pending modify data
-      const { Role, centerCode, firstname, lastname, email, mobile, password } = user.pendingModifyData;
-      if (Role) user.role = Role;
-      if (centerCode !== undefined) user.centerCode = centerCode;
-      if (firstname) user.firstname = firstname;
-      if (lastname) user.lastname = lastname;
-      if (email) user.email = email;
-      if (mobile) user.mobile = mobile;
-      if (password) {
-        if (!password.startsWith('$2b$') && !password.startsWith('$2a$')) {
-          user.password = await hashPassword(password);
-          user.isPasswordHashed = true;
-          user.forcePasswordChange = true;
-        } else {
-          user.password = password;
-        }
-      }
-      user.modifyApprovalStatus = 'approved';
-      user.pendingModifyData = null;
-      user.approvalDate = new Date().toLocaleDateString('en-GB');
+      await applyPendingUserModify(user);
     } else {
       user.approvalStatus = 'approved';
       user.isActive = true;
@@ -3198,6 +3194,40 @@ app.post('/api/pending-approvals/center/:id/reject', async (req, res) => {
 // ========================================
 // HIERARCHY REPORTS - GET /api/hierarchy-reports
 // ========================================
+// Builds a case-insensitive $regex filter on `field` from name/firstname (or $or of both if they differ)
+function buildNameFilter(field, name, firstname) {
+  const patterns = [];
+  if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
+  if (firstname && firstname.trim() && firstname.trim() !== name?.trim())
+    patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
+  return patterns.length === 1 ? patterns[0] : { $or: patterns };
+}
+
+const HIERARCHY_ROLE_FIELD_MAP = {
+  'Zonal Manager': 'zmName',
+  'Region Head': 'regionHeadName',
+  'Placement Coordinator': 'placementCoordinator',
+  'Senior Manager Placement': 'seniorManagerPlacement',
+  'National Head Placement': 'nationalHeadPlacement',
+};
+
+// Builds the Mongo filter for a hierarchy role, or flags an error status if role/name is invalid
+function buildHierarchyRoleFilter(role, name, firstname) {
+  const hasName = !!(name || firstname);
+  if (role === 'Operation Head') return { filter: {} };
+  if (role === 'Area Manager' || role === 'Cluster Manager') {
+    if (!hasName) return { error: 400 };
+    const f1 = buildNameFilter('areaClusterManager', name, firstname);
+    const f2 = buildNameFilter(role === 'Area Manager' ? 'areaManager' : 'clusterManager', name, firstname);
+    return { filter: { $or: [...(f1.$or || [f1]), ...(f2.$or || [f2])] } };
+  }
+  if (HIERARCHY_ROLE_FIELD_MAP[role]) {
+    if (!hasName) return { error: 400 };
+    return { filter: buildNameFilter(HIERARCHY_ROLE_FIELD_MAP[role], name, firstname) };
+  }
+  return { error: 400 };
+}
+
 app.get('/api/hierarchy-reports', async (req, res) => {
   try {
     const { role, name, firstname, fy, status, centerType } = req.query;
@@ -3206,26 +3236,9 @@ app.get('/api/hierarchy-reports', async (req, res) => {
     if (status && status !== 'All') filter.currentStatus = status;
     if (centerType && centerType !== 'All') filter.centerType = centerType;
 
-    const buildNameFilter = (field) => {
-      const patterns = [];
-      if (name && name.trim()) patterns.push({ [field]: { $regex: name.trim(), $options: 'i' } });
-      if (firstname && firstname.trim() && firstname.trim() !== name?.trim())
-        patterns.push({ [field]: { $regex: firstname.trim(), $options: 'i' } });
-      return patterns.length === 1 ? patterns[0] : { $or: patterns };
-    };
-
-    if (role === 'Operation Head') {}
-    else if (role === 'Zonal Manager' && (name || firstname)) Object.assign(filter, buildNameFilter('zmName'));
-    else if (role === 'Region Head' && (name || firstname)) Object.assign(filter, buildNameFilter('regionHeadName'));
-    else if ((role === 'Area Manager' || role === 'Cluster Manager') && (name || firstname)) {
-      const f1 = buildNameFilter('areaClusterManager');
-      const f2 = buildNameFilter(role === 'Area Manager' ? 'areaManager' : 'clusterManager');
-      filter.$or = [...(f1.$or||[f1]), ...(f2.$or||[f2])];
-    }
-    else if (role === 'Placement Coordinator' && (name || firstname)) Object.assign(filter, buildNameFilter('placementCoordinator'));
-    else if (role === 'Senior Manager Placement' && (name || firstname)) Object.assign(filter, buildNameFilter('seniorManagerPlacement'));
-    else if (role === 'National Head Placement' && (name || firstname)) Object.assign(filter, buildNameFilter('nationalHeadPlacement'));
-    else if (role !== 'Operation Head') return res.status(400).json({ error: 'Invalid role or missing name' });
+    const roleResult = buildHierarchyRoleFilter(role, name, firstname);
+    if (roleResult.error) return res.status(roleResult.error).json({ error: 'Invalid role or missing name' });
+    Object.assign(filter, roleResult.filter);
 
     const reports = await AuditReport.find(filter)
       .select('centerCode centerName centerType zmName regionHeadName areaClusterManager areaManager clusterManager placementCoordinator seniorManagerPlacement nationalHeadPlacement financialYear grandTotal currentStatus auditDateString auditStatus projectName location auditedBy auditPeriod centerHeadName chName frontOfficeScore deliveryProcessScore placementScore managementScore placementApplicable remarksText centerRemarks centerHeadRemarksLocked submissionStatus placementRemarksSubmitted placementRemarksLocked placementRemarksEditedOnce placementRemarksDate placementEditRequest placementEditRequestBy placementEditRequestDate PP1 PP2 PP3 PP4 FO1 FO2 FO3 FO4 FO5 DP1 DP2 DP3 DP4 DP5 DP6 DP7 DP8 DP9 DP10 DP11 MP1 MP2 MP3 MP4 MP5 MP6 MP7')
@@ -3367,6 +3380,172 @@ app.get('/api/audit-reports/:id/placement-status', async (req, res) => {
   }
 });
 
+function remainingWorkingDaysFrom(now, deadlineDate) {
+  const deadline = new Date(deadlineDate); deadline.setHours(0, 0, 0, 0);
+  let rem = 0;
+  let d = new Date(now);
+  while (d < deadline) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDaySrv(d)) rem++; }
+  return rem;
+}
+
+// Job 1: close reports whose auditor deadline has passed and were never submitted
+async function closeOverdueAuditorReports(now) {
+  let count = 0;
+  const auditorOverdue = await AuditReport.find({
+    currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
+    auditorDeadline: { $lt: now },
+    autoClosedBy: { $not: { $regex: 'auditor_deadline' } }
+  });
+  for (const report of auditorOverdue) {
+    report.currentStatus = 'Closed';
+    report.autoClosedBy = 'auditor_deadline';
+    report.autoClosedDate = now.toLocaleDateString('en-GB');
+    await report.save();
+    count++;
+    console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
+  }
+  return count;
+}
+
+// Job 2: lock center-head remarks once their deadline has passed with nothing submitted
+async function lockOverdueCenterRemarks(now) {
+  let count = 0;
+  const centerOverdue = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerDeadline: { $lt: now },
+    centerHeadRemarksLocked: false,
+    centerRemarksDate: { $in: [null, ''] }
+  });
+  for (const report of centerOverdue) {
+    report.centerHeadRemarksLocked = true;
+    if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
+    report.autoClosedDate = now.toLocaleDateString('en-GB');
+    await report.save();
+    count++;
+    console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+  }
+  return count;
+}
+
+// Job 3: reminder emails to centers as their remarks deadline approaches
+async function sendCenterReminderEmails(now) {
+  let count = 0;
+  const activeReports = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerHeadRemarksLocked: false,
+    centerRemarksDate: { $in: [null, ''] },
+    centerDeadline: { $exists: true, $ne: null, $gte: now }
+  });
+
+  for (const report of activeReports) {
+    if (!report.centerDeadline) continue;
+    const rem = remainingWorkingDaysFrom(now, report.centerDeadline);
+    const thresholds = [4, 2, 1, 0];
+    const remindersSentArr = report.remindersSent || [];
+
+    for (const threshold of thresholds) {
+      if (rem === threshold && !remindersSentArr.includes(threshold)) {
+        const sent = await sendReminderEmail(report, threshold);
+        if (sent) {
+          report.remindersSent = [...remindersSentArr, threshold];
+          await report.save();
+          count++;
+        }
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+// Job 4: "closed" notice emails once the center's remarks window has fully lapsed
+async function sendClosedNoticeEmails(now) {
+  let count = 0;
+  const overdueReports = await AuditReport.find({
+    currentStatus: 'Approved',
+    emailSent: true,
+    centerDeadline: { $lt: now },
+    centerHeadRemarksLocked: false,
+    centerRemarksDate: { $in: [null, ''] },
+    reminderClosedSent: { $ne: true }
+  });
+  for (const report of overdueReports) {
+    report.centerHeadRemarksLocked = true;
+    const sent = await sendReminderEmail(report, 'closed');
+    if (sent) { report.reminderClosedSent = true; }
+    await report.save();
+    count++;
+  }
+  return count;
+}
+
+// Job 5: auto-close reports the auditor never reviewed within the review deadline
+async function autoCloseUnreviewedReports(now) {
+  const reviewOverdue = await AuditReport.find({
+    currentStatus: 'Approved',
+    auditorReviewDeadline: { $exists: true, $lt: now },
+    auditorClosedDate: { $in: [null, ''] }
+  });
+  for (const report of reviewOverdue) {
+    report.currentStatus = 'Closed';
+    report.auditorClosedDate = now.toLocaleDateString('en-GB');
+    report.auditorClosedBy = 'Auto-closed (review deadline)';
+    await sendReminderEmail(report, 'closed');
+    await report.save();
+    console.log(`🔒 Review deadline auto-closed: ${report.centerCode}`);
+  }
+}
+
+// Job 6: reminder emails to auditors as their 15-working-day submission deadline approaches
+async function sendAuditorSubmissionReminders(now) {
+  let count = 0;
+  const auditorActiveReports = await AuditReport.find({
+    currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
+    auditorDeadline: { $exists: true, $ne: null, $gte: now },
+    auditedBy: { $exists: true, $ne: '' }
+  });
+
+  for (const report of auditorActiveReports) {
+    if (!report.auditorDeadline) continue;
+    const rem = remainingWorkingDaysFrom(now, report.auditorDeadline);
+    const thresholds = [10, 5, 3, 1, 0];
+    const sentArr = report.auditorRemindersSent || [];
+
+    for (const threshold of thresholds) {
+      if (rem === threshold && !sentArr.includes(threshold)) {
+        const sent = await sendAuditorReminderEmail(report, threshold);
+        if (sent) {
+          report.auditorRemindersSent = [...sentArr, threshold];
+          await report.save();
+          count++;
+        }
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+// Job 7: notify auditors whose reports were auto-closed for missing the deadline
+async function sendAuditorAutoClosedEmails() {
+  const auditorAutoClose = await AuditReport.find({
+    currentStatus: 'Closed',
+    autoClosedBy: { $regex: 'auditor_deadline' },
+    auditorAutoClosedEmailSent: { $ne: true },
+    auditedBy: { $exists: true, $ne: '' }
+  });
+  for (const report of auditorAutoClose) {
+    const sent = await sendAuditorReminderEmail(report, 'auto_closed');
+    if (sent) {
+      report.auditorAutoClosedEmailSent = true;
+      await report.save();
+    }
+  }
+}
+
+
 app.listen(PORT, () => {
   console.log(`\n🚀 ========================================`);
   console.log(`🚀 NIIT Audit System - MongoDB Server`);
@@ -3384,158 +3563,21 @@ app.listen(PORT, () => {
   // ⏰ AUTOMATIC DAILY DEADLINE CHECK
   // Runs every day at 9:00 AM IST
   // ========================================
+// Counts remaining working days from `now` to `deadlineDate`
   const runDailyCheck = async () => {
     try {
       console.log('\n⏰ ========== DAILY DEADLINE CHECK ==========');
       console.log('⏰ Time:', new Date().toLocaleString('en-IN'));
 
       const now = new Date(); now.setHours(0,0,0,0);
-      let auditorClosed = 0, centerClosed = 0, remindersSentCount = 0, closedEmailsSentCount = 0;
 
-      // 1. AUDITOR DEADLINE: Close Not Submitted reports
-      const auditorOverdue = await AuditReport.find({
-        currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
-        auditorDeadline: { $lt: now },
-        autoClosedBy: { $not: { $regex: 'auditor_deadline' } }
-      });
-      for (const report of auditorOverdue) {
-        report.currentStatus = 'Closed';
-        report.autoClosedBy = 'auditor_deadline';
-        report.autoClosedDate = now.toLocaleDateString('en-GB');
-        await report.save();
-        auditorClosed++;
-        console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
-      }
-
-      // 2. CENTER REMARKS DEADLINE: Lock remarks
-      const centerOverdue = await AuditReport.find({
-        currentStatus: 'Approved',
-        emailSent: true,
-        centerDeadline: { $lt: now },
-        centerHeadRemarksLocked: false,
-        centerRemarksDate: { $in: [null, ''] }
-      });
-      for (const report of centerOverdue) {
-        report.centerHeadRemarksLocked = true;
-        if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
-        report.autoClosedDate = now.toLocaleDateString('en-GB');
-        await report.save();
-        centerClosed++;
-        console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
-      }
-
-      // 3. REMINDER EMAILS
-      const activeReports = await AuditReport.find({
-        currentStatus: 'Approved',
-        emailSent: true,
-        centerHeadRemarksLocked: false,
-        centerRemarksDate: { $in: [null, ''] },
-        centerDeadline: { $exists: true, $ne: null, $gte: now }
-      });
-
-      for (const report of activeReports) {
-        if (!report.centerDeadline) continue;
-        const deadline = new Date(report.centerDeadline); deadline.setHours(0,0,0,0);
-        let rem = 0;
-        let d = new Date(now);
-        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
-
-        const thresholds = [4, 2, 1, 0];
-        const remindersSentArr = report.remindersSent || [];
-
-        for (const threshold of thresholds) {
-          if (rem === threshold && !remindersSentArr.includes(threshold)) {
-            const sent = await sendReminderEmail(report, threshold);
-            if (sent) {
-              report.remindersSent = [...remindersSentArr, threshold];
-              await report.save();
-              remindersSentCount++;
-            }
-            break;
-          }
-        }
-      }
-
-      // 4. CLOSED EMAILS
-      const overdueReports = await AuditReport.find({
-        currentStatus: 'Approved',
-        emailSent: true,
-        centerDeadline: { $lt: now },
-        centerHeadRemarksLocked: false,
-        centerRemarksDate: { $in: [null, ''] },
-        reminderClosedSent: { $ne: true }
-      });
-      for (const report of overdueReports) {
-        report.centerHeadRemarksLocked = true;
-        const sent = await sendReminderEmail(report, 'closed');
-        if (sent) { report.reminderClosedSent = true; }
-        await report.save();
-        closedEmailsSentCount++;
-      }
-
-      // 5. AUDITOR REVIEW DEADLINE: Auto-close if not reviewed in 5 days
-      const reviewOverdue = await AuditReport.find({
-        currentStatus: 'Approved',
-        auditorReviewDeadline: { $exists: true, $lt: now },
-        auditorClosedDate: { $in: [null, ''] }
-      });
-      for (const report of reviewOverdue) {
-        report.currentStatus = 'Closed';
-        report.auditorClosedDate = now.toLocaleDateString('en-GB');
-        report.auditorClosedBy = 'Auto-closed (review deadline)';
-        await sendReminderEmail(report, 'closed');
-        await report.save();
-        console.log(`🔒 Review deadline auto-closed: ${report.centerCode}`);
-      }
-
-      // 6. AUDITOR SUBMISSION REMINDERS (15 working days)
-      // Thresholds: 10, 5, 3, 1, 0 days left
-      const auditorActiveReports = await AuditReport.find({
-        currentStatus: { $in: ['Not Submitted', 'Sent Back'] },
-        auditorDeadline: { $exists: true, $ne: null, $gte: now },
-        auditedBy: { $exists: true, $ne: '' }
-      });
-
-      let auditorRemindersSentCount = 0;
-      for (const report of auditorActiveReports) {
-        if (!report.auditorDeadline) continue;
-
-        // Calculate remaining working days
-        const deadline = new Date(report.auditorDeadline); deadline.setHours(0,0,0,0);
-        let rem = 0;
-        let d = new Date(now);
-        while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDaySrv(d)) rem++; }
-
-        const thresholds = [10, 5, 3, 1, 0];
-        const sentArr = report.auditorRemindersSent || [];
-
-        for (const threshold of thresholds) {
-          if (rem === threshold && !sentArr.includes(threshold)) {
-            const sent = await sendAuditorReminderEmail(report, threshold);
-            if (sent) {
-              report.auditorRemindersSent = [...sentArr, threshold];
-              await report.save();
-              auditorRemindersSentCount++;
-            }
-            break;
-          }
-        }
-      }
-
-      // 7. AUDITOR AUTO-CLOSED EMAIL
-      const auditorAutoClose = await AuditReport.find({
-        currentStatus: 'Closed',
-        autoClosedBy: { $regex: 'auditor_deadline' },
-        auditorAutoClosedEmailSent: { $ne: true },
-        auditedBy: { $exists: true, $ne: '' }
-      });
-      for (const report of auditorAutoClose) {
-        const sent = await sendAuditorReminderEmail(report, 'auto_closed');
-        if (sent) {
-          report.auditorAutoClosedEmailSent = true;
-          await report.save();
-        }
-      }
+      const auditorClosed = await closeOverdueAuditorReports(now);
+      const centerClosed = await lockOverdueCenterRemarks(now);
+      const remindersSentCount = await sendCenterReminderEmails(now);
+      const closedEmailsSentCount = await sendClosedNoticeEmails(now);
+      await autoCloseUnreviewedReports(now);
+      await sendAuditorSubmissionReminders(now);
+      await sendAuditorAutoClosedEmails();
 
       console.log(`✅ Daily check done:`);
       console.log(`   Auditor closed: ${auditorClosed}`);

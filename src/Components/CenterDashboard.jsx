@@ -3,645 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import './Admin.css';
 
-const CenterDashboard = () => {
-  const navigate = useNavigate();
-  const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-  
-  const [myReports, setMyReports] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [checkpointRemarks, setCheckpointRemarks] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [editRequestStatus, setEditRequestStatus] = useState({});
-  const [centerData, setCenterData] = useState(null);
 
-  // ========================================
-  // RED FLAG STATUS LOGIC
-  // ========================================
-  
-  const getGrandTotalColor = (report) => {
-    const status = getAuditStatus(report);
-    if (status === 'Compliant') return '#28a745';
-    if (status === 'Amber') return '#ffc107';
-    return '#dc3545';
-  };
-
-  const getAuditStatus = (report) => {
-    const foMax = report.placementApplicable === 'no' ? 35 : 30;
-    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
-    const ppMax = 15;
-    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
-    
-    const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
-    const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
-    const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
-    const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
-    
-    const areas = [
-      { name: 'FO', percent: foPercent },
-      { name: 'DP', percent: dpPercent },
-      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
-      { name: 'MP', percent: mpPercent }
-    ].filter(Boolean);
-    
-    const red = areas.filter(a => a.percent < 65).length;
-    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
-    const green = areas.filter(a => a.percent >= 80).length;
-    
-    if (red > 0) return 'Non-Compliant';
-    if (amber >= 3) return 'Non-Compliant';
-    if (amber === 2) return 'Amber';
-    if (green === areas.length) return 'Compliant';
-    if (amber === 1) return 'Compliant';
-    return 'Amber';
-  };
-
-  const getAreaScoreInfo = (score, maxScore) => {
-    if (score === 'NA') return { status: 'NA', color: '#999' };
-    const numScore = parseFloat(score || 0);
-    const percent = (numScore / maxScore) * 100;
-    
-    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
-    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
-    return { status: 'Non-Compliant', color: '#dc3545' };
-  };
-
-  // ========================================
-  // END RED FLAG STATUS LOGIC
-  // ========================================
-
-  // ========================================
-  // ⏰ WORKING DAYS & DEADLINE HELPERS
-  // ========================================
-  const HOLIDAYS = {
-    2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
-           '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
-    2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
-           '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
-           '2026-11-24','2026-12-25']
-  };
-
-  const isWorkingDay = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    if (day === 0 || day === 6) return false;
-    const ds = d.toISOString().split('T')[0];
-    return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
-  };
-
-  const getRemainingWorkingDays = (deadlineDate) => {
-    if (!deadlineDate) return null;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
-    let count = 0; let d = new Date(today);
-    if (today > deadline) {
-      while (d > deadline) { d.setDate(d.getDate()-1); if (isWorkingDay(d)) count++; }
-      return -count;
-    }
-    while (d < deadline) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) count++; }
-    return count;
-  };
-
-  // Center deadline badge (7 working days from email send)
-  const getCenterDeadlineBadge = (report) => {
-    if (!report.emailSent) return null;
-
-    // Agar remarks submit ho gayi — kitne din mein kiya calculate karo
-    if (report.centerHeadRemarksLocked && report.centerRemarksDate && report.emailSentDate) {
-      // Parse emailSentDate
-      let emailDate = null;
-      try {
-        // Format: "DD/MM/YYYY, HH:MM:SS" (en-IN)
-        const parts = report.emailSentDate.split(',')[0].trim().split('/');
-        if (parts.length === 3) emailDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-      } catch(e) {}
-
-      // Parse centerRemarksDate
-      let remarksDate = null;
-      try {
-        const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
-        if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-      } catch(e) {}
-
-      if (emailDate && remarksDate && !isNaN(emailDate) && !isNaN(remarksDate)) {
-        let days = 0;
-        let d = new Date(emailDate); d.setHours(0,0,0,0);
-        const end = new Date(remarksDate); end.setHours(0,0,0,0);
-        while (d < end) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) days++; }
-        const color = days <= 5 ? '#2e7d32' : days <= 7 ? '#e65100' : '#dc3545';
-        const bg    = days <= 5 ? '#e8f5e9' : days <= 7 ? '#fff3e0' : '#ffebee';
-        const border= days <= 5 ? '#4caf50' : days <= 7 ? '#ff9800' : '#dc3545';
-        return { text: `✅ Done in ${days}d`, color, bg, border, sub: report.centerRemarksDate?.split(',')[0] || '' };
-      }
-      return { text: '✅ Remarks Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: report.centerRemarksDate?.split(',')[0] || '' };
-    }
-
-    // Remarks not yet submitted — show countdown
-    if (!report.centerDeadline) return null;
-    const rem = getRemainingWorkingDays(report.centerDeadline);
-    if (rem === null) return null;
-    if (rem < 0)   return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
-    if (rem === 0) return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
-    if (rem <= 2)  return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: `by ${report.centerDeadlineString||''}` };
-    return               { text: `✅ ${rem}d left`,               color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: `by ${report.centerDeadlineString||''}` };
-  };
-  // ========================================
-
-  // ========================================
-  // Edit request 3 working days validity
-  // ========================================
-  const getEditRequestDeadline = (report) => {
-    if (!report.centerHeadRemarksLocked || !report.centerRemarksDate) return null;
-    let remarksDate = null;
-    try {
-      const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
-      if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    } catch(e) {}
-    if (!remarksDate || isNaN(remarksDate)) return null;
-    // Add 3 working days
-    let d = new Date(remarksDate); d.setHours(0,0,0,0);
-    let count = 0;
-    while (count < 3) { d.setDate(d.getDate()+1); if (isWorkingDay(d)) count++; }
-    return d;
-  };
-
-  const isEditRequestExpired = (report) => {
-    const dl = getEditRequestDeadline(report);
-    if (!dl) return false;
-    const today = new Date(); today.setHours(0,0,0,0);
-    return today > dl;
-  };
-
-  const getEditRequestRemainingDays = (report) => {
-    const dl = getEditRequestDeadline(report);
-    return dl ? getRemainingWorkingDays(dl) : null;
-  };
-  // ========================================
-
-  // Dynamic checkpoint data based on placement applicable AND centerType
-  // MP6, MP7 are DTV-only — not shown for CDC/SDC
-  const getCheckpointData = (placementApplicable, centerType) => {
-    const isPlacementNA = placementApplicable === 'no';
-    const isDTV = (centerType || '').toUpperCase() === 'DTV';
-
-    return {
-      'Front Office': [
-        { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isPlacementNA ? 10.5 : 9 },
-        { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isPlacementNA ? 7 : 6 },
-        { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-        { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isPlacementNA ? 14 : 12 },
-        { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isPlacementNA ? 3.5 : 3 }
-      ],
-      'Delivery Process': [
-        { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
-        { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isPlacementNA ? 6.75 : 6 },
-        { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
-        { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-        { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: isPlacementNA ? 2.25 : 2 },
-        { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 },
-        { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: isPlacementNA ? 4.5 : 4 }
-      ],
-      'Placement Process': isPlacementNA ? [] : [
-        { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-        { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
-        { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-        { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-      ],
-      'Management Process': [
-        { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 },
-        { id: 'MP2', name: 'Log book for Genset & Vehicle (Y/N)', weightage: 20, maxScore: isPlacementNA ? 5 : 3.00 },
-        { id: 'MP3', name: 'TIRM details register', weightage: 30, maxScore: isPlacementNA ? 7.5 : 4.50 },
-        { id: 'MP4', name: 'Availability and requirement of Biometric as per MOU', weightage: 25, maxScore: isPlacementNA ? 6.25 : 3.75 },
-        { id: 'MP5', name: 'Physical asset verification', weightage: 10, maxScore: isPlacementNA ? 2.5 : 1.50 },
-        ...(isDTV ? [
-          { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 },
-          { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: isPlacementNA ? 1.25 : 0.75 }
-        ] : [])
-      ]
-    };
-  };
-
-  useEffect(() => {
-    // Check authorization
-    if (!loggedUser || loggedUser.Role !== 'Center User') {
-      alert('Unauthorized!');
-      navigate('/');
-      return;
-    }
-    
-    // IMPORTANT: Check if centerCode exists
-    if (!loggedUser.centerCode) {
-      alert('⚠️ No center code assigned to your account!\n\nPlease contact admin to assign a center code.');
-      navigate('/');
-      return;
-    }
-    
-    console.log('🔍 Center User Login Info:');
-    console.log('   Username:', loggedUser.username);
-    console.log('   Center Code:', loggedUser.centerCode);
-    
-    loadMyReports();
-    loadCenterData();
-  }, []);
-
-
-  const loadCenterData = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/centers`);
-      if (response.ok) {
-        const centers = await response.json();
-        const myCenter = centers.find(c => c.centerCode === loggedUser.centerCode);
-        if (myCenter) {
-          setCenterData(myCenter);
-          console.log('✅ Center data loaded:', myCenter);
-        }
-      }
-    } catch (err) {
-      console.error('❌ Error loading center data:', err);
-    }
-  };
-  const loadMyReports = async () => {
-    try {
-      setLoading(true);
-      console.log('\n📊 Loading Reports...');
-      console.log('   User Center Code:', loggedUser.centerCode);
-      
-      const response = await fetch(`${API_URL}/api/audit-reports`);
-      
-      if (response.ok) {
-        const allReports = await response.json();
-        console.log('   Total Reports in DB:', allReports.length);
-        
-        // FIXED: Better filtering with case-insensitive comparison
-        let filtered = allReports;
-        if (loggedUser.centerCode) {
-          const userCenterCode = loggedUser.centerCode.toUpperCase().trim();
-          filtered = allReports.filter(r => {
-            const reportCenterCode = (r.centerCode || '').toUpperCase().trim();
-            const matches = reportCenterCode === userCenterCode;
-            
-            if (matches) {
-              console.log('   ✅ Match found:', r.centerCode, '-', r.centerName);
-            }
-            
-            return matches;
-          });
-        }
-        
-        console.log('   Filtered Reports:', filtered.length);
-        console.log('   Center Codes:', filtered.map(r => r.centerCode).join(', '));
-        
-        if (filtered.length === 0) {
-          console.log('   ⚠️ No reports found for center:', loggedUser.centerCode);
-        }
-        
-        setMyReports(filtered);
-        
-        const requestStatus = {};
-        filtered.forEach(report => {
-          requestStatus[report._id] = {
-            locked: report.centerHeadRemarksLocked || false,
-            requestPending: report.centerHeadEditRequest || false,
-            editedOnce: report.remarksEditedOnce || false  // permanent lock after 2nd submit
-          };
-        });
-        setEditRequestStatus(requestStatus);
-      }
-    } catch (err) {
-      console.error('❌ Error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleViewReport = async (report) => {
-    // ✅ Always fetch fresh data from server — stale local state causes wrong lock display
-    let freshReport = report;
-    try {
-      const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/fresh`);
-      if (res.ok) {
-        freshReport = await res.json();
-        // Also update editRequestStatus with fresh data
-        setEditRequestStatus(prev => ({
-          ...prev,
-          [freshReport._id]: {
-            locked: freshReport.centerHeadRemarksLocked || false,
-            requestPending: freshReport.centerHeadEditRequest || false,
-            editedOnce: freshReport.remarksEditedOnce || false
-          }
-        }));
-      }
-    } catch (e) {
-      console.warn('Fresh fetch failed, using cached report');
-    }
-
-    setSelectedReport(freshReport);
-    
-    // Load remarks from centerHeadCheckpointRemarks object
-    let existingRemarks = freshReport.centerHeadCheckpointRemarks || {};
-    
-    // If object is empty, try loading from individual checkpoint fields (backward compatibility)
-    if (Object.keys(existingRemarks).length === 0) {
-      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
-      checkpointIds.forEach(cpId => {
-        if (freshReport[cpId]?.centerHeadRemarks) {
-          existingRemarks[cpId] = freshReport[cpId].centerHeadRemarks;
-        }
-      });
-    }
-    
-    setCheckpointRemarks(existingRemarks);
-    setShowModal(true);
-  };
-
-  const handleCheckpointRemarkChange = (checkpointId, value) => {
-    setCheckpointRemarks(prev => ({
-      ...prev,
-      [checkpointId]: value
-    }));
-  };
-
-  const handleRequestEdit = async (reportId) => {
-    if (window.confirm('Request edit permission from admin?')) {
-      try {
-        const response = await fetch(`${API_URL}/api/audit-reports/${reportId}/request-edit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ centerUserName: loggedUser.firstname })
-        });
-        
-        if (response.ok) {
-          alert('✅ Edit request sent to admin! You will be notified once approved.');
-          loadMyReports();
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          if (response.status === 403 && errData.permanentlyLocked) {
-            alert('🔒 Remarks are permanently locked. No further edits allowed.');
-          } else if (response.status === 409 && errData.alreadyPending) {
-            alert('⏳ Edit request already pending. Please wait for admin approval.');
-          } else if (response.status === 400) {
-            alert('ℹ️ ' + (errData.error || 'Remarks are not locked. You can edit directly.'));
-          } else {
-            alert('❌ ' + (errData.error || 'Failed to send edit request.'));
-          }
-          loadMyReports();
-        }
-      } catch (err) {
-        alert('❌ Error: ' + err.message);
-      }
-    }
-  };
-
-  const handleSubmitObservations = async () => {
-    if (!selectedReport) return;
-    
-    // Check if permanently locked (edited once already)
-    if (editRequestStatus[selectedReport._id]?.editedOnce) {
-      alert('🔒 Remarks are permanently locked. No further edits allowed.');
-      return;
-    }
-
-    // Check if locked and no edit approval given
-    if (editRequestStatus[selectedReport._id]?.locked && !editRequestStatus[selectedReport._id]?.requestPending) {
-      alert('🔒 Remarks are locked. Please request edit permission from admin.');
-      return;
-    }
-
-    // ✅ PLACEMENT CHECK: Sirf 1st submit pe — agar CH pehle submit kar chuka hai toh edit hai, block mat karo
-    const isEditSubmit = !!selectedReport.centerRemarksDate;
-    if (!isEditSubmit && selectedReport.placementApplicable === 'yes' && !selectedReport.placementRemarksSubmitted) {
-      alert('⚠️ Placement Coordinator ne abhi remarks submit nahi kiye hain.\n\nPlacement remarks submit hone ke baad hi aap submit kar sakte hain.');
-      return;
-    }
-    
-    if (!window.confirm('Submit your observations? This will lock your remarks until admin approves any future edit requests.')) {
-      return;
-    }
-    
-    try {
-      setSaving(true);
-      
-      const response = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/center-remarks`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          centerHeadCheckpointRemarks: checkpointRemarks,
-          centerRemarksBy: loggedUser.firstname,
-          centerRemarksDate: new Date().toLocaleString('en-IN')
-        })
-      });
-      
-      if (response.ok) {
-        // Immediately update local state — prevent any re-render showing submit button
-        setEditRequestStatus(prev => ({
-          ...prev,
-          [selectedReport._id]: {
-            ...prev[selectedReport._id],
-            locked: true,
-            editedOnce: prev[selectedReport._id]?.locked ? true : prev[selectedReport._id]?.editedOnce,
-            requestPending: false
-          }
-        }));
-        alert('✅ Observations submitted successfully!\n\nYour remarks are now locked. Contact admin if you need to make changes.');
-        setShowModal(false);
-        loadMyReports();
-      } else {
-        const errData = await response.json().catch(() => ({}));
-        if (response.status === 403) {
-          if (errData.permanentlyLocked) {
-            alert('🔒 Remarks are permanently locked. No further edits allowed.');
-          } else if (errData.requestPending) {
-            alert('⏳ Edit request is pending admin approval. Please wait.');
-          } else if (errData.placementPending) {
-            alert('⚠️ Placement Coordinator ne abhi remarks submit nahi kiye.\n\nPehle placement remarks submit hon.');
-          } else {
-            alert('🔒 ' + (errData.error || 'Remarks are locked.'));
-          }
-          setShowModal(false);
-          loadMyReports();
-        } else {
-          alert('❌ Failed to submit observations');
-        }
-      }
-    } catch (err) {
-      alert('❌ Error: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="admin-container">
-        <header className="admin-header">
-          <h1>Center Dashboard - {loggedUser.firstname}</h1>
-          <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
-        </header>
-        <div style={{ textAlign: 'center', padding: '100px 20px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
-          <p style={{ fontSize: '18px', color: '#666' }}>Loading your reports...</p>
-        </div>
-      </div>
-    );
-  }
-
+// One row in the center's "My Reports" table — extracted so the parent's
+// render function doesn't carry all this row's branching in its own complexity.
+const MyReportRow = ({
+  report, idx, isLocked, isRequestPending, foData, dpData, ppData, mpData,
+  grandStatus, grandColor, getCenterDeadlineBadge, getRemainingWorkingDays,
+  handleViewReport, editRequestStatus, isEditRequestExpired,
+  getEditRequestRemainingDays, handleRequestEdit
+}) => {
   return (
-    <div className="admin-container">
-      {/* CSS Animations for deadline countdown */}
-      <style>{`
-        @keyframes pulse-urgent {
-          0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,53,69,0.5); }
-          50%  { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(220,53,69,0); }
-          100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,53,69,0); }
-        }
-        @keyframes pulse-ok {
-          0%   { opacity: 1; }
-          50%  { opacity: 0.75; }
-          100% { opacity: 1; }
-        }
-      `}</style>
-      <header className="admin-header">
-        <h1>Center Dashboard - Welcome, {loggedUser.firstname}</h1>
-        <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
-      </header>
-
-      <main className="admin-content">
-        {/* Center Details Card */}
-        {centerData ? (
-          <div style={{
-            background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
-            padding: '20px',
-            borderRadius: '12px',
-            marginBottom: '25px',
-            border: '2px solid #2196f3',
-            boxShadow: '0 4px 15px rgba(33, 150, 243, 0.2)'
-          }}>
-            <h2 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '20px', fontWeight: 'bold' }}>
-              🏢 Center Information
-            </h2>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-              gap: '12px',
-              fontSize: '14px'
-            }}>
-              <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
-              <div><strong>Center Name:</strong> {centerData.centerName}</div>
-              <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
-              <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
-              <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
-              <div><strong>Area Manager:</strong> {myReports[0]?.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
-              <div><strong>Cluster Manager:</strong> {myReports[0]?.clusterManager || centerData.clusterManager || '-'}</div>
-              <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
-              {(myReports[0]?.placementCoordinator || centerData.placementCoordinator) && (
-                <div><strong>Placement Coordinator:</strong> {myReports[0]?.placementCoordinator || centerData.placementCoordinator}</div>
-              )}
-              {(myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
-                <div><strong>Sr. Manager Placement:</strong> {myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
-              )}
-              {(myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
-                <div><strong>National Head Placement:</strong> {myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
-              )}
-              <div><strong>Center Type:</strong> <span style={{
-                padding: '2px 8px',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                background: centerData.centerType === 'CDC' ? '#e3f2fd' : centerData.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
-                color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
-              }}>{centerData.centerType || 'CDC'}</span></div>
-              <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
-              
-              <div><strong>Audited By:</strong> {myReports[0]?.auditedBy || '-'}</div>
-<div><strong>Audit Period:</strong> {myReports[0]?.auditPeriod || '-'}</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '20px', borderRadius: '12px', marginBottom: '25px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
-            <h2 style={{ margin: 0, fontSize: '20px' }}>🏢 Your Center: <strong>{loggedUser.centerCode}</strong></h2>
-            <p style={{ margin: '8px 0 0', fontSize: '14px', opacity: 0.9 }}>
-              Loading center information...
-            </p>
-          </div>
-        )}
-
-        {/* Reports List */}
-        <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h3 style={{ margin: 0, fontSize: '22px', color: '#2c3e50' }}>📊 My Audit Reports ({myReports.length})</h3>
-            <button 
-              onClick={loadMyReports}
-              style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              🔄 Refresh
-            </button>
-          </div>
-
-          {myReports.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: '12px' }}>
-              <div style={{ fontSize: '64px', marginBottom: '20px', opacity: 0.3 }}>📋</div>
-              <h3 style={{ color: '#666', margin: 0 }}>No Audit Reports Found</h3>
-              <p style={{ color: '#999', marginTop: '10px' }}>
-                No reports available for center: <strong>{loggedUser.centerCode}</strong>
-              </p>
-              <p style={{ color: '#999', marginTop: '5px', fontSize: '13px' }}>
-                Reports will appear here once audits are created for your center
-              </p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT<br/>STATUS</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600', background: '#e8eaf6' }}>REPORT<br/>STATUS</th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600', background: '#e8f5e9' }}>REMARKS DEADLINE<br/><span style={{fontSize:'10px',fontWeight:'normal'}}>(7 days)</span></th>
-                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {myReports.map((report, idx) => {
-                    const isLocked = editRequestStatus[report._id]?.locked;
-                    const isRequestPending = editRequestStatus[report._id]?.requestPending;
-                    
-                    const foMax = report.placementApplicable === 'no' ? 35 : 30;
-                    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
-                    const ppMax = 15;
-                    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
-
-                    const foData = getAreaScoreInfo(report.frontOfficeScore, foMax);
-                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, dpMax);
-                    const ppData = report.placementApplicable === 'no' ? { status: 'NA', color: '#999' } : getAreaScoreInfo(report.placementScore, ppMax);
-                    const mpData = getAreaScoreInfo(report.managementScore, mpMax);
-
-                    const grandStatus = getAuditStatus(report);
-                    const grandColor = getGrandTotalColor(report);
-
-                    return (
                       <tr key={report._id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
                         <td style={{ padding: '12px 10px', fontWeight: '600', color: '#1e40af' }}>{report.centerName}</td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: '#6366f1', background: '#e0e7ff' }}>{report.centerCode}</td>
                         <td style={{ padding: '12px 10px', textAlign: 'center', fontSize: '13px', color: '#6b7280' }}>{report.auditDateString || '-'}</td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           <div style={{ fontWeight: '700', fontSize: '13px', color: foData.color }}>{foData.status}</div>
-                          <div style={{ fontSize: '14px', color: foData.color, fontWeight: 'bold' }}>({parseFloat(report.frontOfficeScore || 0).toFixed(2)})</div>
+                          <div style={{ fontSize: '14px', color: foData.color, fontWeight: 'bold' }}>({Number.parseFloat(report.frontOfficeScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           <div style={{ fontWeight: '700', fontSize: '13px', color: dpData.color }}>{dpData.status}</div>
-                          <div style={{ fontSize: '14px', color: dpData.color, fontWeight: 'bold' }}>({parseFloat(report.deliveryProcessScore || 0).toFixed(2)})</div>
+                          <div style={{ fontSize: '14px', color: dpData.color, fontWeight: 'bold' }}>({Number.parseFloat(report.deliveryProcessScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           {report.placementApplicable === 'no' ? (
@@ -649,16 +31,16 @@ const CenterDashboard = () => {
                           ) : (
                             <>
                               <div style={{ fontWeight: '700', fontSize: '13px', color: ppData.color }}>{ppData.status}</div>
-                              <div style={{ fontSize: '14px', color: ppData.color, fontWeight: 'bold' }}>({parseFloat(report.placementScore || 0).toFixed(2)})</div>
+                              <div style={{ fontSize: '14px', color: ppData.color, fontWeight: 'bold' }}>({Number.parseFloat(report.placementScore || 0).toFixed(2)})</div>
                             </>
                           )}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           <div style={{ fontWeight: '700', fontSize: '13px', color: mpData.color }}>{mpData.status}</div>
-                          <div style={{ fontSize: '14px', color: mpData.color, fontWeight: 'bold' }}>({parseFloat(report.managementScore || 0).toFixed(2)})</div>
+                          <div style={{ fontSize: '14px', color: mpData.color, fontWeight: 'bold' }}>({Number.parseFloat(report.managementScore || 0).toFixed(2)})</div>
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '20px', fontWeight: '700', color: grandColor }}>{parseFloat(report.grandTotal || 0).toFixed(2)}</div>
+                          <div style={{ fontSize: '20px', fontWeight: '700', color: grandColor }}>{Number.parseFloat(report.grandTotal || 0).toFixed(2)}</div>
                         </td>
                         {/* AUDIT STATUS - score based */}
                         <td style={{ padding: '10px', textAlign: 'center' }}>
@@ -810,104 +192,13 @@ const CenterDashboard = () => {
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </main>
+  );
+};
 
-      {/* Modal for viewing report - keeping existing modal code */}
-      {showModal && selectedReport && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '15px' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '98%', maxWidth: '1600px', height: '95vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            
-            <div style={{ background: '#0d9488', padding: '20px 25px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ margin: 0 }}>Audit Report Details</h2>
-                <p style={{ margin: '6px 0 0', fontSize: '14px', opacity: 0.95 }}>
-                  {selectedReport.centerName} ({selectedReport.centerCode}) | Score: {selectedReport.grandTotal}/100
-                </p>
-              </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'transparent', border: '2px solid white', color: 'white', padding: '10px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
-                Close
-              </button>
-            </div>
-
-            <div style={{ flex: 1, overflow: 'auto', background: '#f9fafb' }}>
-              
-              {/* CENTER DETAILS CARD */}
-              {centerData && (
-                <div style={{
-                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
-                  padding: '15px 20px',
-                  margin: '15px',
-                  borderRadius: '10px',
-                  border: '2px solid #2196f3',
-                  boxShadow: '0 2px 10px rgba(33, 150, 243, 0.15)'
-                }}>
-                  <h3 style={{ margin: '0 0 12px 0', color: '#1976d2', fontSize: '16px', fontWeight: 'bold' }}>
-                    🏢 Center Information
-                  </h3>
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-                    gap: '10px',
-                    fontSize: '13px'
-                  }}>
-                    <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
-                    <div><strong>Center Name:</strong> {centerData.centerName}</div>
-                    <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
-                    <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
-                    <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
-                    <div><strong>Area Manager:</strong> {selectedReport.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
-                    <div><strong>Cluster Manager:</strong> {selectedReport.clusterManager || centerData.clusterManager || '-'}</div>
-                    <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
-                    {(selectedReport.placementCoordinator || centerData.placementCoordinator) && (
-                      <div><strong>Placement Coordinator:</strong> {selectedReport.placementCoordinator || centerData.placementCoordinator}</div>
-                    )}
-                    {(selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
-                      <div><strong>Sr. Manager Placement:</strong> {selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
-                    )}
-                    {(selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
-                      <div><strong>National Head Placement:</strong> {selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
-                    )}
-                    <div><strong>Center Type:</strong> <span style={{
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      background: centerData.centerType === 'CDC' ? '#e3f2fd' : centerData.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
-                      color: centerData.centerType === 'CDC' ? '#1976d2' : centerData.centerType === 'SDC' ? '#e65100' : '#2e7d32'
-                    }}>{centerData.centerType || 'CDC'}</span></div>
-                    <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
-                  
-                    <div><strong>Audited By:</strong> {selectedReport.auditedBy || centerData.auditedBy || '-'}</div>
-<div><strong>Audit Period:</strong> {selectedReport.auditPeriod || centerData.auditPeriod || '-'}</div>
-                  </div>
-                </div>
-              )}
-
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-                  <tr style={{ background: '#e5e7eb' }}>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '3%' }}>S.NO</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '20%' }}>CHECKPOINT</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>WEIGHTAGE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>MAX SCORE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>TOTAL</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>COMPLIANT</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>%</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>SCORE</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '15%' }}>REMARKS</th>
-                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '25%', background: '#86efac' }}>CENTER HEAD REMARKS</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {Object.entries(getCheckpointData(selectedReport.placementApplicable, selectedReport.centerType)).map(([areaName, checkpoints], areaIdx) => {
+// One audit-area section (header row + checkpoint rows + area total) inside
+// the remarks modal — extracted so the modal's render function doesn't carry
+// this nested map's branching in its own complexity.
+const RemarksAreaSection = ({ areaName, areaIdx, checkpoints, selectedReport, editRequestStatus, checkpointRemarks, handleCheckpointRemarkChange }) => {
                     // Skip Placement Process area if it's empty (when placement is NA)
                     if (checkpoints.length === 0) return null;
                     
@@ -916,7 +207,7 @@ const CenterDashboard = () => {
                     let areaMaxTotal = 0;
                     checkpoints.forEach(cp => {
                       const cpData = selectedReport[cp.id] || {};
-                      areaTotal += parseFloat(cpData.score || 0);
+                      areaTotal += Number.parseFloat(cpData.score || 0);
                       areaMaxTotal += cp.maxScore;
                     });
                     
@@ -978,13 +269,14 @@ const CenterDashboard = () => {
                         <td colSpan="2" style={{ padding: '12px 10px', background: '#eff6ff', border: '1px solid #93c5fd' }}></td>
                       </tr>
                     </React.Fragment>
-                  );})}
-                </tbody>
-              </table>
-            </div>
+                    );
+};
 
-            <div style={{ padding: '20px 25px', background: 'white', borderTop: '2px solid #e5e7eb' }}>
-              {(() => {
+
+// Bottom-of-modal action area — decides between "Closed", "Permanently locked",
+// "Pending approval", "Request edit" and "Submit" states. Extracted out of the
+// modal's render function so this 5-way branching doesn't add to its complexity.
+const SubmitObservationsFooter = ({ selectedReport, editRequestStatus, setShowModal, handleRequestEdit, handleSubmitObservations, saving }) => {
                 const st = editRequestStatus[selectedReport._id] || {};
 
                 // ── CASE 0: Report CLOSED — no edit, no request ──
@@ -1068,7 +360,819 @@ const CenterDashboard = () => {
                     {saving ? 'Submitting...' : 'Submit All Observations'}
                   </button>
                 );
-              })()}
+
+};
+
+const CenterDashboard = () => {
+  const navigate = useNavigate();
+  const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+  
+  const [myReports, setMyReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [checkpointRemarks, setCheckpointRemarks] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [editRequestStatus, setEditRequestStatus] = useState({});
+  const [centerData, setCenterData] = useState(null);
+
+  // ========================================
+  // RED FLAG STATUS LOGIC
+  // ========================================
+  
+  const getGrandTotalColor = (report) => {
+    const status = getAuditStatus(report);
+    if (status === 'Compliant') return '#28a745';
+    if (status === 'Amber') return '#ffc107';
+    return '#dc3545';
+  };
+
+  const getAuditStatus = (report) => {
+    const foMax = report.placementApplicable === 'no' ? 35 : 30;
+    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+    const ppMax = 15;
+    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
+    
+    const foPercent = (Number.parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+    const dpPercent = (Number.parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+    const ppPercent = report.placementApplicable === 'no' ? null : (Number.parseFloat(report.placementScore || 0) / ppMax) * 100;
+    const mpPercent = (Number.parseFloat(report.managementScore || 0) / mpMax) * 100;
+    
+    const areas = [
+      { name: 'FO', percent: foPercent },
+      { name: 'DP', percent: dpPercent },
+      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+      { name: 'MP', percent: mpPercent }
+    ].filter(Boolean);
+    
+    const red = areas.filter(a => a.percent < 65).length;
+    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+    const green = areas.filter(a => a.percent >= 80).length;
+    
+    if (red > 0) return 'Non-Compliant';
+    if (amber >= 3) return 'Non-Compliant';
+    if (amber === 2) return 'Amber';
+    if (green === areas.length) return 'Compliant';
+    if (amber === 1) return 'Compliant';
+    return 'Amber';
+  };
+
+  const getAreaScoreInfo = (score, maxScore) => {
+    if (score === 'NA') return { status: 'NA', color: '#999' };
+    const numScore = Number.parseFloat(score || 0);
+    const percent = (numScore / maxScore) * 100;
+    
+    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+    return { status: 'Non-Compliant', color: '#dc3545' };
+  };
+
+  // ========================================
+  // END RED FLAG STATUS LOGIC
+  // ========================================
+
+  // ========================================
+  // ⏰ WORKING DAYS & DEADLINE HELPERS
+  // ========================================
+  const HOLIDAYS = {
+    2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
+           '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
+    2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
+           '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
+           '2026-11-24','2026-12-25']
+  };
+
+  const isWorkingDay = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    if (day === 0 || day === 6) return false;
+    const ds = d.toISOString().split('T')[0];
+    return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+  };
+
+  const getRemainingWorkingDays = (deadlineDate) => {
+    if (!deadlineDate) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
+    let count = 0; let d = new Date(today);
+    if (today > deadline) {
+      while (d > deadline) { d = new Date(d.setDate(d.getDate() - 1)); if (isWorkingDay(d)) count++; }
+      return -count;
+    }
+    while (d < deadline) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
+    return count;
+  };
+
+  // Parses "DD/MM/YYYY, HH:MM:SS" style strings into a Date, or null if invalid
+  const parseIndianDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      const parts = dateStr.split(',')[0].trim().split('/');
+      if (parts.length !== 3) return null;
+      const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      return isNaN(parsed) ? null : parsed;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Counts working days strictly between two dates (exclusive of start)
+  const countWorkingDaysBetween = (startDate, endDate) => {
+    let d = new Date(startDate); d.setHours(0, 0, 0, 0);
+    const end = new Date(endDate); end.setHours(0, 0, 0, 0);
+    let days = 0;
+    while (d < end) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) days++; }
+    return days;
+  };
+
+  // Overdue / due today / warning / ok countdown badge
+  const getCountdownBadge = ({ rem, warnAt, okEmoji, subLabel }) => {
+    if (rem === null) return null;
+    if (rem < 0)      return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+    if (rem === 0)    return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+    if (rem <= warnAt) return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: subLabel || '' };
+    return               { text: `${okEmoji} ${rem}d left`,           color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: subLabel || '' };
+  };
+
+  // Green/orange/red style based on how many days something took
+  const getSpeedStyle = (days, goodMax, warnMax) => {
+    if (days <= goodMax) return { color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50' };
+    if (days <= warnMax) return { color: '#e65100', bg: '#fff3e0', border: '#ff9800' };
+    return { color: '#dc3545', bg: '#ffebee', border: '#dc3545' };
+  };
+
+  // Center deadline badge (7 working days from email send)
+  const getCenterDeadlineBadge = (report) => {
+    if (!report.emailSent) return null;
+
+    // Agar remarks submit ho gayi — kitne din mein kiya calculate karo
+    if (report.centerHeadRemarksLocked && report.centerRemarksDate && report.emailSentDate) {
+      const emailDate = parseIndianDate(report.emailSentDate);
+      const remarksDate = parseIndianDate(report.centerRemarksDate);
+      if (emailDate && remarksDate) {
+        const days = countWorkingDaysBetween(emailDate, remarksDate);
+        return { text: `✅ Done in ${days}d`, ...getSpeedStyle(days, 5, 7), sub: report.centerRemarksDate?.split(',')[0] || '' };
+      }
+      return { text: '✅ Remarks Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: report.centerRemarksDate?.split(',')[0] || '' };
+    }
+
+    // Remarks not yet submitted — show countdown
+    if (!report.centerDeadline) return null;
+    const rem = getRemainingWorkingDays(report.centerDeadline);
+    return getCountdownBadge({
+      rem,
+      warnAt: 2,
+      okEmoji: '✅',
+      subLabel: `by ${report.centerDeadlineString || ''}`
+    });
+  };
+  // ========================================
+
+  // ========================================
+  // Edit request 3 working days validity
+  // ========================================
+  const getEditRequestDeadline = (report) => {
+    if (!report.centerHeadRemarksLocked || !report.centerRemarksDate) return null;
+    let remarksDate = null;
+    try {
+      const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
+      if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    } catch(e) {}
+    if (!remarksDate || isNaN(remarksDate)) return null;
+    // Add 3 working days
+    let d = new Date(remarksDate); d.setHours(0,0,0,0);
+    let count = 0;
+    while (count < 3) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
+    return d;
+  };
+
+  const isEditRequestExpired = (report) => {
+    const dl = getEditRequestDeadline(report);
+    if (!dl) return false;
+    const today = new Date(); today.setHours(0,0,0,0);
+    return today > dl;
+  };
+
+  const getEditRequestRemainingDays = (report) => {
+    const dl = getEditRequestDeadline(report);
+    return dl ? getRemainingWorkingDays(dl) : null;
+  };
+  // ========================================
+
+  // Dynamic checkpoint data based on placement applicable AND centerType
+  // MP6, MP7 are DTV-only — not shown for CDC/SDC
+  const getCheckpointData = (placementApplicable, centerType) => {
+    const isPlacementNA = placementApplicable === 'no';
+    const isDTV = (centerType || '').toUpperCase() === 'DTV';
+    const pick = (cond, whenTrue, whenFalse) => cond ? whenTrue : whenFalse;
+
+    return {
+      'Front Office': [
+        { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: pick(isPlacementNA, 10.5, 9) },
+        { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 7, 6) },
+        { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
+        { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: pick(isPlacementNA, 14, 12) },
+        { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: pick(isPlacementNA, 3.5, 3) }
+      ],
+      'Delivery Process': [
+        { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
+        { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+        { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
+        { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
+        { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+        { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
+        { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+        { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
+        { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+        { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+        { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) }
+      ],
+      'Placement Process': pick(isPlacementNA, [], [
+        { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
+        { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
+        { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
+        { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
+      ]),
+      'Management Process': [
+        { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
+        { id: 'MP2', name: 'Log book for Genset & Vehicle (Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 5, 3.00) },
+        { id: 'MP3', name: 'TIRM details register', weightage: 30, maxScore: pick(isPlacementNA, 7.5, 4.50) },
+        { id: 'MP4', name: 'Availability and requirement of Biometric as per MOU', weightage: 25, maxScore: pick(isPlacementNA, 6.25, 3.75) },
+        { id: 'MP5', name: 'Physical asset verification', weightage: 10, maxScore: pick(isPlacementNA, 2.5, 1.50) },
+        ...pick(isDTV, [
+          { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
+          { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) }
+        ], [])
+      ]
+    };
+  };
+
+  // Max scores per area, adjusted when placement is not applicable
+  const getReportScoreMax = (report) => {
+    const isNA = report.placementApplicable === 'no';
+    return {
+      foMax: isNA ? 35 : 30,
+      dpMax: isNA ? 45 : 40,
+      ppMax: 15,
+      mpMax: isNA ? 20 : 15,
+    };
+  };
+
+  // Placement area's status/color, or "NA" when placement isn't applicable
+  const getPlacementAreaData = (report, ppMax) => {
+    if (report.placementApplicable === 'no') return { status: 'NA', color: '#999' };
+    return getAreaScoreInfo(report.placementScore, ppMax);
+  };
+
+  // Center-type chip colors
+  const getCenterTypeBadgeStyle = (centerType) => {
+    if (centerType === 'CDC') return { background: '#e3f2fd', color: '#1976d2' };
+    if (centerType === 'SDC') return { background: '#fff3e0', color: '#e65100' };
+    return { background: '#f1f8e9', color: '#2e7d32' };
+  };
+
+  useEffect(() => {
+    // Check authorization
+    if (!loggedUser || loggedUser.Role !== 'Center User') {
+      alert('Unauthorized!');
+      navigate('/');
+      return;
+    }
+    
+    // IMPORTANT: Check if centerCode exists
+    if (!loggedUser.centerCode) {
+      alert('⚠️ No center code assigned to your account!\n\nPlease contact admin to assign a center code.');
+      navigate('/');
+      return;
+    }
+    
+    console.log('🔍 Center User Login Info:');
+    console.log('   Username:', loggedUser.username);
+    console.log('   Center Code:', loggedUser.centerCode);
+    
+    loadMyReports();
+    loadCenterData();
+  }, []);
+
+
+  const loadCenterData = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/centers`);
+      if (response.ok) {
+        const centers = await response.json();
+        const myCenter = centers.find(c => c.centerCode === loggedUser.centerCode);
+        if (myCenter) {
+          setCenterData(myCenter);
+          console.log('✅ Center data loaded:', myCenter);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error loading center data:', err);
+    }
+  };
+  const loadMyReports = async () => {
+    try {
+      setLoading(true);
+      console.log('\n📊 Loading Reports...');
+      console.log('   User Center Code:', loggedUser.centerCode);
+      
+      const response = await fetch(`${API_URL}/api/audit-reports`);
+      
+      if (response.ok) {
+        const allReports = await response.json();
+        console.log('   Total Reports in DB:', allReports.length);
+        
+        // FIXED: Better filtering with case-insensitive comparison
+        let filtered = allReports;
+        if (loggedUser.centerCode) {
+          const userCenterCode = loggedUser.centerCode.toUpperCase().trim();
+          filtered = allReports.filter(r => {
+            const reportCenterCode = (r.centerCode || '').toUpperCase().trim();
+            const matches = reportCenterCode === userCenterCode;
+            
+            if (matches) {
+              console.log('   ✅ Match found:', r.centerCode, '-', r.centerName);
+            }
+            
+            return matches;
+          });
+        }
+        
+        console.log('   Filtered Reports:', filtered.length);
+        console.log('   Center Codes:', filtered.map(r => r.centerCode).join(', '));
+        
+        if (filtered.length === 0) {
+          console.log('   ⚠️ No reports found for center:', loggedUser.centerCode);
+        }
+        
+        setMyReports(filtered);
+        
+        const requestStatus = {};
+        filtered.forEach(report => {
+          requestStatus[report._id] = {
+            locked: report.centerHeadRemarksLocked || false,
+            requestPending: report.centerHeadEditRequest || false,
+            editedOnce: report.remarksEditedOnce || false  // permanent lock after 2nd submit
+          };
+        });
+        setEditRequestStatus(requestStatus);
+      }
+    } catch (err) {
+      console.error('❌ Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewReport = async (report) => {
+    // ✅ Always fetch fresh data from server — stale local state causes wrong lock display
+    let freshReport = report;
+    try {
+      const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/fresh`);
+      if (res.ok) {
+        freshReport = await res.json();
+        // Also update editRequestStatus with fresh data
+        setEditRequestStatus(prev => ({
+          ...prev,
+          [freshReport._id]: {
+            locked: freshReport.centerHeadRemarksLocked || false,
+            requestPending: freshReport.centerHeadEditRequest || false,
+            editedOnce: freshReport.remarksEditedOnce || false
+          }
+        }));
+      }
+    } catch (e) {
+      console.warn('Fresh fetch failed, using cached report');
+    }
+
+    setSelectedReport(freshReport);
+    
+    // Load remarks from centerHeadCheckpointRemarks object
+    let existingRemarks = freshReport.centerHeadCheckpointRemarks || {};
+    
+    // If object is empty, try loading from individual checkpoint fields (backward compatibility)
+    if (Object.keys(existingRemarks).length === 0) {
+      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
+      checkpointIds.forEach(cpId => {
+        if (freshReport[cpId]?.centerHeadRemarks) {
+          existingRemarks[cpId] = freshReport[cpId].centerHeadRemarks;
+        }
+      });
+    }
+    
+    setCheckpointRemarks(existingRemarks);
+    setShowModal(true);
+  };
+
+  const handleCheckpointRemarkChange = (checkpointId, value) => {
+    setCheckpointRemarks(prev => ({
+      ...prev,
+      [checkpointId]: value
+    }));
+  };
+
+  // Maps a failed edit-request response (status + body) to a user-facing message
+  const getRequestEditFailMessage = (status, errData) => {
+    if (status === 403 && errData.permanentlyLocked) return '🔒 Remarks are permanently locked. No further edits allowed.';
+    if (status === 409 && errData.alreadyPending) return '⏳ Edit request already pending. Please wait for admin approval.';
+    if (status === 400) return 'ℹ️ ' + (errData.error || 'Remarks are not locked. You can edit directly.');
+    return '❌ ' + (errData.error || 'Failed to send edit request.');
+  };
+
+  const handleRequestEdit = async (reportId) => {
+    if (window.confirm('Request edit permission from admin?')) {
+      try {
+        const response = await fetch(`${API_URL}/api/audit-reports/${reportId}/request-edit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ centerUserName: loggedUser.firstname })
+        });
+        
+        if (response.ok) {
+          alert('✅ Edit request sent to admin! You will be notified once approved.');
+          loadMyReports();
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          alert(getRequestEditFailMessage(response.status, errData));
+          loadMyReports();
+        }
+      } catch (err) {
+        alert('❌ Error: ' + err.message);
+      }
+    }
+  };
+
+  // Picks the right message when the server rejects a submit as "locked"
+  const getLockErrorMessage = (errData) => {
+    if (errData.permanentlyLocked) return '🔒 Remarks are permanently locked. No further edits allowed.';
+    if (errData.requestPending) return '⏳ Edit request is pending admin approval. Please wait.';
+    if (errData.placementPending) return '⚠️ Placement Coordinator ne abhi remarks submit nahi kiye.\n\nPehle placement remarks submit hon.';
+    return '🔒 ' + (errData.error || 'Remarks are locked.');
+  };
+
+  const handleSubmitObservations = async () => {
+    if (!selectedReport) return;
+    
+    // Check if permanently locked (edited once already)
+    if (editRequestStatus[selectedReport._id]?.editedOnce) {
+      alert('🔒 Remarks are permanently locked. No further edits allowed.');
+      return;
+    }
+
+    // Check if locked and no edit approval given
+    if (editRequestStatus[selectedReport._id]?.locked && !editRequestStatus[selectedReport._id]?.requestPending) {
+      alert('🔒 Remarks are locked. Please request edit permission from admin.');
+      return;
+    }
+
+    // ✅ PLACEMENT CHECK: Sirf 1st submit pe — agar CH pehle submit kar chuka hai toh edit hai, block mat karo
+    const isEditSubmit = !!selectedReport.centerRemarksDate;
+    if (!isEditSubmit && selectedReport.placementApplicable === 'yes' && !selectedReport.placementRemarksSubmitted) {
+      alert('⚠️ Placement Coordinator ne abhi remarks submit nahi kiye hain.\n\nPlacement remarks submit hone ke baad hi aap submit kar sakte hain.');
+      return;
+    }
+    
+    if (!window.confirm('Submit your observations? This will lock your remarks until admin approves any future edit requests.')) {
+      return;
+    }
+    
+    try {
+      setSaving(true);
+      
+      const response = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/center-remarks`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          centerHeadCheckpointRemarks: checkpointRemarks,
+          centerRemarksBy: loggedUser.firstname,
+          centerRemarksDate: new Date().toLocaleString('en-IN')
+        })
+      });
+      
+      if (response.ok) {
+        // Immediately update local state — prevent any re-render showing submit button
+        setEditRequestStatus(prev => ({
+          ...prev,
+          [selectedReport._id]: {
+            ...prev[selectedReport._id],
+            locked: true,
+            editedOnce: prev[selectedReport._id]?.locked ? true : prev[selectedReport._id]?.editedOnce,
+            requestPending: false
+          }
+        }));
+        alert('✅ Observations submitted successfully!\n\nYour remarks are now locked. Contact admin if you need to make changes.');
+        setShowModal(false);
+        loadMyReports();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          alert(getLockErrorMessage(errData));
+          setShowModal(false);
+          loadMyReports();
+        } else {
+          alert('❌ Failed to submit observations');
+        }
+      }
+    } catch (err) {
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="admin-container">
+        <header className="admin-header">
+          <h1>Center Dashboard - {loggedUser.firstname}</h1>
+          <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+        </header>
+        <div style={{ textAlign: 'center', padding: '100px 20px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
+          <p style={{ fontSize: '18px', color: '#666' }}>Loading your reports...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-container">
+      {/* CSS Animations for deadline countdown */}
+      <style>{`
+        @keyframes pulse-urgent {
+          0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,53,69,0.5); }
+          50%  { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(220,53,69,0); }
+          100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(220,53,69,0); }
+        }
+        @keyframes pulse-ok {
+          0%   { opacity: 1; }
+          50%  { opacity: 0.75; }
+          100% { opacity: 1; }
+        }
+      `}</style>
+      <header className="admin-header">
+        <h1>Center Dashboard - Welcome, {loggedUser.firstname}</h1>
+        <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+      </header>
+
+      <main className="admin-content">
+        {/* Center Details Card */}
+        {centerData ? (
+          <div style={{
+            background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+            padding: '20px',
+            borderRadius: '12px',
+            marginBottom: '25px',
+            border: '2px solid #2196f3',
+            boxShadow: '0 4px 15px rgba(33, 150, 243, 0.2)'
+          }}>
+            <h2 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '20px', fontWeight: 'bold' }}>
+              🏢 Center Information
+            </h2>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+              gap: '12px',
+              fontSize: '14px'
+            }}>
+              <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
+              <div><strong>Center Name:</strong> {centerData.centerName}</div>
+              <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
+              <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
+              <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
+              <div><strong>Area Manager:</strong> {myReports[0]?.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
+              <div><strong>Cluster Manager:</strong> {myReports[0]?.clusterManager || centerData.clusterManager || '-'}</div>
+              <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+              {(myReports[0]?.placementCoordinator || centerData.placementCoordinator) && (
+                <div><strong>Placement Coordinator:</strong> {myReports[0]?.placementCoordinator || centerData.placementCoordinator}</div>
+              )}
+              {(myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
+                <div><strong>Sr. Manager Placement:</strong> {myReports[0]?.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
+              )}
+              {(myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
+                <div><strong>National Head Placement:</strong> {myReports[0]?.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
+              )}
+              <div><strong>Center Type:</strong> <span style={{
+                padding: '2px 8px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                ...getCenterTypeBadgeStyle(centerData.centerType)
+              }}>{centerData.centerType || 'CDC'}</span></div>
+              <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
+              
+              <div><strong>Audited By:</strong> {myReports[0]?.auditedBy || '-'}</div>
+<div><strong>Audit Period:</strong> {myReports[0]?.auditPeriod || '-'}</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '20px', borderRadius: '12px', marginBottom: '25px', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)' }}>
+            <h2 style={{ margin: 0, fontSize: '20px' }}>🏢 Your Center: <strong>{loggedUser.centerCode}</strong></h2>
+            <p style={{ margin: '8px 0 0', fontSize: '14px', opacity: 0.9 }}>
+              Loading center information...
+            </p>
+          </div>
+        )}
+
+        {/* Reports List */}
+        <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ margin: 0, fontSize: '22px', color: '#2c3e50' }}>📊 My Audit Reports ({myReports.length})</h3>
+            <button 
+              onClick={loadMyReports}
+              style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              🔄 Refresh
+            </button>
+          </div>
+
+          {myReports.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: '12px' }}>
+              <div style={{ fontSize: '64px', marginBottom: '20px', opacity: 0.3 }}>📋</div>
+              <h3 style={{ color: '#666', margin: 0 }}>No Audit Reports Found</h3>
+              <p style={{ color: '#999', marginTop: '10px' }}>
+                No reports available for center: <strong>{loggedUser.centerCode}</strong>
+              </p>
+              <p style={{ color: '#999', marginTop: '5px', fontSize: '13px' }}>
+                Reports will appear here once audits are created for your center
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'left', fontSize: '13px', fontWeight: '600' }}>CENTER</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>CODE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT DATE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>FRONT OFFICE</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>DELIVERY</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>PLACEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>MANAGEMENT</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>TOTAL</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>AUDIT<br/>STATUS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600', background: '#e8eaf6' }}>REPORT<br/>STATUS</th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600', background: '#e8f5e9' }}>REMARKS DEADLINE<br/><span style={{fontSize:'10px',fontWeight:'normal'}}>(7 days)</span></th>
+                    <th style={{ padding: '14px 10px', color: 'black', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myReports.map((report, idx) => {
+                    const isLocked = editRequestStatus[report._id]?.locked;
+                    const isRequestPending = editRequestStatus[report._id]?.requestPending;
+
+                    const { foMax, dpMax, ppMax, mpMax } = getReportScoreMax(report);
+
+                    const foData = getAreaScoreInfo(report.frontOfficeScore, foMax);
+                    const dpData = getAreaScoreInfo(report.deliveryProcessScore, dpMax);
+                    const ppData = getPlacementAreaData(report, ppMax);
+                    const mpData = getAreaScoreInfo(report.managementScore, mpMax);
+
+                    const grandStatus = getAuditStatus(report);
+                    const grandColor = getGrandTotalColor(report);
+
+                    return (
+                      <MyReportRow
+                        key={report._id}
+                        report={report}
+                        idx={idx}
+                        isLocked={isLocked}
+                        isRequestPending={isRequestPending}
+                        foData={foData}
+                        dpData={dpData}
+                        ppData={ppData}
+                        mpData={mpData}
+                        grandStatus={grandStatus}
+                        grandColor={grandColor}
+                        getCenterDeadlineBadge={getCenterDeadlineBadge}
+                        getRemainingWorkingDays={getRemainingWorkingDays}
+                        handleViewReport={handleViewReport}
+                        editRequestStatus={editRequestStatus}
+                        isEditRequestExpired={isEditRequestExpired}
+                        getEditRequestRemainingDays={getEditRequestRemainingDays}
+                        handleRequestEdit={handleRequestEdit}
+                      />
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Modal for viewing report - keeping existing modal code */}
+      {showModal && selectedReport && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '15px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '98%', maxWidth: '1600px', height: '95vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ background: '#0d9488', padding: '20px 25px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Audit Report Details</h2>
+                <p style={{ margin: '6px 0 0', fontSize: '14px', opacity: 0.95 }}>
+                  {selectedReport.centerName} ({selectedReport.centerCode}) | Score: {selectedReport.grandTotal}/100
+                </p>
+              </div>
+              <button onClick={() => setShowModal(false)} style={{ background: 'transparent', border: '2px solid white', color: 'white', padding: '10px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                Close
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', background: '#f9fafb' }}>
+              
+              {/* CENTER DETAILS CARD */}
+              {centerData && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                  padding: '15px 20px',
+                  margin: '15px',
+                  borderRadius: '10px',
+                  border: '2px solid #2196f3',
+                  boxShadow: '0 2px 10px rgba(33, 150, 243, 0.15)'
+                }}>
+                  <h3 style={{ margin: '0 0 12px 0', color: '#1976d2', fontSize: '16px', fontWeight: 'bold' }}>
+                    🏢 Center Information
+                  </h3>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                    gap: '10px',
+                    fontSize: '13px'
+                  }}>
+                    <div><strong>Center Code:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{centerData.centerCode}</span></div>
+                    <div><strong>Center Name:</strong> {centerData.centerName}</div>
+                    <div><strong>Project Name:</strong> {centerData.projectName || '-'}</div>
+                    <div><strong>ZM Name:</strong> {centerData.zmName || '-'}</div>
+                    <div><strong>Region Head:</strong> {centerData.regionHeadName || '-'}</div>
+                    <div><strong>Area Manager:</strong> {selectedReport.areaManager || centerData.areaManager || centerData.areaClusterManager || '-'}</div>
+                    <div><strong>Cluster Manager:</strong> {selectedReport.clusterManager || centerData.clusterManager || '-'}</div>
+                    <div><strong>Center Head:</strong> {centerData.centerHeadName || '-'}</div>
+                    {(selectedReport.placementCoordinator || centerData.placementCoordinator) && (
+                      <div><strong>Placement Coordinator:</strong> {selectedReport.placementCoordinator || centerData.placementCoordinator}</div>
+                    )}
+                    {(selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement) && (
+                      <div><strong>Sr. Manager Placement:</strong> {selectedReport.seniorManagerPlacement || centerData.seniorManagerPlacement}</div>
+                    )}
+                    {(selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement) && (
+                      <div><strong>National Head Placement:</strong> {selectedReport.nationalHeadPlacement || centerData.nationalHeadPlacement}</div>
+                    )}
+                    <div><strong>Center Type:</strong> <span style={{
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      ...getCenterTypeBadgeStyle(centerData.centerType)
+                    }}>{centerData.centerType || 'CDC'}</span></div>
+                    <div><strong>Location:</strong> {centerData.location || centerData.geolocation || '-'}</div>
+                  
+                    <div><strong>Audited By:</strong> {selectedReport.auditedBy || centerData.auditedBy || '-'}</div>
+<div><strong>Audit Period:</strong> {selectedReport.auditPeriod || centerData.auditPeriod || '-'}</div>
+                  </div>
+                </div>
+              )}
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                  <tr style={{ background: '#e5e7eb' }}>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '3%' }}>S.NO</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '20%' }}>CHECKPOINT</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>WEIGHTAGE</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>MAX SCORE</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>TOTAL</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '7%' }}>COMPLIANT</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>%</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'center', width: '6%' }}>SCORE</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '15%' }}>REMARKS</th>
+                    <th style={{ padding: '12px 10px', border: '1px solid #9ca3af', textAlign: 'left', width: '25%', background: '#86efac' }}>CENTER HEAD REMARKS</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {Object.entries(getCheckpointData(selectedReport.placementApplicable, selectedReport.centerType)).map(([areaName, checkpoints], areaIdx) => (
+                    <RemarksAreaSection
+                      key={areaIdx}
+                      areaName={areaName}
+                      areaIdx={areaIdx}
+                      checkpoints={checkpoints}
+                      selectedReport={selectedReport}
+                      editRequestStatus={editRequestStatus}
+                      checkpointRemarks={checkpointRemarks}
+                      handleCheckpointRemarkChange={handleCheckpointRemarkChange}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ padding: '20px 25px', background: 'white', borderTop: '2px solid #e5e7eb' }}>
+              <SubmitObservationsFooter
+                selectedReport={selectedReport}
+                editRequestStatus={editRequestStatus}
+                setShowModal={setShowModal}
+                handleRequestEdit={handleRequestEdit}
+                handleSubmitObservations={handleSubmitObservations}
+                saving={saving}
+              />
             </div>
           </div>
         </div>
