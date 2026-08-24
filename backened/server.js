@@ -496,8 +496,8 @@ app.post('/api/forgot-password/verify-otp', async (req, res) => {
   try {
     const { email, otp } = req.body;
     const user = await User.findOne({
-      email: email.toLowerCase(),
-      resetOTP: otp,
+      email: String(email || '').toLowerCase(),
+      resetOTP: String(otp || ''),
       resetOTPExpires: { $gt: new Date() }
     });
 
@@ -1037,7 +1037,7 @@ app.post('/api/save-audit-report', async (req, res) => {
     console.log(`💾 Grand Total: ${data.grandTotal}/100`);
 
     // ✅ STEP 1: FETCH CENTER DATA FIRST (before using it!)
-    const centerData = await Center.findOne({ centerCode: data.centerCode });
+    const centerData = await Center.findOne({ centerCode: String(data.centerCode || '') });
     console.log('🏢 Fetched center data:', {
       found: !!centerData,
       centerType: centerData?.centerType,
@@ -1207,10 +1207,12 @@ ${managementTable}
 
     // ✅ STEP 3: Save to database
     // IMPORTANT: Use $set so center head remarks fields are NOT overwritten
-    const auditPeriod = data.auditPeriod || '';
+    const auditPeriod = String(data.auditPeriod || '');
+    const safeCenterCode = String(data.centerCode || '');
+    const safeFinancialYear = String(data.financialYear || 'FY26');
     const matchQuery = auditPeriod
-      ? { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26', auditPeriod: auditPeriod }
-      : { centerCode: data.centerCode, financialYear: data.financialYear || 'FY26' };
+      ? { centerCode: safeCenterCode, financialYear: safeFinancialYear, auditPeriod: auditPeriod }
+      : { centerCode: safeCenterCode, financialYear: safeFinancialYear };
 
     const report = await AuditReport.findOneAndUpdate(
       matchQuery,
