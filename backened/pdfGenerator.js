@@ -210,9 +210,9 @@ function ensureSpace(doc, currentY, need) {
 // Draws one checkpoint row, returns the updated { y, rowIdx }
 function drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx) {
   const cp     = reportData[cpCfg.id] || {};
-  const score  = parseFloat(cp.score) || 0;
+  const score  = Number.parseFloat(cp.score) || 0;
   const maxSc  = cpCfg.max || 0;
-  const pct    = cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '-';
+  const pct    = cp.compliantPercent != null ? `${Number.parseFloat(cp.compliantPercent).toFixed(0)}%` : '-';
   const rem    = safe(cp.remarks);
   const chrRem = (cp.centerHeadRemarks && cp.centerHeadRemarks.trim()) ? cp.centerHeadRemarks.trim() : '';
 
@@ -262,7 +262,7 @@ function drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx) {
 function drawAreaBlock(doc, area, reportData, y, rowIdx) {
   const isPlacement = area.label === 'Placement Process';
   const na = isPlacement && reportData.placementApplicable === 'no';
-  const aScore = area.keys.reduce((s, k) => s + (parseFloat((reportData[k.id] || {}).score) || 0), 0);
+  const aScore = area.keys.reduce((s, k) => s + (Number.parseFloat((reportData[k.id] || {}).score) || 0), 0);
 
   // Area sub-header
   y = ensureSpace(doc, y, 16);
@@ -303,21 +303,124 @@ function drawAreaBlock(doc, area, reportData, y, rowIdx) {
   return { y, rowIdx };
 }
 
+const HDR_H = 76;
+
+// Finds and loads the NIIT logo, trying each known filename in order
+function loadLogoBuffer() {
+  const LOGO_PATHS = [
+    path.join(__dirname, 'public', 'NIIT Foundation Logo PNG.png'),
+    path.join(__dirname, 'public', 'niit-foundation-logo.png'),
+    path.join(__dirname, 'public', 'logo.png'),
+  ];
+  for (const lp of LOGO_PATHS) {
+    if (fs.existsSync(lp)) {
+      try { return fs.readFileSync(lp); } catch (e) { /* try next path */ }
+    }
+  }
+  return null;
+}
+
+// Compliance label + colors from a 0-100 score
+function getComplianceInfo(grand) {
+  if (grand >= 80) return { status: 'Compliant', textColor: C.greenText, barColor: '#6ee7b7' };
+  if (grand >= 65) return { status: 'Amber', textColor: C.amberText, barColor: '#fcd34d' };
+  return { status: 'Non-Compliant', textColor: C.redText, barColor: '#fca5a5' };
+}
+
+// Draws the top header bar (logo + title + center name)
+function drawHeader(doc, reportData, logoBuffer) {
+  fillRect(doc, 0, 0, PG_W, HDR_H, C.headerBg);
+
+  let logoW = 0;
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, ML, 10, { height: 44, fit: [150, 44] });
+      logoW = 158;
+    } catch (e) { /* fall through with no logo */ }
+  }
+
+  const txtX = ML + logoW;
+  const txtW = TW - logoW;
+  const align = logoW > 0 ? 'left' : 'center';
+
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#c4b5fd')
+    .text('NIIT FOUNDATION', txtX, 12, { width: txtW, align });
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(C.white)
+    .text('Audit Report', txtX, 26, { width: txtW, align });
+  doc.font('Helvetica').fontSize(10).fillColor('#ddd6fe')
+    .text(`${safe(reportData.centerName)} (${safe(reportData.centerCode)})`,
+      txtX, 52, { width: txtW, align });
+}
+
+// Draws the "Center Information" grid (code/name/FY, head/project/ZM, etc.), returns new y
+function drawInfoBox(doc, reportData, y, grand, status, stCol) {
+  const chName = reportData.centerHeadName || reportData.chName || '-';
+  const infoRows = [
+    ['Center Code',   reportData.centerCode,          'Center Name',    reportData.centerName,                              'Financial Year',      reportData.financialYear],
+    ['Center Head',   chName,                         'Project Name',   reportData.projectName,                             'ZM Name',             reportData.zmName],
+    ['Region Head',   reportData.regionHeadName,      'Area Manager',   reportData.areaManager||reportData.areaClusterManager, 'Cluster Manager',  reportData.clusterManager],
+    ['Location',      reportData.location||reportData.geolocation, 'Center Type', reportData.centerType,              'Audited By',          reportData.auditedBy],
+    ['Audit Period',  reportData.auditPeriod,         'Audit Date',     reportData.auditDateString||reportData.auditDate,   'Grand Total/Status',  `${grand.toFixed(2)}/100 — ${status}`],
+  ];
+
+  if (reportData.placementCoordinator || reportData.seniorManagerPlacement || reportData.nationalHeadPlacement) {
+    infoRows.push([
+      'Placement Coord.', reportData.placementCoordinator,
+      'Sr. Mgr Placement', reportData.seniorManagerPlacement,
+      'National Head Placement', reportData.nationalHeadPlacement
+    ]);
+  }
+
+  const ROW_H = 14;
+  const BOX_H = infoRows.length * ROW_H + 8;
+  const COL3  = TW / 3;
+
+  fillRect(doc, ML, y, TW, BOX_H, '#faf5ff');
+  strokeRect(doc, ML, y, TW, BOX_H, C.purpleMid, 0.8);
+
+  infoRows.forEach((row, ri) => {
+    const ry = y + 5 + ri * ROW_H;
+    if (ri > 0) {
+      doc.save().moveTo(ML, ry - 1).lineTo(ML + TW, ry - 1)
+        .strokeColor('#e9d5ff').lineWidth(0.3).stroke().restore();
+    }
+    for (let ci = 0; ci < 3; ci++) {
+      const label = row[ci * 2];
+      const value = row[ci * 2 + 1];
+      const cx = ML + ci * COL3 + 5;
+      const lw = 72, vw = COL3 - lw - 10;
+      const isHL = label === 'Grand Total/Status';
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(C.purpleMid)
+        .text(label + ':', cx, ry, { width: lw, lineBreak: false });
+      doc.font('Helvetica').fontSize(7).fillColor(isHL ? stCol : C.dark)
+        .text(safe(value), cx + lw, ry, { width: vw, lineBreak: false });
+    }
+  });
+
+  return y + BOX_H + 8;
+}
+
+// Draws the footer bar (with page number) on every buffered page
+function drawFooters(doc, reportData) {
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    const fy = PG_H - FOOTER_H;
+    fillRect(doc, 0, fy, PG_W, FOOTER_H, '#f9fafb');
+    doc.save().moveTo(0, fy).lineTo(PG_W, fy)
+      .strokeColor(C.grayBorder).lineWidth(0.4).stroke().restore();
+    doc.font('Helvetica').fontSize(7).fillColor(C.gray)
+      .text(
+        `NIIT Foundation Audit System  |  ${safe(reportData.centerName)} (${safe(reportData.centerCode)})  |  Page ${i + 1} of ${range.count}`,
+        ML, fy + 5, { width: TW, align:'center' }
+      );
+  }
+}
+
 async function generatePDF(reportData) {
   return new Promise(async (resolve, reject) => {
     try {
-      // Load NIIT Foundation logo from local public folder
-      let logoBuffer = null;
-      const LOGO_PATHS = [
-        path.join(__dirname, 'public', 'NIIT Foundation Logo PNG.png'),
-        path.join(__dirname, 'public', 'niit-foundation-logo.png'),
-        path.join(__dirname, 'public', 'logo.png'),
-      ];
-      for (const lp of LOGO_PATHS) {
-        if (fs.existsSync(lp)) {
-          try { logoBuffer = fs.readFileSync(lp); break; } catch(e) {}
-        }
-      }
+      const logoBuffer = loadLogoBuffer();
 
       const doc = new PDFDocument({
         size: 'A4', margins: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -328,84 +431,20 @@ async function generatePDF(reportData) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const grand = parseFloat(reportData.grandTotal) || 0;
-      const status = grand >= 80 ? 'Compliant' : grand >= 65 ? 'Amber' : 'Non-Compliant';
-      const stCol  = grand >= 80 ? C.greenText : grand >= 65 ? C.amberText : C.redText;
+      const grand = Number.parseFloat(reportData.grandTotal) || 0;
+      const { status, textColor: stCol, barColor: grandColor } = getComplianceInfo(grand);
 
       // ══════════════════════════════════════════════
       // HEADER with logo
       // ══════════════════════════════════════════════
-      const HDR_H = 76;
-      fillRect(doc, 0, 0, PG_W, HDR_H, C.headerBg);
-
-      let logoW = 0;
-      if (logoBuffer) {
-        try {
-          doc.image(logoBuffer, ML, 10, { height: 44, fit: [150, 44] });
-          logoW = 158;
-        } catch(e) {}
-      }
-
-      const txtX = ML + logoW;
-      const txtW = TW - logoW;
-
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('#c4b5fd')
-        .text('NIIT FOUNDATION', txtX, 12, { width: txtW, align: logoW > 0 ? 'left' : 'center' });
-      doc.font('Helvetica-Bold').fontSize(20).fillColor(C.white)
-        .text('Audit Report', txtX, 26, { width: txtW, align: logoW > 0 ? 'left' : 'center' });
-      doc.font('Helvetica').fontSize(10).fillColor('#ddd6fe')
-        .text(`${safe(reportData.centerName)} (${safe(reportData.centerCode)})`,
-          txtX, 52, { width: txtW, align: logoW > 0 ? 'left' : 'center' });
+      drawHeader(doc, reportData, logoBuffer);
 
       let y = HDR_H + 6;
 
       // ══════════════════════════════════════════════
       // CENTER INFORMATION BOX
       // ══════════════════════════════════════════════
-      const chName = reportData.centerHeadName || reportData.chName || '-';
-      const infoRows = [
-        ['Center Code',   reportData.centerCode,          'Center Name',    reportData.centerName,                              'Financial Year',      reportData.financialYear],
-        ['Center Head',   chName,                         'Project Name',   reportData.projectName,                             'ZM Name',             reportData.zmName],
-        ['Region Head',   reportData.regionHeadName,      'Area Manager',   reportData.areaManager||reportData.areaClusterManager, 'Cluster Manager',  reportData.clusterManager],
-        ['Location',      reportData.location||reportData.geolocation, 'Center Type', reportData.centerType,              'Audited By',          reportData.auditedBy],
-        ['Audit Period',  reportData.auditPeriod,         'Audit Date',     reportData.auditDateString||reportData.auditDate,   'Grand Total/Status',  `${grand.toFixed(2)}/100 — ${status}`],
-      ];
-
-      if (reportData.placementCoordinator || reportData.seniorManagerPlacement || reportData.nationalHeadPlacement) {
-        infoRows.push([
-          'Placement Coord.', reportData.placementCoordinator,
-          'Sr. Mgr Placement', reportData.seniorManagerPlacement,
-          'National Head Placement', reportData.nationalHeadPlacement
-        ]);
-      }
-
-      const ROW_H = 14;
-      const BOX_H = infoRows.length * ROW_H + 8;
-      const COL3  = TW / 3;
-
-      fillRect(doc, ML, y, TW, BOX_H, '#faf5ff');
-      strokeRect(doc, ML, y, TW, BOX_H, C.purpleMid, 0.8);
-
-      infoRows.forEach((row, ri) => {
-        const ry = y + 5 + ri * ROW_H;
-        if (ri > 0) {
-          doc.save().moveTo(ML, ry - 1).lineTo(ML + TW, ry - 1)
-            .strokeColor('#e9d5ff').lineWidth(0.3).stroke().restore();
-        }
-        for (let ci = 0; ci < 3; ci++) {
-          const label = row[ci * 2];
-          const value = row[ci * 2 + 1];
-          const cx = ML + ci * COL3 + 5;
-          const lw = 72, vw = COL3 - lw - 10;
-          const isHL = label === 'Grand Total/Status';
-          doc.font('Helvetica-Bold').fontSize(7).fillColor(C.purpleMid)
-            .text(label + ':', cx, ry, { width: lw, lineBreak: false });
-          doc.font('Helvetica').fontSize(7).fillColor(isHL ? stCol : C.dark)
-            .text(safe(value), cx + lw, ry, { width: vw, lineBreak: false });
-        }
-      });
-
-      y += BOX_H + 8;
+      y = drawInfoBox(doc, reportData, y, grand, status, stCol);
 
       // ══════════════════════════════════════════════
       // SECTION HEADING
@@ -437,7 +476,6 @@ async function generatePDF(reportData) {
       strokeRect(doc, ML, y, TW, 30, '#312e81', 1);
       doc.font('Helvetica-Bold').fontSize(11).fillColor(C.white)
         .text('GRAND TOTAL', ML + 10, y + 9, { width: TW * 0.38 });
-      const grandColor = grand >= 80 ? '#6ee7b7' : grand >= 65 ? '#fcd34d' : '#fca5a5';
       doc.font('Helvetica-Bold').fontSize(13).fillColor(grandColor)
         .text(`${grand.toFixed(2)} / 100`, ML + TW * 0.38, y + 7, { width: TW * 0.32, align:'center' });
       doc.font('Helvetica-Bold').fontSize(10).fillColor(grandColor)
@@ -446,19 +484,7 @@ async function generatePDF(reportData) {
       // ══════════════════════════════════════════════
       // FOOTER (every page)
       // ══════════════════════════════════════════════
-      const range = doc.bufferedPageRange();
-      for (let i = 0; i < range.count; i++) {
-        doc.switchToPage(i);
-        const fy = PG_H - FOOTER_H;
-        fillRect(doc, 0, fy, PG_W, FOOTER_H, '#f9fafb');
-        doc.save().moveTo(0, fy).lineTo(PG_W, fy)
-          .strokeColor(C.grayBorder).lineWidth(0.4).stroke().restore();
-        doc.font('Helvetica').fontSize(7).fillColor(C.gray)
-          .text(
-            `NIIT Foundation Audit System  |  ${safe(reportData.centerName)} (${safe(reportData.centerCode)})  |  Page ${i + 1} of ${range.count}`,
-            ML, fy + 5, { width: TW, align:'center' }
-          );
-      }
+      drawFooters(doc, reportData);
 
       doc.end();
     } catch (err) {

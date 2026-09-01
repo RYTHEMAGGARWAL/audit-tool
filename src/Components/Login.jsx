@@ -32,6 +32,301 @@ const getPasswordStrength = (password) => {
   return { label: '✅ Very Strong', color: '#2196f3', width: '100%' };
 };
 
+// Live checklist of password policy rules against the given password
+const PasswordPolicyChecklist = ({ password, longLabels = false }) => (
+  <div style={{ marginTop: '10px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
+    {[
+      { check: password.length >= 8, text: 'At least 8 characters' },
+      { check: /[A-Z]/.test(password), text: longLabels ? 'Uppercase letter (A-Z)' : 'Uppercase letter' },
+      { check: /[a-z]/.test(password), text: longLabels ? 'Lowercase letter (a-z)' : 'Lowercase letter' },
+      { check: /[0-9]/.test(password), text: longLabels ? 'Number (0-9)' : 'Number' },
+      { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password), text: longLabels ? 'Special character (@$!%*?& etc)' : 'Special character' },
+    ].map((item, i) => (
+      <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>
+        {item.check ? '✅' : '❌'} {item.text}
+      </div>
+    ))}
+  </div>
+);
+
+// Full-screen "set a new password" flow (first login or expired password)
+const ForceChangePasswordScreen = ({
+  forceReason, forceCurrentPwd, setForceCurrentPwd, forceNewPwd, setForceNewPwd,
+  forceConfirmPwd, setForceConfirmPwd, showForceCurrent, setShowForceCurrent,
+  showForceNew, setShowForceNew, showForceConfirm, setShowForceConfirm,
+  forceError, forceMessage, forceLoading, handleForceChangePassword
+}) => {
+  const strength = getPasswordStrength(forceNewPwd);
+  const policyErrors = forceNewPwd ? validatePassword(forceNewPwd) : [];
+
+  const isExpired = forceReason === 'expired';
+  const banner = isExpired
+    ? { title: '⏰ Password Expired', bg: '#fff3cd', border: '#ff9800', textColor: '#856404', message: '⚠️ Your password has expired (30 days). Please set a new password to continue.' }
+    : { title: '🔐 Set New Password', bg: '#e3f2fd', border: '#2196f3', textColor: '#1565c0', message: '👋 Welcome! For security, please set a new password before continuing.' };
+
+  // null = confirm field empty, true = matches, false = doesn't match
+  const confirmMatch = forceConfirmPwd ? (forceConfirmPwd === forceNewPwd) : null;
+  let confirmBorderColor;
+  if (confirmMatch === true) confirmBorderColor = '#4caf50';
+  else if (confirmMatch === false) confirmBorderColor = '#f44336';
+
+  return (
+    <div className="login-container">
+      <div className="login-box">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
+          <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '55px', objectFit: 'contain', marginBottom: '10px' }} />
+          <h2 style={{ marginBottom: 0 }}>
+            {banner.title}
+          </h2>
+        </div>
+
+        <div style={{ background: banner.bg, padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', borderLeft: `4px solid ${banner.border}` }}>
+          <p style={{ color: banner.textColor, fontSize: '14px', textAlign: 'center', margin: 0 }}>
+            {banner.message}
+          </p>
+        </div>
+
+        <form onSubmit={handleForceChangePassword}>
+          <div className="input-group">
+            <label>🔑 Current Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showForceCurrent ? 'text' : 'password'}
+                value={forceCurrentPwd}
+                onChange={(e) => setForceCurrentPwd(e.target.value)}
+                placeholder="Enter current password"
+                required
+                style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
+              />
+              <span onClick={() => setShowForceCurrent(!showForceCurrent)}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
+                {showForceCurrent ? '🙈' : '👁️'}
+              </span>
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label>🔐 New Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showForceNew ? 'text' : 'password'}
+                value={forceNewPwd}
+                onChange={(e) => setForceNewPwd(e.target.value)}
+                placeholder="Enter new password"
+                required
+                style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
+              />
+              <span onClick={() => setShowForceNew(!showForceNew)}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
+                {showForceNew ? '🙈' : '👁️'}
+              </span>
+            </div>
+
+            {/* Password Strength Bar */}
+            {forceNewPwd && (
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ height: '6px', background: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: strength.width, background: strength.color, transition: 'all 0.3s ease', borderRadius: '3px' }} />
+                </div>
+                <div style={{ fontSize: '12px', color: strength.color, marginTop: '4px', fontWeight: '600' }}>{strength.label}</div>
+              </div>
+            )}
+
+            {/* Policy Checklist */}
+            {forceNewPwd && <PasswordPolicyChecklist password={forceNewPwd} longLabels={true} />}
+          </div>
+
+          <div className="input-group">
+            <label>✅ Confirm New Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showForceConfirm ? 'text' : 'password'}
+                value={forceConfirmPwd}
+                onChange={(e) => setForceConfirmPwd(e.target.value)}
+                placeholder="Confirm new password"
+                required
+                style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box',
+                  borderColor: confirmBorderColor }}
+              />
+              <span onClick={() => setShowForceConfirm(!showForceConfirm)}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
+                {showForceConfirm ? '🙈' : '👁️'}
+              </span>
+            </div>
+            {confirmMatch === false && (
+              <div style={{ fontSize: '12px', color: '#f44336', marginTop: '4px' }}>❌ Passwords do not match</div>
+            )}
+            {confirmMatch === true && (
+              <div style={{ fontSize: '12px', color: '#4caf50', marginTop: '4px' }}>✅ Passwords match</div>
+            )}
+          </div>
+
+          {forceError && <p className="error-message">{forceError}</p>}
+          {forceMessage && <p className="success-message">{forceMessage}</p>}
+
+          <button type="submit" className="login-btn" disabled={forceLoading || policyErrors.length > 0}>
+            {forceLoading ? '⏳ Changing...' : '🔐 Set New Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Simple username/password login form
+const LoginForm = ({ username, setUsername, password, setPassword, showPassword, setShowPassword, error, handleLogin, setShowForgotPassword }) => (
+  <>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
+      <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '70px', objectFit: 'contain', marginBottom: '12px' }} />
+      <h2 style={{ marginBottom: 0 }}>Audit Management System</h2>
+    </div>
+    <p className="subtitle">Login to continue</p>
+
+    <form onSubmit={handleLogin}>
+      <div className="input-group">
+        <label>Username</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Enter username"
+          required
+        />
+      </div>
+
+      <div className="input-group">
+        <label>Password</label>
+        <div style={{ position: 'relative' }}>
+          <input
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter password"
+            required
+            style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
+          />
+          <span
+            onClick={() => setShowPassword(!showPassword)}
+            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', userSelect: 'none', color: '#666' }}
+          >
+            {showPassword ? '🙈' : '👁️'}
+          </span>
+        </div>
+      </div>
+
+      {error && <p className="error-message">{error}</p>}
+
+      <button type="submit" className="login-btn">
+        Login
+      </button>
+    </form>
+
+    <p className="forgot-link" onClick={() => setShowForgotPassword(true)}>
+      Forgot Password?
+    </p>
+  </>
+);
+
+// 3-step forgot-password flow: send OTP → verify OTP → set new password
+const ForgotPasswordFlow = ({
+  forgotStep, forgotEmail, setForgotEmail, otp, setOtp,
+  newPassword, setNewPassword, confirmPassword, setConfirmPassword,
+  forgotError, forgotMessage, forgotLoading,
+  showNewPassword, setShowNewPassword, showConfirmPassword, setShowConfirmPassword,
+  handleSendOTP, handleVerifyOTP, handleResetPassword, resetForgotPassword
+}) => (
+  <>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
+      <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '55px', objectFit: 'contain', marginBottom: '10px' }} />
+      <h2 style={{ marginBottom: 0 }}>Reset Password</h2>
+    </div>
+
+    {forgotStep === 1 && (
+      <form onSubmit={handleSendOTP}>
+        <p className="subtitle">Enter your email to receive OTP</p>
+        <div className="input-group">
+          <label>Email</label>
+          <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="Enter your email" required />
+        </div>
+        {forgotError && <p className="error-message">{forgotError}</p>}
+        {forgotMessage && <p className="success-message">{forgotMessage}</p>}
+        <button type="submit" className="login-btn" disabled={forgotLoading}>
+          {forgotLoading ? 'Sending...' : 'Send OTP'}
+        </button>
+      </form>
+    )}
+
+    {forgotStep === 2 && (
+      <form onSubmit={handleVerifyOTP}>
+        <p className="subtitle">Enter the OTP sent to {forgotEmail}</p>
+        <div className="input-group">
+          <label>OTP</label>
+          <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 6-digit OTP" maxLength={6} className="otp-input" required />
+        </div>
+        {forgotError && <p className="error-message">{forgotError}</p>}
+        {forgotMessage && <p className="success-message">{forgotMessage}</p>}
+        <button type="submit" className="login-btn" disabled={forgotLoading}>
+          {forgotLoading ? 'Verifying...' : 'Verify OTP'}
+        </button>
+      </form>
+    )}
+
+    {forgotStep === 3 && (
+      <form onSubmit={handleResetPassword}>
+        <p className="subtitle">Enter your new password</p>
+
+        <div className="input-group">
+          <label>New Password</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showNewPassword ? 'text' : 'password'}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password"
+              required
+              style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
+            />
+            <span onClick={() => setShowNewPassword(!showNewPassword)}
+              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
+              {showNewPassword ? '🙈' : '👁️'}
+            </span>
+          </div>
+
+          {/* Policy Checklist */}
+          {newPassword && <PasswordPolicyChecklist password={newPassword} />}
+        </div>
+
+        <div className="input-group">
+          <label>Confirm Password</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showConfirmPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              required
+              style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
+            />
+            <span onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
+              {showConfirmPassword ? '🙈' : '👁️'}
+            </span>
+          </div>
+        </div>
+
+        {forgotError && <p className="error-message">{forgotError}</p>}
+        {forgotMessage && <p className="success-message">{forgotMessage}</p>}
+
+        <button type="submit" className="login-btn" disabled={forgotLoading || validatePassword(newPassword).length > 0}>
+          {forgotLoading ? 'Resetting...' : 'Reset Password'}
+        </button>
+      </form>
+    )}
+
+    <p className="forgot-link" onClick={resetForgotPassword}>← Back to Login</p>
+  </>
+);
+
 const Login = () => {
   const navigate = useNavigate();
   const { setUsers, users } = useUsers();
@@ -314,125 +609,18 @@ const Login = () => {
 
   // ── FORCE PASSWORD CHANGE SCREEN ──
   if (showForceChange) {
-    const strength = getPasswordStrength(forceNewPwd);
-    const policyErrors = forceNewPwd ? validatePassword(forceNewPwd) : [];
-
     return (
-      <div className="login-container">
-        <div className="login-box">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
-            <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '55px', objectFit: 'contain', marginBottom: '10px' }} />
-            <h2 style={{ marginBottom: 0 }}>
-              {forceReason === 'expired' ? '⏰ Password Expired' : '🔐 Set New Password'}
-            </h2>
-          </div>
-
-          <div style={{ background: forceReason === 'expired' ? '#fff3cd' : '#e3f2fd', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', borderLeft: `4px solid ${forceReason === 'expired' ? '#ff9800' : '#2196f3'}` }}>
-            <p style={{ color: forceReason === 'expired' ? '#856404' : '#1565c0', fontSize: '14px', textAlign: 'center', margin: 0 }}>
-              {forceReason === 'expired'
-                ? '⚠️ Your password has expired (30 days). Please set a new password to continue.'
-                : '👋 Welcome! For security, please set a new password before continuing.'}
-            </p>
-          </div>
-
-          <form onSubmit={handleForceChangePassword}>
-            <div className="input-group">
-              <label>🔑 Current Password</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showForceCurrent ? 'text' : 'password'}
-                  value={forceCurrentPwd}
-                  onChange={(e) => setForceCurrentPwd(e.target.value)}
-                  placeholder="Enter current password"
-                  required
-                  style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
-                />
-                <span onClick={() => setShowForceCurrent(!showForceCurrent)}
-                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                  {showForceCurrent ? '🙈' : '👁️'}
-                </span>
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label>🔐 New Password</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showForceNew ? 'text' : 'password'}
-                  value={forceNewPwd}
-                  onChange={(e) => setForceNewPwd(e.target.value)}
-                  placeholder="Enter new password"
-                  required
-                  style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
-                />
-                <span onClick={() => setShowForceNew(!showForceNew)}
-                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                  {showForceNew ? '🙈' : '👁️'}
-                </span>
-              </div>
-
-              {/* Password Strength Bar */}
-              {forceNewPwd && (
-                <div style={{ marginTop: '8px' }}>
-                  <div style={{ height: '6px', background: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: strength.width, background: strength.color, transition: 'all 0.3s ease', borderRadius: '3px' }} />
-                  </div>
-                  <div style={{ fontSize: '12px', color: strength.color, marginTop: '4px', fontWeight: '600' }}>{strength.label}</div>
-                </div>
-              )}
-
-              {/* Policy Checklist */}
-              {forceNewPwd && (
-                <div style={{ marginTop: '10px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
-                  {[
-                    { check: forceNewPwd.length >= 8, text: 'At least 8 characters' },
-                    { check: /[A-Z]/.test(forceNewPwd), text: 'Uppercase letter (A-Z)' },
-                    { check: /[a-z]/.test(forceNewPwd), text: 'Lowercase letter (a-z)' },
-                    { check: /[0-9]/.test(forceNewPwd), text: 'Number (0-9)' },
-                    { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(forceNewPwd), text: 'Special character (@$!%*?& etc)' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>
-                      {item.check ? '✅' : '❌'} {item.text}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="input-group">
-              <label>✅ Confirm New Password</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showForceConfirm ? 'text' : 'password'}
-                  value={forceConfirmPwd}
-                  onChange={(e) => setForceConfirmPwd(e.target.value)}
-                  placeholder="Confirm new password"
-                  required
-                  style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box',
-                    borderColor: forceConfirmPwd ? (forceConfirmPwd === forceNewPwd ? '#4caf50' : '#f44336') : undefined }}
-                />
-                <span onClick={() => setShowForceConfirm(!showForceConfirm)}
-                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                  {showForceConfirm ? '🙈' : '👁️'}
-                </span>
-              </div>
-              {forceConfirmPwd && forceConfirmPwd !== forceNewPwd && (
-                <div style={{ fontSize: '12px', color: '#f44336', marginTop: '4px' }}>❌ Passwords do not match</div>
-              )}
-              {forceConfirmPwd && forceConfirmPwd === forceNewPwd && (
-                <div style={{ fontSize: '12px', color: '#4caf50', marginTop: '4px' }}>✅ Passwords match</div>
-              )}
-            </div>
-
-            {forceError && <p className="error-message">{forceError}</p>}
-            {forceMessage && <p className="success-message">{forceMessage}</p>}
-
-            <button type="submit" className="login-btn" disabled={forceLoading || policyErrors.length > 0}>
-              {forceLoading ? '⏳ Changing...' : '🔐 Set New Password'}
-            </button>
-          </form>
-        </div>
-      </div>
+      <ForceChangePasswordScreen
+        forceReason={forceReason}
+        forceCurrentPwd={forceCurrentPwd} setForceCurrentPwd={setForceCurrentPwd}
+        forceNewPwd={forceNewPwd} setForceNewPwd={setForceNewPwd}
+        forceConfirmPwd={forceConfirmPwd} setForceConfirmPwd={setForceConfirmPwd}
+        showForceCurrent={showForceCurrent} setShowForceCurrent={setShowForceCurrent}
+        showForceNew={showForceNew} setShowForceNew={setShowForceNew}
+        showForceConfirm={showForceConfirm} setShowForceConfirm={setShowForceConfirm}
+        forceError={forceError} forceMessage={forceMessage} forceLoading={forceLoading}
+        handleForceChangePassword={handleForceChangePassword}
+      />
     );
   }
 
@@ -440,161 +628,25 @@ const Login = () => {
     <div className="login-container">
       <div className="login-box">
         {!showForgotPassword ? (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
-              <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '70px', objectFit: 'contain', marginBottom: '12px' }} />
-              <h2 style={{ marginBottom: 0 }}>Audit Management System</h2>
-            </div>
-            <p className="subtitle">Login to continue</p>
-            
-            <form onSubmit={handleLogin}>
-              <div className="input-group">
-                <label>Username</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
-                  required
-                />
-              </div>
-              
-              <div className="input-group">
-                <label>Password</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter password"
-                    required
-                    style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
-                  />
-                  <span
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', userSelect: 'none', color: '#666' }}
-                  >
-                    {showPassword ? '🙈' : '👁️'}
-                  </span>
-                </div>
-              </div>
-              
-              {error && <p className="error-message">{error}</p>}
-              
-              <button type="submit" className="login-btn">
-                Login
-              </button>
-            </form>
-            
-            <p className="forgot-link" onClick={() => setShowForgotPassword(true)}>
-              Forgot Password?
-            </p>
-          </>
+          <LoginForm
+            username={username} setUsername={setUsername}
+            password={password} setPassword={setPassword}
+            showPassword={showPassword} setShowPassword={setShowPassword}
+            error={error} handleLogin={handleLogin}
+            setShowForgotPassword={setShowForgotPassword}
+          />
         ) : (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '10px' }}>
-              <img src="/NIIT Foundation Logo PNG.png" alt="NIIT Foundation" style={{ height: '55px', objectFit: 'contain', marginBottom: '10px' }} />
-              <h2 style={{ marginBottom: 0 }}>Reset Password</h2>
-            </div>
-            
-            {forgotStep === 1 && (
-              <form onSubmit={handleSendOTP}>
-                <p className="subtitle">Enter your email to receive OTP</p>
-                <div className="input-group">
-                  <label>Email</label>
-                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="Enter your email" required />
-                </div>
-                {forgotError && <p className="error-message">{forgotError}</p>}
-                {forgotMessage && <p className="success-message">{forgotMessage}</p>}
-                <button type="submit" className="login-btn" disabled={forgotLoading}>
-                  {forgotLoading ? 'Sending...' : 'Send OTP'}
-                </button>
-              </form>
-            )}
-
-            {forgotStep === 2 && (
-              <form onSubmit={handleVerifyOTP}>
-                <p className="subtitle">Enter the OTP sent to {forgotEmail}</p>
-                <div className="input-group">
-                  <label>OTP</label>
-                  <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 6-digit OTP" maxLength={6} className="otp-input" required />
-                </div>
-                {forgotError && <p className="error-message">{forgotError}</p>}
-                {forgotMessage && <p className="success-message">{forgotMessage}</p>}
-                <button type="submit" className="login-btn" disabled={forgotLoading}>
-                  {forgotLoading ? 'Verifying...' : 'Verify OTP'}
-                </button>
-              </form>
-            )}
-
-            {forgotStep === 3 && (
-              <form onSubmit={handleResetPassword}>
-                <p className="subtitle">Enter your new password</p>
-                
-                <div className="input-group">
-                  <label>New Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type={showNewPassword ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                      required
-                      style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
-                    />
-                    <span onClick={() => setShowNewPassword(!showNewPassword)}
-                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                      {showNewPassword ? '🙈' : '👁️'}
-                    </span>
-                  </div>
-
-                  {/* Policy Checklist */}
-                  {newPassword && (
-                    <div style={{ marginTop: '10px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
-                      {[
-                        { check: newPassword.length >= 8, text: 'At least 8 characters' },
-                        { check: /[A-Z]/.test(newPassword), text: 'Uppercase letter' },
-                        { check: /[a-z]/.test(newPassword), text: 'Lowercase letter' },
-                        { check: /[0-9]/.test(newPassword), text: 'Number' },
-                        { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(newPassword), text: 'Special character' },
-                      ].map((item, i) => (
-                        <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>
-                          {item.check ? '✅' : '❌'} {item.text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="input-group">
-                  <label>Confirm Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
-                      required
-                      style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
-                    />
-                    <span onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                      {showConfirmPassword ? '🙈' : '👁️'}
-                    </span>
-                  </div>
-                </div>
-                
-                {forgotError && <p className="error-message">{forgotError}</p>}
-                {forgotMessage && <p className="success-message">{forgotMessage}</p>}
-                
-                <button type="submit" className="login-btn" disabled={forgotLoading || validatePassword(newPassword).length > 0}>
-                  {forgotLoading ? 'Resetting...' : 'Reset Password'}
-                </button>
-              </form>
-            )}
-            
-            <p className="forgot-link" onClick={resetForgotPassword}>← Back to Login</p>
-          </>
+          <ForgotPasswordFlow
+            forgotStep={forgotStep} forgotEmail={forgotEmail} setForgotEmail={setForgotEmail}
+            otp={otp} setOtp={setOtp}
+            newPassword={newPassword} setNewPassword={setNewPassword}
+            confirmPassword={confirmPassword} setConfirmPassword={setConfirmPassword}
+            forgotError={forgotError} forgotMessage={forgotMessage} forgotLoading={forgotLoading}
+            showNewPassword={showNewPassword} setShowNewPassword={setShowNewPassword}
+            showConfirmPassword={showConfirmPassword} setShowConfirmPassword={setShowConfirmPassword}
+            handleSendOTP={handleSendOTP} handleVerifyOTP={handleVerifyOTP}
+            handleResetPassword={handleResetPassword} resetForgotPassword={resetForgotPassword}
+          />
         )}
       </div>
     </div>

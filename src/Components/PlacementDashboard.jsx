@@ -468,7 +468,7 @@ const PlacementDashboard = () => {
     if (!selectedReport) return;
     setSaving(true);
     try {
-      const fullName = `${loggedUser.firstname} ${loggedUser.lastname}`.trim();
+      const fullName = `${String(loggedUser.firstname || '')} ${String(loggedUser.lastname || '')}`.trim();
       const res = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/placement-remarks`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -505,7 +505,7 @@ const PlacementDashboard = () => {
     if (!selectedReport) return;
     if (!window.confirm('Request edit permission from admin?')) return;
     try {
-      const fullName = `${loggedUser.firstname} ${loggedUser.lastname}`.trim();
+      const fullName = `${String(loggedUser.firstname || '')} ${String(loggedUser.lastname || '')}`.trim();
       const res = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/request-placement-edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

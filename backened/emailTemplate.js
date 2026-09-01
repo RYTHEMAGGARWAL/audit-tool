@@ -15,11 +15,11 @@ const getStatusText = (score, maxScore) => {
 };
 
 const generateSummaryTableHTML = (reportData) => {
-  const fo = parseFloat(reportData.frontOfficeScore) || 0;
-  const dp = parseFloat(reportData.deliveryProcessScore) || 0;
-  const pp = parseFloat(reportData.placementScore) || 0;
-  const mp = parseFloat(reportData.managementScore) || 0;
-  const gt = parseFloat(reportData.grandTotal) || 0;
+  const fo = Number.parseFloat(reportData.frontOfficeScore) || 0;
+  const dp = Number.parseFloat(reportData.deliveryProcessScore) || 0;
+  const pp = Number.parseFloat(reportData.placementScore) || 0;
+  const mp = Number.parseFloat(reportData.managementScore) || 0;
+  const gt = Number.parseFloat(reportData.grandTotal) || 0;
   const isPlacementNA = reportData.placementApplicable === 'no';
 
   // ✅ CH Name: centerHeadName fallback to chName
@@ -147,7 +147,7 @@ const generateEmailHTML = (reportData, customMessage = '') => {
 };
 
 const generateEmailSubject = (reportData) => {
-  const gt = parseFloat(reportData.grandTotal) || 0;
+  const gt = Number.parseFloat(reportData.grandTotal) || 0;
   const status = gt >= 80 ? 'Compliant' : gt >= 65 ? 'Amber' : 'Non-Compliant';
   return `Audit Report - ${reportData.centerName} - Score: ${gt.toFixed(2)}/100 - ${status}`;
 };
@@ -157,7 +157,7 @@ const generatePDFHTML = () => ''; // unused, pdfGenerator.js handles PDF
 // Email for Placement Coordinator - same template, PP focused note
 const generatePlacementEmailHTML = (reportData, credentialsMsg = '') => {
   const summaryTable = generateSummaryTableHTML(reportData);
-  const pp = parseFloat(reportData.placementScore) || 0;
+  const pp = Number.parseFloat(reportData.placementScore) || 0;
   const ppStatus = getStatusText(pp, 15);
   const ppColor = getStatusColor(pp, 15);
   const loginUrl = 'https://audit-tool-liard.vercel.app';
