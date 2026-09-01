@@ -122,11 +122,13 @@ const Login = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Save token
-        if (data.token) {
+        // Save token (only if it's actually a non-empty string)
+        if (typeof data.token === 'string' && data.token) {
           localStorage.setItem('authToken', data.token);
         }
-        localStorage.setItem('loggedUser', JSON.stringify(data.user));
+        // Only persist a well-formed user object, never anything else the server might send
+        const safeUser = (data.user && typeof data.user === 'object' && !Array.isArray(data.user)) ? data.user : {};
+        localStorage.setItem('loggedUser', JSON.stringify(safeUser));
 
         // ── CHECK: Force password change required? ──
         if (data.forcePasswordChange || data.passwordExpired) {

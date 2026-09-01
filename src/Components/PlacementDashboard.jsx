@@ -423,8 +423,10 @@ const PlacementDashboard = () => {
   const loadReports = async () => {
     setLoading(true);
     try {
-      const fullName = `${loggedUser.firstname} ${loggedUser.lastname}`.trim();
-      const res = await fetch(`${API_URL}/api/hierarchy-reports?role=Placement Coordinator&name=${encodeURIComponent(fullName)}&firstname=${encodeURIComponent(loggedUser.firstname || '')}`);
+      const safeFirstname = String(loggedUser.firstname || '');
+      const safeLastname = String(loggedUser.lastname || '');
+      const fullName = `${safeFirstname} ${safeLastname}`.trim();
+      const res = await fetch(`${API_URL}/api/hierarchy-reports?role=Placement Coordinator&name=${encodeURIComponent(fullName)}&firstname=${encodeURIComponent(safeFirstname)}`);
       if (res.ok) {
         const data = await res.json();
         setReports(data.filter(r => r.placementApplicable !== 'no'));
