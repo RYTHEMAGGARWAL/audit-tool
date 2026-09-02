@@ -1,6 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
+// Compliance status text/badge colors
+const getComplianceColors = (status) => {
+  if (status === 'Compliant') return { color: '#2e7d32', bg: '#e8f5e9' };
+  if (status === 'Amber') return { color: '#e65100', bg: '#fff3e0' };
+  return { color: '#c62828', bg: '#fce4ec' };
+};
+
+// Center-type badge colors
+const getCenterTypeBadgeColors = (centerType) => {
+  if (centerType === 'CDC') return { bg: '#e3f2fd', color: '#1565c0' };
+  if (centerType === 'SDC') return { bg: '#f3e5f5', color: '#6a1b9a' };
+  return { bg: '#e8f5e9', color: '#2e7d32' };
+};
+
+// Report workflow-status badge colors
+const getReportStatusColors = (currentStatus) => {
+  if (currentStatus === 'Approved') return { bg: '#e8f5e9', color: '#2e7d32' };
+  if (currentStatus === 'Closed') return { bg: '#ede7f6', color: '#4527a0' };
+  return { bg: '#fff3e0', color: '#e65100' };
+};
+
+// One row of the recent-reports table
+const ReportTableRow = ({ r, i, getStatus }) => {
+  const status = getStatus(r);
+  const statusColors = getComplianceColors(status);
+  const typeColors = getCenterTypeBadgeColors(r.centerType);
+  const reportStatusColors = getReportStatusColors(r.currentStatus);
+
+  return (
+    <tr style={{ background: i % 2 === 0 ? '#fff' : '#f8f9ff', borderBottom: '1px solid #f0f0f0' }}>
+      <td style={{ padding: '11px 14px', fontWeight: 700, color: '#3949ab' }}>{r.centerCode || '-'}</td>
+      <td style={{ padding: '11px 14px' }}>{r.centerName || '-'}</td>
+      <td style={{ padding: '11px 14px' }}>
+        <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: typeColors.bg, color: typeColors.color }}>
+          {r.centerType || '-'}
+        </span>
+      </td>
+      <td style={{ padding: '11px 14px', color: '#555' }}>{r.auditPeriod || '-'}</td>
+      <td style={{ padding: '11px 14px', fontWeight: 800, color: '#1a237e' }}>{r.grandTotal != null ? Number(r.grandTotal).toFixed(1) : '-'}</td>
+      <td style={{ padding: '11px 14px' }}>
+        <span style={{ padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, background: statusColors.bg, color: statusColors.color, border: `1px solid ${statusColors.color}40` }}>{status}</span>
+      </td>
+      <td style={{ padding: '11px 14px' }}>
+        <span style={{ padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, background: reportStatusColors.bg, color: reportStatusColors.color }}>
+          {r.currentStatus || 'Not Submitted'}
+        </span>
+      </td>
+    </tr>
+  );
+};
+
 const AuditUserDashboard = () => {
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
   const auditorName = `${loggedUser.firstname || ''} ${loggedUser.lastname || ''}`.trim();
@@ -219,36 +270,9 @@ const AuditUserDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {reports.slice().reverse().slice(0, 15).map((r, i) => {
-                  const status = getStatus(r);
-                  const statusColor = status==='Compliant' ? '#2e7d32' : status==='Amber' ? '#e65100' : '#c62828';
-                  const statusBg    = status==='Compliant' ? '#e8f5e9' : status==='Amber' ? '#fff3e0' : '#fce4ec';
-                  return (
-                    <tr key={r._id||i} style={{ background: i%2===0 ? '#fff' : '#f8f9ff', borderBottom:'1px solid #f0f0f0' }}>
-                      <td style={{ padding:'11px 14px', fontWeight:700, color:'#3949ab' }}>{r.centerCode||'-'}</td>
-                      <td style={{ padding:'11px 14px' }}>{r.centerName||'-'}</td>
-                      <td style={{ padding:'11px 14px' }}>
-                        <span style={{ padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700,
-                          background: r.centerType==='CDC'?'#e3f2fd':r.centerType==='SDC'?'#f3e5f5':'#e8f5e9',
-                          color: r.centerType==='CDC'?'#1565c0':r.centerType==='SDC'?'#6a1b9a':'#2e7d32' }}>
-                          {r.centerType||'-'}
-                        </span>
-                      </td>
-                      <td style={{ padding:'11px 14px', color:'#555' }}>{r.auditPeriod||'-'}</td>
-                      <td style={{ padding:'11px 14px', fontWeight:800, color:'#1a237e' }}>{r.grandTotal!=null ? Number(r.grandTotal).toFixed(1) : '-'}</td>
-                      <td style={{ padding:'11px 14px' }}>
-                        <span style={{ padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:700, background:statusBg, color:statusColor, border:`1px solid ${statusColor}40` }}>{status}</span>
-                      </td>
-                      <td style={{ padding:'11px 14px' }}>
-                        <span style={{ padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:700,
-                          background: r.currentStatus==='Approved'?'#e8f5e9':r.currentStatus==='Closed'?'#ede7f6':'#fff3e0',
-                          color: r.currentStatus==='Approved'?'#2e7d32':r.currentStatus==='Closed'?'#4527a0':'#e65100' }}>
-                          {r.currentStatus||'Not Submitted'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {reports.slice().reverse().slice(0, 15).map((r, i) => (
+                  <ReportTableRow key={r._id || i} r={r} i={i} getStatus={getStatus} />
+                ))}
               </tbody>
             </table>
             {reports.length > 15 && (

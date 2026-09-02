@@ -397,6 +397,18 @@ const ActionButtonsArea = ({ chSubmitted, editedOnce, locked, requestPending, re
 };
 
 const PlacementDashboard = () => {
+  // ========================================
+  // VALIDATION (required before using any
+  // server-sourced data to construct a URL)
+  // ========================================
+  // MongoDB ObjectIds are exactly 24 hex characters — anything else is rejected
+  // before it can be interpolated into a request path.
+  const isValidObjectId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
+
+  // Restrict a name used in a query string to letters, spaces, apostrophes,
+  // hyphens and dots — strips anything else before it's encoded/sent.
+  const sanitizeNameForUrl = (name) => String(name || '').replace(/[^\p{L}\s'.-]/gu, '').trim();
+
   const navigate = useNavigate();
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
   const [reports, setReports] = useState([]);
@@ -423,8 +435,8 @@ const PlacementDashboard = () => {
   const loadReports = async () => {
     setLoading(true);
     try {
-      const safeFirstname = String(loggedUser.firstname || '');
-      const safeLastname = String(loggedUser.lastname || '');
+      const safeFirstname = sanitizeNameForUrl(loggedUser.firstname);
+      const safeLastname = sanitizeNameForUrl(loggedUser.lastname);
       const fullName = `${safeFirstname} ${safeLastname}`.trim();
       const res = await fetch(`${API_URL}/api/hierarchy-reports?role=Placement Coordinator&name=${encodeURIComponent(fullName)}&firstname=${encodeURIComponent(safeFirstname)}`);
       if (res.ok) {
@@ -438,6 +450,10 @@ const PlacementDashboard = () => {
   const handleViewReport = async (report) => {
     setSelectedReport(report);
     setSubmitted(false); setLocked(false); setEditedOnce(false); setCenterHeadLocked(false); setChSubmitted(false);
+    if (!isValidObjectId(report?._id)) {
+      setPpRemarks({});
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/placement-status`);
       if (res.ok) {
@@ -466,9 +482,13 @@ const PlacementDashboard = () => {
 
   const handleSave = async () => {
     if (!selectedReport) return;
+    if (!isValidObjectId(selectedReport._id)) {
+      showMsg('❌ Invalid report reference', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      const fullName = `${String(loggedUser.firstname || '')} ${String(loggedUser.lastname || '')}`.trim();
+      const fullName = `${sanitizeNameForUrl(loggedUser.firstname)} ${sanitizeNameForUrl(loggedUser.lastname)}`.trim();
       const res = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/placement-remarks`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -503,9 +523,13 @@ const PlacementDashboard = () => {
 
   const handleRequestEdit = async () => {
     if (!selectedReport) return;
+    if (!isValidObjectId(selectedReport._id)) {
+      showMsg('❌ Invalid report reference', 'error');
+      return;
+    }
     if (!window.confirm('Request edit permission from admin?')) return;
     try {
-      const fullName = `${String(loggedUser.firstname || '')} ${String(loggedUser.lastname || '')}`.trim();
+      const fullName = `${sanitizeNameForUrl(loggedUser.firstname)} ${sanitizeNameForUrl(loggedUser.lastname)}`.trim();
       const res = await fetch(`${API_URL}/api/audit-reports/${selectedReport._id}/request-placement-edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

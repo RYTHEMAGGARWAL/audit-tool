@@ -401,6 +401,44 @@ const Login = () => {
   };
 
   // ========================================
+  // SANITIZATION (required before writing any
+  // server-sourced data to browser storage)
+  // ========================================
+  // Strips HTML/script-bearing characters so a malicious or compromised
+  // API response can't plant executable/markup content in localStorage.
+  const sanitizeString = (value) => {
+    if (typeof value !== 'string') return value;
+    return value
+      .replace(/<[^>]*>/g, '')      // strip HTML tags
+      .replace(/[<>"'`]/g, '')      // strip remaining markup/quote chars
+      .trim();
+  };
+
+  // Only allow token strings that look like a real token/JWT
+  // (alphanumeric plus ._-), reject anything else.
+  const sanitizeToken = (token) => {
+    if (typeof token !== 'string') return null;
+    return /^[A-Za-z0-9._-]+$/.test(token) ? token : null;
+  };
+
+  // Recursively sanitize every string field of a plain object,
+  // leaving non-string values untouched.
+  const sanitizeUserObject = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+    const clean = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        clean[key] = sanitizeString(value);
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        clean[key] = sanitizeUserObject(value);
+      } else {
+        clean[key] = value;
+      }
+    }
+    return clean;
+  };
+
+  // ========================================
   // LOGIN HANDLER
   // ========================================
   const handleLogin = async (e) => {
@@ -417,12 +455,13 @@ const Login = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Save token (only if it's actually a non-empty string)
-        if (typeof data.token === 'string' && data.token) {
-          localStorage.setItem('authToken', data.token);
+        // Save token (only if it's a non-empty, well-formed token string)
+        const safeToken = sanitizeToken(data.token);
+        if (safeToken) {
+          localStorage.setItem('authToken', safeToken);
         }
-        // Only persist a well-formed user object, never anything else the server might send
-        const safeUser = (data.user && typeof data.user === 'object' && !Array.isArray(data.user)) ? data.user : {};
+        // Only persist a well-formed, sanitized user object, never raw server data
+        const safeUser = sanitizeUserObject(data.user);
         localStorage.setItem('loggedUser', JSON.stringify(safeUser));
 
         // ── CHECK: Force password change required? ──
