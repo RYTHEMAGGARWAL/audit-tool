@@ -18,9 +18,27 @@ const STATUS_OPTIONS = ['All','Not Submitted','Pending with Supervisor','Approve
 const CT_OPTIONS     = ['All','CDC','SDC','DTV'];
 const AUDIT_FILTER   = ['All','Compliant','Amber','Non-Compliant'];
 
+// Roles that get the extra hierarchy columns (ZM/Region/Area/Cluster) in the full table.
+const HIERARCHY_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster Manager'];
+
 const getAuditStatus = s => s >= 80 ? 'Compliant' : s >= 65 ? 'Amber' : 'Non-Compliant';
 const sColor = s => s >= 80 ? '#2e7d32' : s >= 65 ? '#e65100' : '#c62828';
 const sBg    = s => s >= 80 ? '#e8f5e9' : s >= 65 ? '#fff3e0' : '#fce4ec';
+const scoreEmoji = s => s>=80?'✅':s>=65?'🟡':'❌';
+
+const statusBadge = (status) => {
+  const m={'Approved':['#e8f5e9','#2e7d32','✅ Approved'],'Pending with Supervisor':['#fff3e0','#e65100','⏳ Pending'],'Not Submitted':['#fce4ec','#c62828','📝 Not Submitted'],'Closed':['#ede7f6','#4527a0','🔒 Closed'],'Sent Back':['#e3f2fd','#1565c0','↩️ Sent Back']};
+  const [bg,c,l]=m[status]||['#f5f5f5','#333',status||'-'];
+  return <span style={{background:bg,color:c,padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',whiteSpace:'nowrap'}}>{l}</span>;
+};
+
+const reportStatusBadge = (r) => {
+  if (r.remarksEditedOnce) return <span className="rdb rdb-locked-perm">🔒 Perm. Locked</span>;
+  if (r.centerHeadRemarksLocked&&r.centerRemarksDate) return <span className="rdb rdb-submitted-ch">🔒 Submitted</span>;
+  if (r.centerHeadEditRequest) return <span className="rdb rdb-edit-req">✏️ Edit Req.</span>;
+  if (r.centerRemarksDate) return <span className="rdb rdb-ok">✅ Submitted</span>;
+  return <span className="rdb rdb-pending-r">⏳ Pending</span>;
+};
 
 // ── DONUT ──
 const Donut = ({ slices, total, label }) => {
@@ -128,6 +146,322 @@ const ReportModal = ({ report, onClose }) => {
   );
 };
 
+// ── DASHBOARD VIEW sub-pieces ───────────────────────────────────
+const DashboardFiltersBar = ({ filterFY, setFilterFY, filterStatus, setFilterStatus, filterCT, setFilterCT, searchQ, setSearchQ }) => (
+  <div className="rdb-filter-bar">
+    <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
+      <select value={filterFY} onChange={e=>setFilterFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
+    <div className="rdb-fg"><label>📋 STATUS</label>
+      <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
+    <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
+      <select value={filterCT} onChange={e=>setFilterCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
+    <div className="rdb-fg"><label>🔍 SEARCH CENTER</label>
+      <input placeholder="Code, name or location..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/></div>
+  </div>
+);
+
+const StatCardsGrid = ({ cards, filterAudit, onCardClick }) => (
+  <div className="rdb-stat-grid">
+    {cards.map((s,i)=>(
+      <div key={i}
+        className={`rdb-stat-card ${s.cls}${filterAudit===s.auditKey&&s.auditKey&&s.auditKey!=='All'?' rdb-stat-active':''}`}
+        onClick={s.auditKey!==null ? ()=>onCardClick(s.auditKey) : undefined}
+        style={{cursor:s.auditKey!==null?'pointer':'default'}}>
+        <div className="rdb-stat-icon-wrap">{s.icon}</div>
+        <div className="rdb-stat-content">
+          <div className="rdb-stat-num" style={{color:s.color}}>{s.num}</div>
+          <div className="rdb-stat-lbl">
+            {s.label}
+            {s.pct!==undefined&&<><br/><span style={{color:s.color,fontWeight:'700'}}>{s.pct}%</span></>}
+            {s.sub&&<><br/><span style={{color:'#999'}}>{s.sub}</span></>}
+          </div>
+        </div>
+        <div className="rdb-stat-arrow">›</div>
+      </div>
+    ))}
+  </div>
+);
+
+const ActiveAuditFilterChip = ({ filterAudit, onClear, onViewInTable }) => {
+  if (filterAudit === 'All') return null;
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
+      <span style={{background:'#e8eaf6',color:'#3949ab',padding:'4px 14px',borderRadius:'20px',fontSize:'13px',fontWeight:'600'}}>Showing: {filterAudit}</span>
+      <button onClick={onClear} style={{background:'none',border:'1px solid #ccc',borderRadius:'20px',padding:'3px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear</button>
+      <button onClick={()=>onViewInTable(filterAudit)} style={{background:'#3949ab',color:'white',border:'none',borderRadius:'20px',padding:'4px 14px',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>📋 View in Table →</button>
+    </div>
+  );
+};
+
+const DonutLegend = ({ items }) => (
+  <div className="rdb-legend">
+    {items.map(([c,l,v])=>(
+      <div key={l} className="rdb-legend-item"><span className="rdb-dot" style={{background:c}}/><span>{l}</span><strong>{v}</strong></div>
+    ))}
+  </div>
+);
+
+const ChartsRow = ({ dashReports, total, compliant, amber, nonCompliant, closedCount, approvedCount, remarksPending }) => {
+  const cdc = dashReports.filter(r=>r.centerType==='CDC').length;
+  const sdc = dashReports.filter(r=>r.centerType==='SDC').length;
+  const dtv = dashReports.filter(r=>r.centerType==='DTV').length;
+  const other = Math.max(0,total-closedCount-approvedCount-remarksPending);
+  return (
+    <div className="rdb-charts-row">
+      <div className="rdb-chart-card">
+        <h3 className="rdb-chart-title">🎯 Compliance Status</h3>
+        <div className="rdb-donut-wrap">
+          <Donut slices={[{value:compliant,color:'#43a047'},{value:amber,color:'#fb8c00'},{value:nonCompliant,color:'#e53935'}]} total={total} label="total"/>
+          <DonutLegend items={[['#43a047','Compliant',compliant],['#fb8c00','Amber',amber],['#e53935','Non-Compliant',nonCompliant]]} />
+        </div>
+      </div>
+      <div className="rdb-chart-card">
+        <h3 className="rdb-chart-title">📌 Report Status</h3>
+        <div className="rdb-donut-wrap">
+          <Donut slices={[{value:closedCount,color:'#7b1fa2'},{value:approvedCount,color:'#1976d2'},{value:remarksPending,color:'#fb8c00'},{value:other,color:'#e0e0e0'}]} total={total} label="total"/>
+          <DonutLegend items={[['#7b1fa2','Closed',closedCount],['#1976d2','Approved',approvedCount],['#fb8c00','Pending',remarksPending],['#e0e0e0','Other',other]]} />
+        </div>
+      </div>
+      <div className="rdb-chart-card">
+        <h3 className="rdb-chart-title">🏢 Center Type</h3>
+        <div className="rdb-donut-wrap">
+          <Donut slices={[{value:cdc,color:'#1565c0'},{value:sdc,color:'#6a1b9a'},{value:dtv,color:'#2e7d32'}]} total={total} label="total"/>
+          <DonutLegend items={[['#1565c0','CDC',cdc],['#6a1b9a','SDC',sdc],['#2e7d32','DTV',dtv]]} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SectionBreakdownTable = ({ sectionBreakdown, total }) => (
+  <div className="rdb-section-card">
+    <h3 className="rdb-section-title">📊 Section-wise Compliance Breakdown</h3>
+    <table className="rdb-breakdown-table">
+      <thead><tr><th>SECTION</th><th>MAX SCORE</th><th style={{color:'#2e7d32'}}>COMPLIANT</th><th style={{color:'#e65100'}}>AMBER</th><th style={{color:'#c62828'}}>NON-COMPLIANT</th><th>AVG %</th></tr></thead>
+      <tbody>
+        {sectionBreakdown.map(sec=>(
+          <tr key={sec.name}>
+            <td><strong style={{color:'#1a237e'}}>{sec.name}</strong><br/><small style={{color:'#999'}}>{sec.sub}{sec.isP&&sec.applicable<total?` (${sec.applicable} applicable)`:''}</small></td>
+            <td style={{textAlign:'center',fontWeight:'700'}}>{sec.max}</td>
+            <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-g">{sec.c}</span></td>
+            <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-a">{sec.a}</span></td>
+            <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-r">{sec.nc}</span></td>
+            <td>
+              <div className="rdb-prog-wrap">
+                <div className="rdb-prog-bar" style={{width:`${Math.min(sec.avgPct,100)}%`,background:parseFloat(sec.avgPct)>=80?'#43a047':parseFloat(sec.avgPct)>=65?'#fb8c00':'#e53935'}}/>
+                <span className="rdb-prog-lbl">{sec.avgPct}%</span>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p style={{fontSize:'12px',color:'#999',marginTop:'8px'}}>Click on Compliant / Amber / Non-Compliant stat cards above to filter, then "View in Table →" to see full list.</p>
+  </div>
+);
+
+const AvgScoresRow = ({ avgAreaScores }) => (
+  <div className="rdb-section-card">
+    <h3 className="rdb-section-title">📈 Average Section Scores</h3>
+    <div className="rdb-avg-row">
+      {avgAreaScores.map(a=>(
+        <div key={a.label} className="rdb-avg-card">
+          <div className="rdb-avg-label">{a.label}</div>
+          <div className="rdb-avg-circle" style={{borderColor:a.color}}>
+            <span className="rdb-avg-num" style={{color:a.color}}>{a.avg}</span>
+            <span className="rdb-avg-max">/{a.max}</span>
+          </div>
+          <div className="rdb-avg-pct" style={{color:parseFloat(a.pct)>=80?'#2e7d32':parseFloat(a.pct)>=65?'#e65100':'#c62828'}}>{a.pct}%</div>
+          <div className="rdb-avg-bar-wrap"><div className="rdb-avg-bar" style={{width:`${Math.min(a.pct,100)}%`,background:parseFloat(a.pct)>=80?'#43a047':parseFloat(a.pct)>=65?'#fb8c00':'#e53935'}}/></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const MiniReportRow = ({ r, i, onView }) => {
+  const s = r.grandTotal||0;
+  return (
+    <tr style={{background:i%2===0?'#fff':'#f8f9ff'}}>
+      <td>{i+1}</td>
+      <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
+      <td>{r.centerName}</td>
+      <td><span className={`rdb-type rdb-type-${r.centerType?.toLowerCase()}`}>{r.centerType}</span></td>
+      <td style={{color:'#1565c0',fontWeight:'600'}}>{r.financialYear}</td>
+      <td style={{color:sColor(s),fontWeight:'700'}}>{s.toFixed(1)} {scoreEmoji(s)}</td>
+      <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
+      <td>{statusBadge(r.currentStatus)}</td>
+      <td><button onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
+    </tr>
+  );
+};
+
+const RecentReportsSection = ({ dashReports, loading, recentRef, onViewAll, onView }) => (
+  <div className="rdb-section-card" ref={recentRef}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+      <h3 className="rdb-section-title" style={{margin:0}}>📋 Recent Reports (Top 10)</h3>
+      <button className="rdb-view-all-btn" onClick={onViewAll}>View All →</button>
+    </div>
+    {loading?<div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div>
+    :dashReports.length===0?<div className="rdb-empty">📭 No reports found.</div>
+    :<div style={{overflowX:'auto'}}>
+      <table className="rdb-mini-table">
+        <thead><tr>{['#','Center Code','Center Name','Type','FY','Score','Status','Submit Status','View'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {dashReports.slice(0,10).map((r,i)=><MiniReportRow key={r._id||i} r={r} i={i} onView={onView} />)}
+        </tbody>
+      </table>
+    </div>}
+  </div>
+);
+
+const DashboardView = ({
+  role, loading, lastRefreshed, loadReports,
+  filterFY, setFilterFY, filterStatus, setFilterStatus, filterCT, setFilterCT, searchQ, setSearchQ,
+  filterAudit, setFilterAudit, statCards, onCardClick, onViewInTable,
+  dashReports, total, compliant, amber, nonCompliant, closedCount, approvedCount, remarksPending,
+  sectionBreakdown, avgAreaScores, recentRef, onViewAllRecent, onViewReport,
+}) => (
+  <div className="rdb-body">
+    <div className="rdb-analytics-hdr">
+      <div>
+        <h2 className="rdb-analytics-title">📊 {role} Analytics Dashboard</h2>
+        <p className="rdb-analytics-sub">Last refreshed: {lastRefreshed}</p>
+      </div>
+      <button className="rdb-refresh-btn" onClick={loadReports} disabled={loading}>{loading?'⏳ Loading...':'🔄 Refresh'}</button>
+    </div>
+
+    <DashboardFiltersBar filterFY={filterFY} setFilterFY={setFilterFY} filterStatus={filterStatus} setFilterStatus={setFilterStatus} filterCT={filterCT} setFilterCT={setFilterCT} searchQ={searchQ} setSearchQ={setSearchQ} />
+
+    <StatCardsGrid cards={statCards} filterAudit={filterAudit} onCardClick={onCardClick} />
+
+    <ActiveAuditFilterChip filterAudit={filterAudit} onClear={()=>setFilterAudit('All')} onViewInTable={onViewInTable} />
+
+    <ChartsRow dashReports={dashReports} total={total} compliant={compliant} amber={amber} nonCompliant={nonCompliant} closedCount={closedCount} approvedCount={approvedCount} remarksPending={remarksPending} />
+
+    <SectionBreakdownTable sectionBreakdown={sectionBreakdown} total={total} />
+
+    <AvgScoresRow avgAreaScores={avgAreaScores} />
+
+    <RecentReportsSection dashReports={dashReports} loading={loading} recentRef={recentRef} onViewAll={onViewAllRecent} onView={onViewReport} />
+  </div>
+);
+
+// ── TABLE VIEW sub-pieces ───────────────────────────────────────
+const AuditPillBar = ({ tAudit, setTAudit }) => (
+  <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
+    <label className="rdb-filter-label">🎯 AUDIT STATUS</label>
+    <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+      {AUDIT_FILTER.map(f=>(
+        <button key={f} className={`rdb-pill${tAudit===f?' rdb-pill-active':''}`}
+          style={tAudit===f&&f!=='All'?{background:f==='Compliant'?'#2e7d32':f==='Amber'?'#e65100':'#c62828',color:'white',borderColor:'transparent'}:{}}
+          onClick={()=>setTAudit(f)}>
+          {f==='All'?'🔘 All':f==='Compliant'?'✅ Compliant':f==='Amber'?'🟡 Amber':'❌ Non-Compliant'}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const TableFiltersBar = ({ tAudit, setTAudit, tFY, setTFY, tStatus, setTStatus, tCT, setTCT, tSearch, setTSearch, loading, loadReports }) => (
+  <div className="rdb-filter-bar" style={{flexWrap:'wrap',alignItems:'flex-start',gap:'16px'}}>
+    <AuditPillBar tAudit={tAudit} setTAudit={setTAudit} />
+    <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
+      <select value={tFY} onChange={e=>setTFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
+    <div className="rdb-fg"><label>📋 SUBMIT STATUS</label>
+      <select value={tStatus} onChange={e=>setTStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
+    <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
+      <select value={tCT} onChange={e=>setTCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
+    <div className="rdb-fg"><label>🔍 SEARCH</label>
+      <input placeholder="Code / name / location..." value={tSearch} onChange={e=>setTSearch(e.target.value)}/></div>
+    <div style={{display:'flex',flexDirection:'column',gap:'5px',justifyContent:'flex-end'}}>
+      <label className="rdb-filter-label"> </label>
+      <button className="rdb-refresh-sm" onClick={loadReports} disabled={loading}>{loading?'⏳':'🔄 Refresh'}</button>
+    </div>
+  </div>
+);
+
+const TableFilterSummary = ({ tableReports, totalReports, tAudit, hasActiveFilters, onClearAll }) => (
+  <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
+    <span style={{fontSize:'13px',color:'#666'}}>Showing <strong style={{color:'#3949ab'}}>{tableReports.length}</strong> of <strong>{totalReports}</strong> reports</span>
+    {tAudit!=='All'&&<span style={{background:tAudit==='Compliant'?'#e8f5e9':tAudit==='Amber'?'#fff3e0':'#fce4ec',color:tAudit==='Compliant'?'#2e7d32':tAudit==='Amber'?'#e65100':'#c62828',padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600'}}>{tAudit}</span>}
+    {hasActiveFilters&&(
+      <button onClick={onClearAll} style={{background:'none',border:'1px solid #ccc',borderRadius:'12px',padding:'2px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear All</button>
+    )}
+  </div>
+);
+
+const FullReportRow = ({ r, i, role, onView }) => {
+  const s = r.grandTotal||0;
+  const showHierarchy = HIERARCHY_ROLES.includes(role);
+  return (
+    <tr style={{background:i%2===0?'#fff':'#f8f9ff'}}>
+      <td>{i+1}</td>
+      <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
+      <td>{r.centerName}</td>
+      <td><span className={`rdb-type rdb-type-${r.centerType?.toLowerCase()}`}>{r.centerType}</span></td>
+      <td>{r.location||'-'}</td>
+      {showHierarchy&&<>
+        <td>{r.zmName||'-'}</td><td>{r.regionHeadName||'-'}</td>
+        <td>{r.areaManager||r.areaClusterManager||'-'}</td><td>{r.clusterManager||'-'}</td>
+      </>}
+      <td style={{color:'#1565c0',fontWeight:'600'}}>{r.financialYear}</td>
+      <td>{r.auditPeriod||'-'}</td>
+      <td style={{color:sColor(s),fontWeight:'700'}}>{s.toFixed(1)} {scoreEmoji(s)}</td>
+      <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
+      <td>{statusBadge(r.currentStatus)}</td>
+      <td>{reportStatusBadge(r)}</td>
+      <td><button onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
+    </tr>
+  );
+};
+
+const FULL_TABLE_BASE_HEADERS = ['#','Center Code','Center Name','Type','Location'];
+const FULL_TABLE_HIERARCHY_HEADERS = ['ZM Name','Region Head','Area Mgr','Cluster Mgr'];
+const FULL_TABLE_TAIL_HEADERS = ['FY','Audit Period','Score','Audit Status','Submit Status','Report Status','View'];
+
+const ReportsTable = ({ tableReports, loading, role, onView }) => {
+  if (loading) return <div className="rdb-table-wrap"><div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div></div>;
+  if (tableReports.length === 0) return <div className="rdb-table-wrap"><div className="rdb-empty">📭 No reports match your filters.</div></div>;
+
+  const headers = [
+    ...FULL_TABLE_BASE_HEADERS,
+    ...(HIERARCHY_ROLES.includes(role) ? FULL_TABLE_HIERARCHY_HEADERS : []),
+    ...FULL_TABLE_TAIL_HEADERS,
+  ];
+
+  return (
+    <div className="rdb-table-wrap">
+      <table className="rdb-full-table">
+        <thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {tableReports.map((r,i)=><FullReportRow key={r._id||i} r={r} i={i} role={role} onView={onView} />)}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const TableView = ({
+  tableRef, tAudit, setTAudit, tFY, setTFY, tStatus, setTStatus, tCT, setTCT, tSearch, setTSearch,
+  loading, loadReports, tableReports, totalReports, role, onView,
+}) => {
+  const hasActiveFilters = tAudit!=='All'||tFY!=='All'||tStatus!=='All'||tCT!=='All'||tSearch;
+  const clearAll = () => { setTAudit('All'); setTFY('All'); setTStatus('All'); setTCT('All'); setTSearch(''); };
+
+  return (
+    <div className="rdb-body" ref={tableRef}>
+      <TableFiltersBar tAudit={tAudit} setTAudit={setTAudit} tFY={tFY} setTFY={setTFY} tStatus={tStatus} setTStatus={setTStatus} tCT={tCT} setTCT={setTCT} tSearch={tSearch} setTSearch={setTSearch} loading={loading} loadReports={loadReports} />
+
+      <TableFilterSummary tableReports={tableReports} totalReports={totalReports} tAudit={tAudit} hasActiveFilters={hasActiveFilters} onClearAll={clearAll} />
+
+      <ReportsTable tableReports={tableReports} loading={loading} role={role} onView={onView} />
+
+      {!loading&&tableReports.length>0&&<div className="rdb-table-footer">Showing <strong>{tableReports.length}</strong> of <strong>{totalReports}</strong> reports</div>}
+    </div>
+  );
+};
+
 // ── MAIN ──────────────────────────────────────────────────
 const RoleDashboard = () => {
   const navigate   = useNavigate();
@@ -201,7 +535,6 @@ const RoleDashboard = () => {
   const compliant=dashReports.filter(r=>(r.grandTotal||0)>=80).length;
   const amber=dashReports.filter(r=>(r.grandTotal||0)>=65&&(r.grandTotal||0)<80).length;
   const nonCompliant=dashReports.filter(r=>(r.grandTotal||0)<65).length;
-  const avgScore=total>0?(dashReports.reduce((s,r)=>s+(r.grandTotal||0),0)/total).toFixed(1):'0.0';
   const emailPending=dashReports.filter(r=>r.emailSent&&!r.centerHeadRemarksLocked).length;
   const remarksPending=dashReports.filter(r=>r.currentStatus==='Pending with Supervisor').length;
   const closedCount=dashReports.filter(r=>r.currentStatus==='Closed').length;
@@ -226,6 +559,8 @@ const RoleDashboard = () => {
     setView('table');
     setTimeout(()=>tableRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),150);
   };
+
+  const goToTable = () => { setView('table'); setTimeout(()=>tableRef.current?.scrollIntoView({behavior:'smooth'}),100); };
 
   // Section breakdown
   const sectionBreakdown = [
@@ -254,20 +589,6 @@ const RoleDashboard = () => {
     return {...a,avg,pct};
   });
 
-  const statusBadge = (status) => {
-    const m={'Approved':['#e8f5e9','#2e7d32','✅ Approved'],'Pending with Supervisor':['#fff3e0','#e65100','⏳ Pending'],'Not Submitted':['#fce4ec','#c62828','📝 Not Submitted'],'Closed':['#ede7f6','#4527a0','🔒 Closed'],'Sent Back':['#e3f2fd','#1565c0','↩️ Sent Back']};
-    const [bg,c,l]=m[status]||['#f5f5f5','#333',status||'-'];
-    return <span style={{background:bg,color:c,padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',whiteSpace:'nowrap'}}>{l}</span>;
-  };
-
-  const reportStatusBadge = (r) => {
-    if (r.remarksEditedOnce) return <span className="rdb rdb-locked-perm">🔒 Perm. Locked</span>;
-    if (r.centerHeadRemarksLocked&&r.centerRemarksDate) return <span className="rdb rdb-submitted-ch">🔒 Submitted</span>;
-    if (r.centerHeadEditRequest) return <span className="rdb rdb-edit-req">✏️ Edit Req.</span>;
-    if (r.centerRemarksDate) return <span className="rdb rdb-ok">✅ Submitted</span>;
-    return <span className="rdb rdb-pending-r">⏳ Pending</span>;
-  };
-
   const STAT_CARDS = [
     {label:'Total Reports',    num:total,        icon:'📋', cls:'rdb-stat-total',    auditKey:'All',           color:'#5c6bc0'},
     {label:'Compliant',        num:compliant,    icon:'✅', cls:'rdb-stat-compliant', auditKey:'Compliant',     color:'#2e7d32', pct:total>0?((compliant/total)*100).toFixed(1):0},
@@ -288,253 +609,32 @@ const RoleDashboard = () => {
       {/* TABS */}
       <div className="rdb-tabs">
         <button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}>📊 Dashboard</button>
-        <button className={view==='table'?'active':''} onClick={()=>{setView('table');setTimeout(()=>tableRef.current?.scrollIntoView({behavior:'smooth'}),100);}}>📋 Reports Table</button>
+        <button className={view==='table'?'active':''} onClick={goToTable}>📋 Reports Table</button>
       </div>
 
       {error&&<div className="rdb-error">{error}</div>}
 
-      {/* ══════ DASHBOARD VIEW ══════ */}
       {view==='dashboard'&&(
-        <div className="rdb-body">
-          {/* Analytics header */}
-          <div className="rdb-analytics-hdr">
-            <div>
-              <h2 className="rdb-analytics-title">📊 {role} Analytics Dashboard</h2>
-              <p className="rdb-analytics-sub">Last refreshed: {lastRefreshed}</p>
-            </div>
-            <button className="rdb-refresh-btn" onClick={loadReports} disabled={loading}>{loading?'⏳ Loading...':'🔄 Refresh'}</button>
-          </div>
-
-          {/* Filters */}
-          <div className="rdb-filter-bar">
-            <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
-              <select value={filterFY} onChange={e=>setFilterFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
-            <div className="rdb-fg"><label>📋 STATUS</label>
-              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-            <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
-              <select value={filterCT} onChange={e=>setFilterCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
-            <div className="rdb-fg"><label>🔍 SEARCH CENTER</label>
-              <input placeholder="Code, name or location..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/></div>
-          </div>
-
-          {/* STAT CARDS */}
-          <div className="rdb-stat-grid">
-            {STAT_CARDS.map((s,i)=>(
-              <div key={i}
-                className={`rdb-stat-card ${s.cls}${filterAudit===s.auditKey&&s.auditKey&&s.auditKey!=='All'?' rdb-stat-active':''}`}
-                onClick={s.auditKey!==null ? ()=>handleCardClick(s.auditKey) : undefined}
-                style={{cursor:s.auditKey!==null?'pointer':'default'}}>
-                <div className="rdb-stat-icon-wrap">{s.icon}</div>
-                <div className="rdb-stat-content">
-                  <div className="rdb-stat-num" style={{color:s.color}}>{s.num}</div>
-                  <div className="rdb-stat-lbl">
-                    {s.label}
-                    {s.pct!==undefined&&<><br/><span style={{color:s.color,fontWeight:'700'}}>{s.pct}%</span></>}
-                    {s.sub&&<><br/><span style={{color:'#999'}}>{s.sub}</span></>}
-                  </div>
-                </div>
-                <div className="rdb-stat-arrow">›</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Active filter chip + View in Table button */}
-          {filterAudit!=='All'&&(
-            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
-              <span style={{background:'#e8eaf6',color:'#3949ab',padding:'4px 14px',borderRadius:'20px',fontSize:'13px',fontWeight:'600'}}>Showing: {filterAudit}</span>
-              <button onClick={()=>setFilterAudit('All')} style={{background:'none',border:'1px solid #ccc',borderRadius:'20px',padding:'3px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear</button>
-              <button onClick={()=>handleViewInTable(filterAudit)} style={{background:'#3949ab',color:'white',border:'none',borderRadius:'20px',padding:'4px 14px',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>📋 View in Table →</button>
-            </div>
-          )}
-
-          {/* CHARTS */}
-          <div className="rdb-charts-row">
-            <div className="rdb-chart-card">
-              <h3 className="rdb-chart-title">🎯 Compliance Status</h3>
-              <div className="rdb-donut-wrap">
-                <Donut slices={[{value:compliant,color:'#43a047'},{value:amber,color:'#fb8c00'},{value:nonCompliant,color:'#e53935'}]} total={total} label="total"/>
-                <div className="rdb-legend">
-                  {[['#43a047','Compliant',compliant],['#fb8c00','Amber',amber],['#e53935','Non-Compliant',nonCompliant]].map(([c,l,v])=>(
-                    <div key={l} className="rdb-legend-item"><span className="rdb-dot" style={{background:c}}/><span>{l}</span><strong>{v}</strong></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="rdb-chart-card">
-              <h3 className="rdb-chart-title">📌 Report Status</h3>
-              <div className="rdb-donut-wrap">
-                <Donut slices={[{value:closedCount,color:'#7b1fa2'},{value:approvedCount,color:'#1976d2'},{value:remarksPending,color:'#fb8c00'},{value:Math.max(0,total-closedCount-approvedCount-remarksPending),color:'#e0e0e0'}]} total={total} label="total"/>
-                <div className="rdb-legend">
-                  {[['#7b1fa2','Closed',closedCount],['#1976d2','Approved',approvedCount],['#fb8c00','Pending',remarksPending],['#e0e0e0','Other',Math.max(0,total-closedCount-approvedCount-remarksPending)]].map(([c,l,v])=>(
-                    <div key={l} className="rdb-legend-item"><span className="rdb-dot" style={{background:c}}/><span>{l}</span><strong>{v}</strong></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="rdb-chart-card">
-              <h3 className="rdb-chart-title">🏢 Center Type</h3>
-              <div className="rdb-donut-wrap">
-                <Donut slices={[{value:dashReports.filter(r=>r.centerType==='CDC').length,color:'#1565c0'},{value:dashReports.filter(r=>r.centerType==='SDC').length,color:'#6a1b9a'},{value:dashReports.filter(r=>r.centerType==='DTV').length,color:'#2e7d32'}]} total={total} label="total"/>
-                <div className="rdb-legend">
-                  {[['#1565c0','CDC',dashReports.filter(r=>r.centerType==='CDC').length],['#6a1b9a','SDC',dashReports.filter(r=>r.centerType==='SDC').length],['#2e7d32','DTV',dashReports.filter(r=>r.centerType==='DTV').length]].map(([c,l,v])=>(
-                    <div key={l} className="rdb-legend-item"><span className="rdb-dot" style={{background:c}}/><span>{l}</span><strong>{v}</strong></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION BREAKDOWN */}
-          <div className="rdb-section-card">
-            <h3 className="rdb-section-title">📊 Section-wise Compliance Breakdown</h3>
-            <table className="rdb-breakdown-table">
-              <thead><tr><th>SECTION</th><th>MAX SCORE</th><th style={{color:'#2e7d32'}}>COMPLIANT</th><th style={{color:'#e65100'}}>AMBER</th><th style={{color:'#c62828'}}>NON-COMPLIANT</th><th>AVG %</th></tr></thead>
-              <tbody>
-                {sectionBreakdown.map(sec=>(
-                  <tr key={sec.name}>
-                    <td><strong style={{color:'#1a237e'}}>{sec.name}</strong><br/><small style={{color:'#999'}}>{sec.sub}{sec.isP&&sec.applicable<total?` (${sec.applicable} applicable)`:''}</small></td>
-                    <td style={{textAlign:'center',fontWeight:'700'}}>{sec.max}</td>
-                    <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-g">{sec.c}</span></td>
-                    <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-a">{sec.a}</span></td>
-                    <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-r">{sec.nc}</span></td>
-                    <td>
-                      <div className="rdb-prog-wrap">
-                        <div className="rdb-prog-bar" style={{width:`${Math.min(sec.avgPct,100)}%`,background:parseFloat(sec.avgPct)>=80?'#43a047':parseFloat(sec.avgPct)>=65?'#fb8c00':'#e53935'}}/>
-                        <span className="rdb-prog-lbl">{sec.avgPct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p style={{fontSize:'12px',color:'#999',marginTop:'8px'}}>Click on Compliant / Amber / Non-Compliant stat cards above to filter, then "View in Table →" to see full list.</p>
-          </div>
-
-          {/* AVG SECTION SCORES */}
-          <div className="rdb-section-card">
-            <h3 className="rdb-section-title">📈 Average Section Scores</h3>
-            <div className="rdb-avg-row">
-              {avgAreaScores.map(a=>(
-                <div key={a.label} className="rdb-avg-card">
-                  <div className="rdb-avg-label">{a.label}</div>
-                  <div className="rdb-avg-circle" style={{borderColor:a.color}}>
-                    <span className="rdb-avg-num" style={{color:a.color}}>{a.avg}</span>
-                    <span className="rdb-avg-max">/{a.max}</span>
-                  </div>
-                  <div className="rdb-avg-pct" style={{color:parseFloat(a.pct)>=80?'#2e7d32':parseFloat(a.pct)>=65?'#e65100':'#c62828'}}>{a.pct}%</div>
-                  <div className="rdb-avg-bar-wrap"><div className="rdb-avg-bar" style={{width:`${Math.min(a.pct,100)}%`,background:parseFloat(a.pct)>=80?'#43a047':parseFloat(a.pct)>=65?'#fb8c00':'#e53935'}}/></div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* RECENT REPORTS */}
-          <div className="rdb-section-card" ref={recentRef}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
-              <h3 className="rdb-section-title" style={{margin:0}}>📋 Recent Reports (Top 10)</h3>
-              <button className="rdb-view-all-btn" onClick={()=>{setView('table');setTimeout(()=>tableRef.current?.scrollIntoView({behavior:'smooth'}),100);}}>View All →</button>
-            </div>
-            {loading?<div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div>
-            :dashReports.length===0?<div className="rdb-empty">📭 No reports found.</div>
-            :<div style={{overflowX:'auto'}}>
-              <table className="rdb-mini-table">
-                <thead><tr>{['#','Center Code','Center Name','Type','FY','Score','Status','Submit Status','View'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {dashReports.slice(0,10).map((r,i)=>{const s=r.grandTotal||0;return(
-                    <tr key={r._id||i} style={{background:i%2===0?'#fff':'#f8f9ff'}}>
-                      <td>{i+1}</td>
-                      <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
-                      <td>{r.centerName}</td>
-                      <td><span className={`rdb-type rdb-type-${r.centerType?.toLowerCase()}`}>{r.centerType}</span></td>
-                      <td style={{color:'#1565c0',fontWeight:'600'}}>{r.financialYear}</td>
-                      <td style={{color:sColor(s),fontWeight:'700'}}>{s.toFixed(1)} {s>=80?'✅':s>=65?'🟡':'❌'}</td>
-                      <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
-                      <td>{statusBadge(r.currentStatus)}</td>
-                      <td><button onClick={()=>setSelectedReport(r)} className="rdb-view-btn">👁️ View</button></td>
-                    </tr>);})}
-                </tbody>
-              </table>
-            </div>}
-          </div>
-        </div>
+        <DashboardView
+          role={role} loading={loading} lastRefreshed={lastRefreshed} loadReports={loadReports}
+          filterFY={filterFY} setFilterFY={setFilterFY} filterStatus={filterStatus} setFilterStatus={setFilterStatus}
+          filterCT={filterCT} setFilterCT={setFilterCT} searchQ={searchQ} setSearchQ={setSearchQ}
+          filterAudit={filterAudit} setFilterAudit={setFilterAudit} statCards={STAT_CARDS}
+          onCardClick={handleCardClick} onViewInTable={handleViewInTable}
+          dashReports={dashReports} total={total} compliant={compliant} amber={amber} nonCompliant={nonCompliant}
+          closedCount={closedCount} approvedCount={approvedCount} remarksPending={remarksPending}
+          sectionBreakdown={sectionBreakdown} avgAreaScores={avgAreaScores} recentRef={recentRef}
+          onViewAllRecent={goToTable} onViewReport={setSelectedReport}
+        />
       )}
 
-      {/* ══════ TABLE VIEW ══════ */}
       {view==='table'&&(
-        <div className="rdb-body" ref={tableRef}>
-          {/* Table filters */}
-          <div className="rdb-filter-bar" style={{flexWrap:'wrap',alignItems:'flex-start',gap:'16px'}}>
-            {/* Audit status pills */}
-            <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
-              <label className="rdb-filter-label">🎯 AUDIT STATUS</label>
-              <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
-                {AUDIT_FILTER.map(f=>(
-                  <button key={f} className={`rdb-pill${tAudit===f?' rdb-pill-active':''}`}
-                    style={tAudit===f&&f!=='All'?{background:f==='Compliant'?'#2e7d32':f==='Amber'?'#e65100':'#c62828',color:'white',borderColor:'transparent'}:{}}
-                    onClick={()=>setTAudit(f)}>
-                    {f==='All'?'🔘 All':f==='Compliant'?'✅ Compliant':f==='Amber'?'🟡 Amber':'❌ Non-Compliant'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
-              <select value={tFY} onChange={e=>setTFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
-            <div className="rdb-fg"><label>📋 SUBMIT STATUS</label>
-              <select value={tStatus} onChange={e=>setTStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-            <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
-              <select value={tCT} onChange={e=>setTCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
-            <div className="rdb-fg"><label>🔍 SEARCH</label>
-              <input placeholder="Code / name / location..." value={tSearch} onChange={e=>setTSearch(e.target.value)}/></div>
-            <div style={{display:'flex',flexDirection:'column',gap:'5px',justifyContent:'flex-end'}}>
-              <label className="rdb-filter-label"> </label>
-              <button className="rdb-refresh-sm" onClick={loadReports} disabled={loading}>{loading?'⏳':'🔄 Refresh'}</button>
-            </div>
-          </div>
-
-          {/* Result summary */}
-          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
-            <span style={{fontSize:'13px',color:'#666'}}>Showing <strong style={{color:'#3949ab'}}>{tableReports.length}</strong> of <strong>{reports.length}</strong> reports</span>
-            {tAudit!=='All'&&<span style={{background:tAudit==='Compliant'?'#e8f5e9':tAudit==='Amber'?'#fff3e0':'#fce4ec',color:tAudit==='Compliant'?'#2e7d32':tAudit==='Amber'?'#e65100':'#c62828',padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600'}}>{tAudit}</span>}
-            {(tAudit!=='All'||tFY!=='All'||tStatus!=='All'||tCT!=='All'||tSearch)&&(
-              <button onClick={()=>{setTAudit('All');setTFY('All');setTStatus('All');setTCT('All');setTSearch('');}} style={{background:'none',border:'1px solid #ccc',borderRadius:'12px',padding:'2px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear All</button>
-            )}
-          </div>
-
-          <div className="rdb-table-wrap">
-            {loading?<div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div>
-            :tableReports.length===0?<div className="rdb-empty">📭 No reports match your filters.</div>
-            :<table className="rdb-full-table">
-              <thead><tr>
-                {['#','Center Code','Center Name','Type','Location',
-                  ...(['Zonal Manager','Region Head','Area Manager','Cluster Manager'].includes(role)?['ZM Name','Region Head','Area Mgr','Cluster Mgr']:[]),
-                  'FY','Audit Period','Score','Audit Status','Submit Status','Report Status','View'
-                ].map(h=><th key={h}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {tableReports.map((r,i)=>{const s=r.grandTotal||0;return(
-                  <tr key={r._id||i} style={{background:i%2===0?'#fff':'#f8f9ff'}}>
-                    <td>{i+1}</td>
-                    <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
-                    <td>{r.centerName}</td>
-                    <td><span className={`rdb-type rdb-type-${r.centerType?.toLowerCase()}`}>{r.centerType}</span></td>
-                    <td>{r.location||'-'}</td>
-                    {['Zonal Manager','Region Head','Area Manager','Cluster Manager'].includes(role)&&<>
-                      <td>{r.zmName||'-'}</td><td>{r.regionHeadName||'-'}</td>
-                      <td>{r.areaManager||r.areaClusterManager||'-'}</td><td>{r.clusterManager||'-'}</td>
-                    </>}
-                    <td style={{color:'#1565c0',fontWeight:'600'}}>{r.financialYear}</td>
-                    <td>{r.auditPeriod||'-'}</td>
-                    <td style={{color:sColor(s),fontWeight:'700'}}>{s.toFixed(1)} {s>=80?'✅':s>=65?'🟡':'❌'}</td>
-                    <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
-                    <td>{statusBadge(r.currentStatus)}</td>
-                    <td>{reportStatusBadge(r)}</td>
-                    <td><button onClick={()=>setSelectedReport(r)} className="rdb-view-btn">👁️ View</button></td>
-                  </tr>);})}
-              </tbody>
-            </table>}
-          </div>
-          {!loading&&tableReports.length>0&&<div className="rdb-table-footer">Showing <strong>{tableReports.length}</strong> of <strong>{reports.length}</strong> reports</div>}
-        </div>
+        <TableView
+          tableRef={tableRef} tAudit={tAudit} setTAudit={setTAudit} tFY={tFY} setTFY={setTFY}
+          tStatus={tStatus} setTStatus={setTStatus} tCT={tCT} setTCT={setTCT} tSearch={tSearch} setTSearch={setTSearch}
+          loading={loading} loadReports={loadReports} tableReports={tableReports} totalReports={reports.length}
+          role={role} onView={setSelectedReport}
+        />
       )}
     </div>
   );
