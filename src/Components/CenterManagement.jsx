@@ -17,6 +17,208 @@ const gstStateMap = {
   '38': 'Ladakh'
 };
 
+const CENTER_SEARCH_FIELDS = ['centerCode', 'centerName', 'zmName', 'regionHeadName', 'areaManager', 'clusterManager', 'centerHeadName', 'location', 'centerType', 'projectName'];
+
+const filterCenters = (centers, search) => {
+  if (!search) return centers;
+  const q = search.toLowerCase();
+  return centers.filter(ct => CENTER_SEARCH_FIELDS.some(field => ct[field]?.toLowerCase().includes(q)));
+};
+
+// A text field that's editable inline when this row is in edit mode, plain text otherwise.
+const EditableTextCell = ({ editing, value, displayValue, onChange }) => (
+  editing ? (
+    <input type="text" value={value || ''} onChange={e => onChange(e.target.value)}
+      style={{ padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%' }} />
+  ) : <>{displayValue}</>
+);
+
+const CENTER_TYPE_STYLES = {
+  CDC: { bg: '#e3f2fd', color: '#1976d2' },
+  SDC: { bg: '#fff3e0', color: '#e65100' },
+};
+const getCenterTypeStyle = type => CENTER_TYPE_STYLES[type] || { bg: '#f1f8e9', color: '#2e7d32' };
+
+const CenterTypeCell = ({ editing, value, onChange }) => {
+  if (editing) {
+    return (
+      <select value={value || 'CDC'} onChange={e => onChange(e.target.value)}
+        style={{ padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%' }}>
+        <option value="CDC">CDC</option>
+        <option value="SDC">SDC</option>
+        <option value="DTV">DTV</option>
+      </select>
+    );
+  }
+  const { bg, color } = getCenterTypeStyle(value);
+  return (
+    <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', background: bg, color }}>
+      {value || 'CDC'}
+    </span>
+  );
+};
+
+const PlacementInfoDisplay = ({ center }) => {
+  if (center.placementApplicable === 'yes') {
+    return (
+      <div>
+        <span style={{ color: '#2e7d32', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>✅ Yes</span>
+        {center.placementCoordinator && <div style={{ fontSize: '11px', color: '#555', marginBottom: '2px' }}>📋 <strong>Coord:</strong> {center.placementCoordinator}</div>}
+        {center.seniorManagerPlacement && <div style={{ fontSize: '11px', color: '#555', marginBottom: '2px' }}>🏆 <strong>SMP:</strong> {center.seniorManagerPlacement}</div>}
+        {center.nationalHeadPlacement && <div style={{ fontSize: '11px', color: '#555' }}>🎯 <strong>NHP:</strong> {center.nationalHeadPlacement}</div>}
+      </div>
+    );
+  }
+  if (center.placementApplicable === 'no') {
+    return <span style={{ color: '#c62828', fontWeight: 'bold' }}>❌ No</span>;
+  }
+  return '-';
+};
+
+const PlacementCell = ({ editing, center, onChange }) => (
+  editing ? (
+    <select value={center.placementApplicable || ''} onChange={e => onChange(e.target.value)}
+      style={{ padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%' }}>
+      <option value="">-- Select --</option>
+      <option value="yes">✅ Yes</option>
+      <option value="no">❌ No</option>
+    </select>
+  ) : <PlacementInfoDisplay center={center} />
+);
+
+const PlacementEditFields = ({ center, onFieldChange }) => (
+  <td colSpan={1} style={{ padding: '12px' }}>
+    <input type="text" placeholder="Placement Coordinator" value={center.placementCoordinator || ''}
+      onChange={e => onFieldChange('placementCoordinator', e.target.value)}
+      style={{ padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px' }} />
+    <input type="text" placeholder="Senior Manager Placement" value={center.seniorManagerPlacement || ''}
+      onChange={e => onFieldChange('seniorManagerPlacement', e.target.value)}
+      style={{ padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px' }} />
+    <input type="text" placeholder="National Head Placement" value={center.nationalHeadPlacement || ''}
+      onChange={e => onFieldChange('nationalHeadPlacement', e.target.value)}
+      style={{ padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%' }} />
+  </td>
+);
+
+const CenterStatusBadges = ({ center }) => (
+  <>
+    {center.approvalStatus === 'pending' && (
+      <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>⏳ New Pending</span>
+    )}
+    {center.editApprovalStatus === 'pending' && (
+      <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#e3f2fd', color: '#1565c0', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #2196f3' }}>✏️ Edit Pending</span>
+    )}
+  </>
+);
+
+const CenterActionsCell = ({ editing, auditUserMode, onSave, onCancel, onEdit, onDelete }) => (
+  <td style={{ padding: '12px', textAlign: 'center' }}>
+    {editing ? (
+      <>
+        <button onClick={onSave} style={{ padding: '6px 12px', background: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
+          {auditUserMode ? '📤 Submit for Approval' : '✔ Save'}
+        </button>
+        <button onClick={onCancel} style={{ padding: '6px 12px', background: '#999', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          ✕ Cancel
+        </button>
+      </>
+    ) : (
+      <>
+        <button onClick={onEdit} style={{ padding: '6px 12px', background: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
+          ✏️ Edit
+        </button>
+        {!auditUserMode && (
+          <button onClick={onDelete} style={{ padding: '6px 12px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            🗑️ Delete
+          </button>
+        )}
+      </>
+    )}
+  </td>
+);
+
+// One row of the centers table — extracted from the previous giant inline
+// .map() callback (10+ independent edit/display ternaries) to keep this
+// file's cognitive complexity down.
+const CenterRow = ({ center, editingId, centers, setCenters, auditUserMode, handleUpdate, handleDelete, setEditingId, setOriginalCenter, loadCenters }) => {
+  const editing = editingId === center._id;
+
+  const updateField = (field, value) => {
+    setCenters(centers.map(c => c._id === center._id ? { ...c, [field]: value } : c));
+  };
+
+  const startEdit = () => {
+    const centerWithAllFields = {
+      ...center,
+      areaManager: center.areaManager || center.areaClusterManager || '',
+      clusterManager: center.clusterManager || '',
+      placementApplicable: center.placementApplicable || '',
+      placementCoordinator: center.placementCoordinator || '',
+      seniorManagerPlacement: center.seniorManagerPlacement || '',
+      nationalHeadPlacement: center.nationalHeadPlacement || '',
+    };
+    setCenters(prev => prev.map(ct => ct._id === center._id ? centerWithAllFields : ct));
+    setEditingId(center._id);
+    setOriginalCenter(JSON.parse(JSON.stringify(centerWithAllFields)));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setOriginalCenter(null);
+    loadCenters();
+  };
+
+  return (
+    <tr style={{ borderBottom: '1px solid #eee' }}>
+      <td style={{ padding: '12px', fontWeight: 'bold', color: '#667eea' }}>
+        {center.centerCode}
+        <CenterStatusBadges center={center} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.centerName} displayValue={center.centerName} onChange={v => updateField('centerName', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.projectName} displayValue={center.projectName || '-'} onChange={v => updateField('projectName', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.zmName} displayValue={center.zmName || '-'} onChange={v => updateField('zmName', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.regionHeadName} displayValue={center.regionHeadName || '-'} onChange={v => updateField('regionHeadName', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.areaManager} displayValue={center.areaManager || center.areaClusterManager || '-'} onChange={v => updateField('areaManager', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.clusterManager} displayValue={center.clusterManager || '-'} onChange={v => updateField('clusterManager', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <EditableTextCell editing={editing} value={center.centerHeadName} displayValue={center.centerHeadName || '-'} onChange={v => updateField('centerHeadName', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <CenterTypeCell editing={editing} value={center.centerType} onChange={v => updateField('centerType', v)} />
+      </td>
+      <td style={{ padding: '12px', fontSize: '12px', color: '#666' }}>
+        <EditableTextCell editing={editing} value={center.location} displayValue={center.location || center.geolocation || '-'} onChange={v => updateField('location', v)} />
+      </td>
+      <td style={{ padding: '12px' }}>
+        <PlacementCell editing={editing} center={center} onChange={v => updateField('placementApplicable', v)} />
+      </td>
+      {editing && center.placementApplicable === 'yes' && (
+        <PlacementEditFields center={center} onFieldChange={updateField} />
+      )}
+      <CenterActionsCell
+        editing={editing}
+        auditUserMode={auditUserMode}
+        onSave={() => handleUpdate(center)}
+        onCancel={cancelEdit}
+        onEdit={startEdit}
+        onDelete={() => handleDelete(center._id)}
+      />
+    </tr>
+  );
+};
+
 const CenterManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '' }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -531,11 +733,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
       {(activeOption === 'view' || activeOption === 'modify') && (
       <div style={{background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px'}}>
-          <h3 style={{margin: 0}}>📋 All Centers (Total: {centers.filter(ct => {
-            if (!centerSearch) return true;
-            const q = centerSearch.toLowerCase();
-            return ct.centerCode?.toLowerCase().includes(q) || ct.centerName?.toLowerCase().includes(q) || ct.zmName?.toLowerCase().includes(q) || ct.regionHeadName?.toLowerCase().includes(q) || ct.areaManager?.toLowerCase().includes(q) || ct.clusterManager?.toLowerCase().includes(q) || ct.centerHeadName?.toLowerCase().includes(q) || ct.location?.toLowerCase().includes(q) || ct.centerType?.toLowerCase().includes(q) || ct.projectName?.toLowerCase().includes(q);
-          }).length})</h3>
+          <h3 style={{margin: 0}}>📋 All Centers (Total: {filterCenters(centers, centerSearch).length})</h3>
           <div style={{position: 'relative', minWidth: '280px'}}>
             <input type="text" placeholder="🔍 Search centers..." value={centerSearch}
               onChange={e => setCenterSearch(e.target.value)}
@@ -573,295 +771,20 @@ const code = newCenter.centerCode.trim().toUpperCase();
                 </tr>
               </thead>
               <tbody>
-                {centers.filter(ct => {
-                    if (!centerSearch) return true;
-                    const q = centerSearch.toLowerCase();
-                    return ct.centerCode?.toLowerCase().includes(q) || ct.centerName?.toLowerCase().includes(q) || ct.zmName?.toLowerCase().includes(q) || ct.regionHeadName?.toLowerCase().includes(q) || ct.areaManager?.toLowerCase().includes(q) || ct.clusterManager?.toLowerCase().includes(q) || ct.centerHeadName?.toLowerCase().includes(q) || ct.location?.toLowerCase().includes(q) || ct.centerType?.toLowerCase().includes(q) || ct.projectName?.toLowerCase().includes(q);
-                  }).map((center) => (
-                  <tr key={center._id} style={{borderBottom: '1px solid #eee'}}>
-                    <td style={{padding: '12px', fontWeight: 'bold', color: '#667eea'}}>
-                      {center.centerCode}
-                      {center.approvalStatus === 'pending' && (
-                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>⏳ New Pending</span>
-                      )}
-                      {center.editApprovalStatus === 'pending' && (
-                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#e3f2fd', color: '#1565c0', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #2196f3' }}>✏️ Edit Pending</span>
-                      )}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.centerName}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, centerName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : center.centerName}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.projectName || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, projectName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.projectName || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.zmName || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, zmName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.zmName || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.regionHeadName || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, regionHeadName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.regionHeadName || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.areaManager || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c =>
-                              c._id === center._id ? {...c, areaManager: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.areaManager || center.areaClusterManager || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.clusterManager || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c =>
-                              c._id === center._id ? {...c, clusterManager: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.clusterManager || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.centerHeadName || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, centerHeadName: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.centerHeadName || '-')}
-                    </td>
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <select
-                          value={center.centerType || 'CDC'}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, centerType: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        >
-                          <option value="CDC">CDC</option>
-                          <option value="SDC">SDC</option>
-                          <option value="DTV">DTV</option>
-                        </select>
-                      ) : (
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          background: center.centerType === 'CDC' ? '#e3f2fd' : center.centerType === 'SDC' ? '#fff3e0' : '#f1f8e9',
-                          color: center.centerType === 'CDC' ? '#1976d2' : center.centerType === 'SDC' ? '#e65100' : '#2e7d32'
-                        }}>
-                          {center.centerType || 'CDC'}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{padding: '12px', fontSize: '12px', color: '#666'}}>
-                      {editingId === center._id ? (
-                        <input
-                          type="text"
-                          value={center.location || ''}
-                          onChange={(e) => {
-                            const updated = centers.map(c => 
-                              c._id === center._id ? {...c, location: e.target.value} : c
-                            );
-                            setCenters(updated);
-                          }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}
-                        />
-                      ) : (center.location || center.geolocation || '-')}
-                    </td>
-                    
-                    
-                    <td style={{padding: '12px'}}>
-                      {editingId === center._id ? (
-                        <select
-                          value={center.placementApplicable || ''}
-                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, placementApplicable: e.target.value} : ct); setCenters(updated); }}
-                          style={{padding: '6px', border: '1px solid #ddd', borderRadius: '4px', width: '100%'}}>
-                          <option value="">-- Select --</option>
-                          <option value="yes">✅ Yes</option>
-                          <option value="no">❌ No</option>
-                        </select>
-                      ) : center.placementApplicable === 'yes' ? (
-                        <div>
-                          <span style={{color:'#2e7d32', fontWeight:'bold', display:'block', marginBottom:'4px'}}>✅ Yes</span>
-                          {center.placementCoordinator && <div style={{fontSize:'11px', color:'#555', marginBottom:'2px'}}>📋 <strong>Coord:</strong> {center.placementCoordinator}</div>}
-                          {center.seniorManagerPlacement && <div style={{fontSize:'11px', color:'#555', marginBottom:'2px'}}>🏆 <strong>SMP:</strong> {center.seniorManagerPlacement}</div>}
-                          {center.nationalHeadPlacement && <div style={{fontSize:'11px', color:'#555'}}>🎯 <strong>NHP:</strong> {center.nationalHeadPlacement}</div>}
-                        </div>
-                      ) : center.placementApplicable === 'no' ? (
-                        <span style={{color:'#c62828', fontWeight:'bold'}}>❌ No</span>
-                      ) : '-'}
-                    </td>
-                    {/* Placement person fields in edit mode */}
-                    {editingId === center._id && center.placementApplicable === 'yes' && (
-                      <td colSpan={1} style={{padding: '12px'}}>
-                        <input type="text" placeholder="Placement Coordinator"
-                          value={center.placementCoordinator || ''}
-                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, placementCoordinator: e.target.value} : ct); setCenters(updated); }}
-                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px'}} />
-                        <input type="text" placeholder="Senior Manager Placement"
-                          value={center.seniorManagerPlacement || ''}
-                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, seniorManagerPlacement: e.target.value} : ct); setCenters(updated); }}
-                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%', marginBottom: '4px'}} />
-                        <input type="text" placeholder="National Head Placement"
-                          value={center.nationalHeadPlacement || ''}
-                          onChange={(e) => { const updated = centers.map(ct => ct._id === center._id ? {...ct, nationalHeadPlacement: e.target.value} : ct); setCenters(updated); }}
-                          style={{padding: '5px', border: '1px solid #ffcc80', borderRadius: '4px', width: '100%'}} />
-                      </td>
-                    )}
-                    <td style={{padding: '12px', textAlign: 'center'}}>
-                      {editingId === center._id ? (
-                        <>
-                          <button
-                            onClick={() => handleUpdate(center)}
-                            style={{
-                              padding: '6px 12px',
-                              background: '#4caf50',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              marginRight: '5px'
-                            }}
-                          >
-                            {auditUserMode ? '📤 Submit for Approval' : '✔ Save'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingId(null);
-                              setOriginalCenter(null);
-                              loadCenters();
-                            }}
-                            style={{
-                              padding: '6px 12px',
-                              background: '#999',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            ✕ Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => {
-                              // Ensure all new fields exist before editing
-                              const centerWithAllFields = {
-                                ...center,
-                                areaManager: center.areaManager || center.areaClusterManager || '',
-                                clusterManager: center.clusterManager || '',
-                                placementApplicable: center.placementApplicable || '',
-                                placementCoordinator: center.placementCoordinator || '',
-                                seniorManagerPlacement: center.seniorManagerPlacement || '',
-                                nationalHeadPlacement: center.nationalHeadPlacement || '',
-                              };
-                              // Update this center in state with all fields
-                              setCenters(prev => prev.map(ct => ct._id === center._id ? centerWithAllFields : ct));
-                              setEditingId(center._id);
-                              setOriginalCenter(JSON.parse(JSON.stringify(centerWithAllFields)));
-                            }}
-                            style={{
-                              padding: '6px 12px',
-                              background: '#2196f3',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              marginRight: '5px'
-                            }}
-                          >
-                            ✏️ Edit
-                          </button>
-                          {!auditUserMode && (
-                            <button
-                              onClick={() => handleDelete(center._id)}
-                              style={{
-                                padding: '6px 12px',
-                                background: '#f44336',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              🗑️ Delete
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
+                {filterCenters(centers, centerSearch).map((center) => (
+                  <CenterRow
+                    key={center._id}
+                    center={center}
+                    editingId={editingId}
+                    centers={centers}
+                    setCenters={setCenters}
+                    auditUserMode={auditUserMode}
+                    handleUpdate={handleUpdate}
+                    handleDelete={handleDelete}
+                    setEditingId={setEditingId}
+                    setOriginalCenter={setOriginalCenter}
+                    loadCenters={loadCenters}
+                  />
                 ))}
               </tbody>
             </table>

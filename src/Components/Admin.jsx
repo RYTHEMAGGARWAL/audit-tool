@@ -13,6 +13,26 @@ import AuditUserDashboard from './AuditUserDashboard';
 import { API_URL } from '../config';
 import './Admin.css';
 
+// Reusable dropdown panel
+const DropPanel = ({ items, activeKey, onSelect }) => (
+  <div className="tab-dropdown-panel">
+    {items.map(item => (
+      <button key={item.key}
+        className={`tab-dropdown-item ${activeKey === item.key ? 'tab-dropdown-item--active' : ''}`}
+        style={{ '--dd-color': item.color }}
+        onClick={() => onSelect(item.key)}
+      >
+        <span className="tab-dd-icon">{item.icon}</span>
+        <span className="tab-dd-label">{item.label}</span>
+        {item.count > 0 && (
+          <span style={{ background:item.color, color:'white', borderRadius:'50%', width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:'bold', marginLeft:4 }}>{item.count}</span>
+        )}
+        {activeKey === item.key && <span className="tab-dd-check">✓</span>}
+      </button>
+    ))}
+  </div>
+);
+
 // A tab button that opens a dropdown of sub-options (User Management, Center Management, etc.)
 const DropdownTab = ({ label, icon, tabKey, activeTab, setActiveTab, isOpen, setIsOpen, subOption, setSubOption, closeOthers, items, badge, tabRef }) => {
   const isActive = activeTab === tabKey;
@@ -276,25 +296,6 @@ const Admin = () => {
 
   if (users.length === 0) return <div className="admin-container">Loading users...</div>;
 
-  // Reusable dropdown panel
-  const DropPanel = ({ items, activeKey, onSelect }) => (
-    <div className="tab-dropdown-panel">
-      {items.map(item => (
-        <button key={item.key}
-          className={`tab-dropdown-item ${activeKey === item.key ? 'tab-dropdown-item--active' : ''}`}
-          style={{ '--dd-color': item.color }}
-          onClick={() => onSelect(item.key)}
-        >
-          <span className="tab-dd-icon">{item.icon}</span>
-          <span className="tab-dd-label">{item.label}</span>
-          {item.count > 0 && (
-            <span style={{ background:item.color, color:'white', borderRadius:'50%', width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:'bold', marginLeft:4 }}>{item.count}</span>
-          )}
-          {activeKey === item.key && <span className="tab-dd-check">✓</span>}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <div className="admin-container">
