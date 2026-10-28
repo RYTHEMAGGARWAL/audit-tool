@@ -1,118 +1,144 @@
-// ✅ CHECKPOINT CONFIGURATION - FRESH VERSION
+// ✅ CHECKPOINT CONFIGURATION
 // getCheckpointsByArea(centerType, placementApplicable)
+//
+// Values that change when placement is not applicable are written as
+// [normalValue, naValue]. Plain numbers are the same in both cases.
+// Each checkpoint row is: [id, name, weightage, maxScore]
+
+const NORMAL = 0;
+const NA = 1;
+
+const resolve = (value, idx) => (Array.isArray(value) ? value[idx] : value);
+
+const buildArea = (idx, areaName, totalScore, rows, extra = {}) => ({
+  areaName,
+  totalScore: resolve(totalScore, idx),
+  ...extra,
+  checkpoints: rows.map(([id, name, weightage, maxScore]) => ({
+    id,
+    name,
+    weightage: resolve(weightage, idx),
+    maxScore: resolve(maxScore, idx),
+  })),
+});
+
+// Placement is empty (and scores 0) when placement is not applicable
+const buildPlacementArea = (isNA, idx, normalTotal, rows) =>
+  buildArea(idx, 'Placement Process', [normalTotal, 0], isNA ? [] : rows, { isNA });
+
+// ========================================
+// DTV
+// ========================================
+const DTV_CONFIG = {
+  frontOffice: {
+    total: 30,
+    rows: [
+      ['FO1', 'Enquires Entered in Pulse(Y/N)', 30, 9],
+      ['FO2', 'Enrolment form available in Pulse(Y/N)', 20, 6],
+      ['FO3', 'Pre assessment Available(Y/N)', 0, 0],
+      ['FO4', 'Documents uploaded in Pulse(Y/N)', 40, 12],
+      ['FO5', 'Availability of Marketing Material(Y/N)', 10, 3],
+    ],
+  },
+  deliveryProcess: {
+    total: [40, 45],
+    rows: [
+      ['DP1', 'Batch file maintained for all running batches', [15, 20], [6, 9]],
+      ['DP2', 'Batch Heath Card available for all batches where batch duration is >= 30 days', [10, 0], [4, 0]],
+      ['DP3', 'Attendance marked in EDL sheets correctly', [15, 20], [6, 9]],
+      ['DP4', 'BMS maintained with observations >= 30 days', 5, [2, 2.25]],
+      ['DP5', 'FACT Certificate available at Center (Y/N)', 10, [4, 4.5]],
+      ['DP6', 'Post Assessment if applicable', 0, 0],
+      ['DP7', 'Appraisal sheet is maintained (Y/N)', 10, [4, 4.5]],
+      ['DP8', 'Appraisal status updated in Pulse(Y/N)', 5, [2, 2.25]],
+      ['DP9', 'Certification Status of eligible students', 10, [4, 4.5]],
+      ['DP10', 'Student signature obtained while issuing certificates', 10, [4, 4.5]],
+      ['DP11', 'Verification between System issue date Vs actual certificate issue date', 10, [4, 4.5]],
+    ],
+  },
+  placementProcess: {
+    total: 10,
+    rows: [
+      ['PP1', 'Student Placement Response', 15, 1.5],
+      ['PP2', 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', 10, 1.0],
+      ['PP3', 'Placement Bank & Aging', 15, 1.5],
+      ['PP4', 'Placement Proof Upload', 60, 6.0],
+    ],
+  },
+  managementProcess: {
+    total: [20, 25],
+    rows: [
+      ['MP1', 'Courseware issue to students done on time/Usage of LMS', 5, [1, 1.25]],
+      ['MP2', 'Log book for Genset & Vehicle (Y/N)', [10, 20], [2, 5]],
+      ['MP3', 'TIRM details register', [20, 30], [4, 7.5]],
+      ['MP4', 'Availability and requirement of Biometric (Y/N) as per MOU', [5, 25], [1, 6.25]],
+      ['MP5', 'Physical asset verification', [25, 10], [5, 2.5]],
+      ['MP6', 'Monthly Centre Review Meeting is conducted', [30, 5], [6, 1.25]],
+      ['MP7', 'Verification of bill authenticity', 5, [1, 1.25]],
+    ],
+  },
+};
+
+// ========================================
+// CDC / SDC
+// ========================================
+const CDC_CONFIG = {
+  frontOffice: {
+    total: [30, 35],
+    rows: [
+      ['FO1', 'Enquires Entered in Pulse(Y/N)', 30, [9, 10.5]],
+      ['FO2', 'Enrolment form available in Pulse(Y/N)', 20, [6, 7]],
+      ['FO3', 'Pre assessment Available(Y/N)', 0, 0],
+      ['FO4', 'Documents uploaded in Pulse(Y/N)', 40, [12, 14]],
+      ['FO5', 'Availability of Marketing Material(Y/N)', 10, [3, 3.5]],
+    ],
+  },
+  deliveryProcess: {
+    total: [40, 45],
+    rows: [
+      ['DP1', 'Batch file maintained for all running batches', 15, [6, 6.75]],
+      ['DP2', 'Batch Heath Card available for all batches where batch duration is >= 30 days', 10, [4, 4.5]],
+      ['DP3', 'Attendance marked in EDL sheets correctly', 15, [6, 6.75]],
+      ['DP4', 'BMS maintained with observations >= 30 days', 5, [2, 2.25]],
+      ['DP5', 'FACT Certificate available at Center (Y/N)', 10, [4, 4.5]],
+      ['DP6', 'Post Assessment if applicable', 0, 0],
+      ['DP7', 'Appraisal sheet is maintained (Y/N)', 10, [4, 4.5]],
+      ['DP8', 'Appraisal status updated in Pulse(Y/N)', 5, [2, 2.25]],
+      ['DP9', 'Certification Status of eligible students', 10, [4, 4.5]],
+      ['DP10', 'Student signature obtained while issuing certificates', 10, [4, 4.5]],
+      ['DP11', 'Verification between System issue date Vs actual certificate issue date', 10, [4, 4.5]],
+    ],
+  },
+  placementProcess: {
+    total: 15,
+    rows: [
+      ['PP1', 'Student Placement Response', 15, 2.25],
+      ['PP2', 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', 10, 1.5],
+      ['PP3', 'Placement Bank & Aging', 15, 2.25],
+      ['PP4', 'Placement Proof Upload', 60, 9.0],
+    ],
+  },
+  managementProcess: {
+    total: [15, 20],
+    rows: [
+      ['MP1', 'Courseware issue to students done on time/Usage of LMS', 5, [0.75, 1]],
+      ['MP2', 'TIRM details register', 20, [3, 4]],
+      ['MP3', 'Monthly Centre Review Meeting is conducted', 35, [5.25, 7]],
+      ['MP4', 'Physical asset verification', 30, [4.5, 6]],
+      ['MP5', 'Verification of bill authenticity', 10, [1.5, 2]],
+    ],
+  },
+};
 
 export function getCheckpointsByArea(centerType, placementApplicable) {
   const isNA = placementApplicable === 'no';
-  
-  // DTV Configuration
-  if (centerType === 'DTV') {
-    return {
-      frontOffice: {
-        areaName: 'Front Office',
-        totalScore: 30,
-        checkpoints: [
-          { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: 9 },
-          { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: 6 },
-          { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-          { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: 12 },
-          { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: 3 }
-        ]
-      },
-      deliveryProcess: {
-        areaName: 'Delivery Process',
-        totalScore: isNA ? 45 : 40,
-        checkpoints: [
-          { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: isNA ? 20 : 15, maxScore: isNA ? 9 : 6 },
-          { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: isNA ? 0 : 10, maxScore: isNA ? 0 : 4 },
-          { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: isNA ? 20 : 15, maxScore: isNA ? 9 : 6 },
-          { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-          { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-          { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-          { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: isNA ? 4.5 : 4 }
-        ]
-      },
-      placementProcess: {
-        areaName: 'Placement Process',
-        totalScore: isNA ? 0 : 10,
-        isNA: isNA,
-        checkpoints: isNA ? [] : [
-          { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 1.5 },
-          { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.0 },
-          { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 1.5 },
-          { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 6.0 }
-        ]
-      },
-      managementProcess: {
-        areaName: 'Management Process',
-        totalScore: isNA ? 25 : 20,
-        checkpoints: [
-          { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isNA ? 1.25 : 1 },
-          { id: 'MP2', name: 'Log book for Genset & Vehicle (Y/N)', weightage: isNA ? 20 : 10, maxScore: isNA ? 5 : 2 },
-          { id: 'MP3', name: 'TIRM details register', weightage: isNA ? 30 : 20, maxScore: isNA ? 7.5 : 4 },
-          { id: 'MP4', name: 'Availability and requirement of Biometric (Y/N) as per MOU', weightage: isNA ? 25 : 5, maxScore: isNA ? 6.25 : 1 },
-          { id: 'MP5', name: 'Physical asset verification', weightage: isNA ? 10 : 25, maxScore: isNA ? 2.5 : 5 },
-          { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: isNA ? 5 : 30, maxScore: isNA ? 1.25 : 6 },
-          { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: isNA ? 1.25 : 1 }
-        ]
-      }
-    };
-  }
-  
-  // CDC/SDC Configuration
+  const idx = isNA ? NA : NORMAL;
+  const config = centerType === 'DTV' ? DTV_CONFIG : CDC_CONFIG;
+
   return {
-    frontOffice: {
-      areaName: 'Front Office',
-      totalScore: isNA ? 35 : 30,
-      checkpoints: [
-        { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: isNA ? 10.5 : 9 },
-        { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: isNA ? 7 : 6 },
-        { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-        { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: isNA ? 14 : 12 },
-        { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: isNA ? 3.5 : 3 }
-      ]
-    },
-    deliveryProcess: {
-      areaName: 'Delivery Process',
-      totalScore: isNA ? 45 : 40,
-      checkpoints: [
-        { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-        { id: 'DP2', name: 'Batch Heath Card available for all batches where batch duration is >= 30 days', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-        { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: isNA ? 6.75 : 6 },
-        { id: 'DP4', name: 'BMS maintained with observations >= 30 days', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-        { id: 'DP5', name: 'FACT Certificate available at Center (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-        { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-        { id: 'DP7', name: 'Appraisal sheet is maintained (Y/N)', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-        { id: 'DP8', name: 'Appraisal status updated in Pulse(Y/N)', weightage: 5, maxScore: isNA ? 2.25 : 2 },
-        { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-        { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: isNA ? 4.5 : 4 },
-        { id: 'DP11', name: 'Verification between System issue date Vs actual certificate issue date', weightage: 10, maxScore: isNA ? 4.5 : 4 }
-      ]
-    },
-    placementProcess: {
-      areaName: 'Placement Process',
-      totalScore: isNA ? 0 : 15,
-      isNA: isNA,
-      checkpoints: isNA ? [] : [
-        { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-        { id: 'PP2', name: 'CGT/ Guest Lecture/ Industry Visit Session and Intern Preparation', weightage: 10, maxScore: 1.50 },
-        { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-        { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-      ]
-    },
-    managementProcess: {
-      areaName: 'Management Process',
-      totalScore: isNA ? 20 : 15,
-      checkpoints: [
-        { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: isNA ? 1 : 0.75 },
-        { id: 'MP2', name: 'TIRM details register', weightage: 20, maxScore: isNA ? 4 : 3.00 },
-        { id: 'MP3', name: 'Monthly Centre Review Meeting is conducted', weightage: 35, maxScore: isNA ? 7 : 5.25 },
-        { id: 'MP4', name: 'Physical asset verification', weightage: 30, maxScore: isNA ? 6 : 4.50 },
-        { id: 'MP5', name: 'Verification of bill authenticity', weightage: 10, maxScore: isNA ? 2 : 1.50 }
-      ]
-    }
+    frontOffice: buildArea(idx, 'Front Office', config.frontOffice.total, config.frontOffice.rows),
+    deliveryProcess: buildArea(idx, 'Delivery Process', config.deliveryProcess.total, config.deliveryProcess.rows),
+    placementProcess: buildPlacementArea(isNA, idx, config.placementProcess.total, config.placementProcess.rows),
+    managementProcess: buildArea(idx, 'Management Process', config.managementProcess.total, config.managementProcess.rows),
   };
 }
