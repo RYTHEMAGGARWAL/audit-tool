@@ -1,101 +1,460 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import axios from 'axios';
 import { useUsers } from '../contexts/UsersContext';
 import { API_URL } from '../config';
 import './UserManagement.css';
 
 // ========================================
-// PASSWORD POLICY VALIDATION
+// CONSTANTS
 // ========================================
-const validatePassword = (password) => {
-  const errors = [];
-  if (password.length < 8) errors.push('At least 8 characters');
-  if (!/[A-Z]/.test(password)) errors.push('One uppercase letter (A-Z)');
-  if (!/[a-z]/.test(password)) errors.push('One lowercase letter (a-z)');
-  if (!/[0-9]/.test(password)) errors.push('One number (0-9)');
-  if (!/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) errors.push('One special character (@$!%*?& etc)');
-  return errors;
+const SPECIAL_CHAR = /[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const HIERARCHY_ROLES = [
+  'Zonal Manager',
+  'Region Head',
+  'Area Manager',
+  'Cluster Manager',
+  'Placement Coordinator',
+  'Senior Manager Placement',
+  'National Head Placement',
+];
+
+const ROLES = [
+  'Audit User',
+  'Center User',
+  'Zonal Manager',
+  'Region Head',
+  'Area Manager',
+  'Cluster Manager',
+  'Operation Head',
+  'Placement Coordinator',
+  'Senior Manager Placement',
+  'National Head Placement',
+  'National Head',
+  'Admin',
+];
+
+const RELOAD_OPTIONS = ['view', 'modify'];
+
+const MENU_ITEMS = [
+  { key: 'create', icon: '➕', label: 'Create User', color: '#11998e' },
+  { key: 'view', icon: '👁️', label: 'View User', color: '#2196f3' },
+  { key: 'modify', icon: '✏️', label: 'Modify User', color: '#f7971e' },
+];
+
+const ROLE_COLORS = { Admin: '#f5576c', 'Audit User': '#4facfe', 'Center User': '#11998e' };
+const DEFAULT_ROLE_COLOR = '#667eea';
+
+const EMPTY_MESSAGE = { text: '', type: '' };
+const EMPTY_NEW_USER_FORM = {
+  username: '',
+  password: '',
+  firstname: '',
+  lastname: '',
+  email: '',
+  mobile: '',
+  centerCode: '',
+  Role: 'Audit User',
+  replaceOldName: '',
 };
+const EDIT_TEXT_FIELDS = ['username', 'firstname', 'lastname', 'email', 'mobile', 'centerCode'];
+
+const CREATE_ROLE_SELECT_STYLE = {
+  width: '100%',
+  padding: '12px',
+  border: '2px solid #ddd',
+  borderRadius: '8px',
+  fontSize: '14px',
+  cursor: 'pointer',
+  backgroundColor: 'white',
+};
+
+const CENTER_BADGE_STYLE = {
+  fontWeight: 'bold',
+  color: '#2196f3',
+  background: '#e3f2fd',
+  padding: '4px 8px',
+  borderRadius: '4px',
+};
+const CENTER_EMPTY_STYLE = {
+  fontWeight: 'bold',
+  color: '#999',
+  background: 'transparent',
+  padding: '0',
+  borderRadius: '0',
+};
+
+const EXPIRY_BADGE_BASE = {
+  padding: '2px 8px',
+  borderRadius: '10px',
+  fontSize: '10px',
+  fontWeight: 'bold',
+  marginLeft: '4px',
+};
+
+const RESULT_PILL_BASE = {
+  padding: '3px 12px',
+  borderRadius: '20px',
+  fontWeight: 'bold',
+  fontSize: '13px',
+};
+
+const HEADER_NOT_FOUND =
+  'Could not find header row. Make sure Excel has: username, password, first name, last name, email, mobileno., role, centercode, centername';
+
+// Excel column aliases -> user field
+const COLUMN_MAP = {
+  username: ['username'],
+  password: ['password'],
+  firstname: ['first name', 'firstname'],
+  lastname: ['last name', 'lastname'],
+  email: ['email'],
+  mobile: ['mobileno.', 'mobile', 'mobileno'],
+  Role: ['role'],
+  centerCode: ['centercode', 'center code'],
+  centerName: ['centername', 'center name'],
+};
+
+// ========================================
+// PASSWORD POLICY
+// ========================================
+const PASSWORD_RULES = [
+  { test: (p) => p.length >= 8, error: 'At least 8 characters', label: 'Min 8 characters' },
+  { test: (p) => /[A-Z]/.test(p), error: 'One uppercase letter (A-Z)', label: 'Uppercase (A-Z)' },
+  { test: (p) => /[a-z]/.test(p), error: 'One lowercase letter (a-z)', label: 'Lowercase (a-z)' },
+  { test: (p) => /\d/.test(p), error: 'One number (0-9)', label: 'Number (0-9)' },
+  {
+    test: (p) => SPECIAL_CHAR.test(p),
+    error: 'One special character (@$!%*?& etc)',
+    label: 'Special char (@$!%*?&)',
+  },
+];
+
+const validatePassword = (password) =>
+  PASSWORD_RULES.filter((rule) => !rule.test(password)).map((rule) => rule.error);
+
+const policyMessage = (password) => {
+  const errors = validatePassword(password);
+  return errors.length ? `Password policy: ${errors.join(', ')}` : '';
+};
+
+const WEAK = { message: '❌ Weak - Password too simple', color: '#f44336' };
+const STRENGTH_BY_SCORE = [
+  WEAK,
+  WEAK,
+  WEAK,
+  { message: '⚠️ Medium - Add more complexity', color: '#ff9800' },
+  { message: '✅ Strong', color: '#4caf50' },
+  { message: '✅ Very Strong', color: '#2196f3' },
+];
 
 const checkPasswordStrength = (password) => {
   if (!password) return { message: '', color: '' };
-  let s = 0;
-  if (password.length >= 8) s++;
-  if (/[A-Z]/.test(password)) s++;
-  if (/[a-z]/.test(password)) s++;
-  if (/\d/.test(password)) s++;
-  if (/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) s++;
-  if (s <= 2) return { message: '❌ Weak - Password too simple', color: '#f44336' };
-  if (s === 3) return { message: '⚠️ Medium - Add more complexity', color: '#ff9800' };
-  if (s === 4) return { message: '✅ Strong', color: '#4caf50' };
-  return { message: '✅ Very Strong', color: '#2196f3' };
+  const score = PASSWORD_RULES.filter((rule) => rule.test(password)).length;
+  return STRENGTH_BY_SCORE[score];
 };
 
-const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '', hideHeader = false }) => {
-  const fileInputRef = useRef(null);
-  const [bulkResult, setBulkResult] = useState(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [umDropOpen, setUmDropOpen] = useState(false);
-  const umDropRef = useRef(null);
+// ========================================
+// SMALL HELPERS
+// ========================================
+const postJson = (url, body, method = 'POST') =>
+  fetch(url, { method, headers: JSON_HEADERS, body: JSON.stringify(body) });
 
-  const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
-  const [activeOption, setActiveOption] = useState(defaultOption || '');
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [editForm, setEditForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
-  const [newUserForm, setNewUserForm] = useState({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
-  const [tableUsers, setTableUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [passwordStrength, setPasswordStrength] = useState({ message: '', color: '' });
-  const [editPasswordStrength, setEditPasswordStrength] = useState({ message: '', color: '' });
-  const [validationErrors, setValidationErrors] = useState({});
-  const [showCreatePassword, setShowCreatePassword] = useState(false);
-  const [showEditPassword, setShowEditPassword] = useState(false);
-  const [message, setMessage] = useState({ text: '', type: '' });
-  const [viewSearch, setViewSearch] = useState('');
-  const [modifySearch, setModifySearch] = useState('');
-  const [centers, setCenters] = useState([]);
+const getRole = (user) => user.Role || user.role || '';
 
-  // ── Admin Reset Password Modal ──
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [resetTargetUser, setResetTargetUser] = useState(null);
-  const [resetNewPwd, setResetNewPwd] = useState('');
-  const [resetConfirmPwd, setResetConfirmPwd] = useState('');
-  const [resetLoading, setResetLoading] = useState(false);
-  const [showResetPwd, setShowResetPwd] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+const isCenterUser = (user) => user.Role === 'Center User' || user.role === 'center user';
 
-  useEffect(() => { loadCenters(); }, []);
+const visibleUsers = (users, auditUserMode) => (auditUserMode ? users.filter(isCenterUser) : users);
 
-  useEffect(() => {
-    const h = (e) => { if (umDropRef.current && !umDropRef.current.contains(e.target)) setUmDropOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
+const matchesSearch = (values, query) => {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return values.some((v) => v?.toLowerCase().includes(q));
+};
 
-  useEffect(() => {
-    if (defaultOption) {
-      setActiveOption(defaultOption);
-      if (defaultOption === 'view' || defaultOption === 'modify') loadUsersData();
-    }
-  }, [defaultOption]);
+const getRoleColor = (role) => ROLE_COLORS[role] || DEFAULT_ROLE_COLOR;
 
-  const loadCenters = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/centers`);
-      if (response.ok) {
-        const centersData = await response.json();
-        setCenters(centersData);
-      }
-    } catch (err) {
-      console.error('❌ Error loading centers:', err);
-    }
+const sanitizeMobile = (value) => value.replace(/\D/g, '').slice(0, 10);
+
+const applyRoleChange = (form, role) => ({
+  ...form,
+  Role: role,
+  centerCode: role === 'Center User' ? form.centerCode : '',
+});
+
+const userToEditForm = (user) => ({
+  ...Object.fromEntries(EDIT_TEXT_FIELDS.map((field) => [field, user[field] || ''])),
+  password: '',
+  Role: user.Role || 'User',
+});
+
+const getExpiryBadge = (user) => {
+  if (!user.passwordExpiresAt) return null;
+  const daysLeft = Math.ceil((new Date(user.passwordExpiresAt) - new Date()) / MS_PER_DAY);
+  if (daysLeft < 0) {
+    return <span style={{ ...EXPIRY_BADGE_BASE, background: '#ffebee', color: '#c62828' }}>⏰ Expired</span>;
+  }
+  if (daysLeft <= 5) {
+    return (
+      <span style={{ ...EXPIRY_BADGE_BASE, background: '#fff3e0', color: '#e65100' }}>⚠️ {daysLeft}d left</span>
+    );
+  }
+  return null;
+};
+
+const getRowBackground = (selected, hovered) => {
+  if (selected) return 'linear-gradient(135deg, #667eea15, #764ba215)';
+  return hovered ? '#f8f9ff' : 'white';
+};
+
+const confirmBorderColor = (confirm, password) => {
+  if (!confirm) return undefined;
+  return confirm === password ? '#4caf50' : '#f44336';
+};
+
+const getUploadButtonStyle = (uploading) => ({
+  padding: '10px 24px',
+  background: uploading ? '#9ca3af' : 'linear-gradient(135deg,#667eea,#764ba2)',
+  color: 'white',
+  border: 'none',
+  borderRadius: '8px',
+  cursor: uploading ? 'not-allowed' : 'pointer',
+  fontWeight: 'bold',
+  fontSize: '14px',
+});
+
+// ========================================
+// FORM VALIDATION
+// ========================================
+const required = (value) => (value?.trim() ? '' : 'Required');
+
+const NEW_USER_VALIDATORS = {
+  username: ({ username }) => required(username) || (username.length < 3 ? 'Min 3 characters' : ''),
+  password: ({ password }) => required(password) || validatePassword(password).join(', '),
+  firstname: ({ firstname }) => required(firstname),
+  lastname: ({ lastname }) => required(lastname),
+  email: ({ email }) => required(email) || (EMAIL_REGEX.test(email) ? '' : 'Invalid email'),
+  mobile: ({ mobile }) => required(mobile) || (/^\d{10}$/.test(mobile) ? '' : '10 digits required'),
+  centerCode: ({ Role, centerCode }) =>
+    Role === 'Center User' && !centerCode?.trim() ? 'Center Code required for Center User' : '',
+};
+
+const validateNewUser = (form) =>
+  Object.fromEntries(
+    Object.entries(NEW_USER_VALIDATORS)
+      .map(([field, check]) => [field, check(form)])
+      .filter(([, message]) => message)
+  );
+
+const validateEditForm = (form) => {
+  if (form.Role === 'Center User' && !form.centerCode?.trim()) return 'Center Code required for Center User';
+  return form.password?.trim() ? policyMessage(form.password) : '';
+};
+
+const getResetError = (password, confirm) =>
+  password === confirm ? policyMessage(password) : 'Passwords do not match!';
+
+// ========================================
+// EXCEL PARSING
+// ========================================
+const normalizeHeader = (header) => String(header).toLowerCase().trim();
+
+const getCell = (row, headers, columns) =>
+  columns
+    .map((col) => headers.indexOf(col))
+    .filter((idx) => idx >= 0)
+    .map((idx) => String(row[idx] || '').trim())
+    .find(Boolean) || '';
+
+const rowToUser = (row, headers) =>
+  Object.fromEntries(Object.entries(COLUMN_MAP).map(([key, cols]) => [key, getCell(row, headers, cols)]));
+
+const parseUsersFromRows = (rows) => {
+  const headerIdx = rows.findIndex((r) => r.some((c) => normalizeHeader(c) === 'username'));
+  if (headerIdx === -1) return { error: HEADER_NOT_FOUND };
+  const headers = rows[headerIdx].map(normalizeHeader);
+  const users = rows
+    .slice(headerIdx + 1)
+    .filter((r) => r.some((c) => c !== ''))
+    .map((r) => rowToUser(r, headers))
+    .filter((u) => u.username && u.password);
+  return users.length === 0 ? { error: 'No valid rows found. Check Excel format.' } : { users };
+};
+
+const readSheetRows = async (file) => {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+};
+
+// Never throws: returns { alertText } on any failure, { results } on success
+const importUsersFromFile = async (file, createdBy, auditUserMode) => {
+  try {
+    const parsed = parseUsersFromRows(await readSheetRows(file));
+    if (parsed.error) return { alertText: parsed.error };
+    const res = await postJson(`${API_URL}/api/users/bulk-import`, {
+      users: parsed.users,
+      createdBy: createdBy || '',
+      auditUserMode,
+    });
+    const data = await res.json();
+    if (!res.ok) return { alertText: 'Error: ' + (data.error || 'Upload failed') };
+    return { results: data.results };
+  } catch (err) {
+    return { alertText: 'Error reading file: ' + err.message };
+  }
+};
+
+// ========================================
+// API ACTIONS (ctx = { users, setLoading, showMessage, reload, auditUserMode, createdBy })
+// ========================================
+const buildCreatePayload = (form, auditUserMode, createdBy) => {
+  const role = auditUserMode ? 'Audit User' : 'Admin';
+  return {
+    ...form,
+    username: form.username.toLowerCase(),
+    email: form.email?.toLowerCase() || '',
+    centerCode: form.centerCode?.toUpperCase() || '',
+    createdByRole: role,
+    createdBy: createdBy || role,
   };
+};
 
+const replaceHierarchyName = async (form, showMessage) => {
+  if (!HIERARCHY_ROLES.includes(form.Role) || !form.replaceOldName?.trim()) return;
+  try {
+    const res = await postJson(`${API_URL}/api/bulk-replace-hierarchy-name`, {
+      role: form.Role,
+      oldName: form.replaceOldName.trim(),
+      newName: `${form.firstname} ${form.lastname}`.trim(),
+    });
+    const data = await res.json();
+    if (data.success) showMessage(`✅ User created! ${data.message}`, 'success');
+  } catch (err) {
+    console.error('Bulk replace error:', err);
+  }
+};
+
+// returns true when the user was created
+const createUser = async (ctx, form) => {
+  const { users, setLoading, showMessage, reload, auditUserMode, createdBy } = ctx;
+  const taken = users.some((u) => u.username?.toLowerCase() === form.username?.toLowerCase());
+  if (taken) {
+    showMessage('Username already exists!', 'error');
+    return false;
+  }
+  try {
+    setLoading(true);
+    const res = await postJson(`${API_URL}/api/users`, buildCreatePayload(form, auditUserMode, createdBy));
+    if (!res.ok) {
+      const error = await res.json();
+      showMessage(`❌ ${error.error}`, 'error');
+      return false;
+    }
+    showMessage('✅ User created! They will be asked to set a new password on first login.', 'success');
+    await replaceHierarchyName(form, showMessage);
+    await reload();
+    return true;
+  } catch (err) {
+    showMessage(`❌ ${err.message}`, 'error');
+    return false;
+  } finally {
+    setLoading(false);
+  }
+};
+
+const buildUpdatePayload = (form, auditUserMode, createdBy) => ({
+  ...form,
+  centerCode: form.centerCode?.toUpperCase() || '',
+  modifiedByRole: auditUserMode ? 'Audit User' : 'Admin',
+  modifiedBy: auditUserMode ? createdBy : 'Admin',
+});
+
+// returns true unless an exception happened (same as original: selection cleared either way)
+const updateUser = async (ctx, username, form) => {
+  const { users, setLoading, showMessage, reload, auditUserMode, createdBy } = ctx;
+  try {
+    setLoading(true);
+    const user = users.find((u) => u.username === username);
+    if (user?._id) {
+      const res = await postJson(
+        `${API_URL}/api/users/${user._id}`,
+        buildUpdatePayload(form, auditUserMode, createdBy),
+        'PUT'
+      );
+      if (res.ok) {
+        const result = await res.json();
+        showMessage(result.pendingApproval ? '✅ Modify request submitted!' : '✅ Updated!', 'success');
+        await reload();
+      }
+    }
+    return true;
+  } catch (err) {
+    showMessage(`❌ ${err.message}`, 'error');
+    return false;
+  } finally {
+    setLoading(false);
+  }
+};
+
+const deleteUser = async (ctx, username) => {
+  const { users, setLoading, showMessage, reload } = ctx;
+  try {
+    setLoading(true);
+    const user = users.find((u) => u.username === username);
+    if (user?._id) {
+      const res = await fetch(`${API_URL}/api/users/${user._id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showMessage('✅ Deleted!', 'success');
+        await reload();
+      }
+    }
+    return true;
+  } catch (err) {
+    showMessage(`❌ ${err.message}`, 'error');
+    return false;
+  } finally {
+    setLoading(false);
+  }
+};
+
+// never throws: always returns { ok, type, text }
+const adminResetPassword = async (user, newPassword) => {
+  try {
+    const res = await postJson(`${API_URL}/api/admin-reset-password`, { userId: user._id, newPassword });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        ok: true,
+        type: 'success',
+        text: `✅ Password reset for ${user.username}. They must change on next login.`,
+      };
+    }
+    return { ok: false, type: 'error', text: `❌ ${data.error}` };
+  } catch (err) {
+    return { ok: false, type: 'error', text: `❌ ${err.message}` };
+  }
+};
+
+// ========================================
+// HOOKS
+// ========================================
+const useFlashMessage = () => {
+  const [message, setMessage] = useState(EMPTY_MESSAGE);
   const showMessage = (text, type = 'info') => {
     setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+    setTimeout(() => setMessage(EMPTY_MESSAGE), 3000);
   };
+  return [message, showMessage];
+};
+
+const useUsersData = (showMessage) => {
+  const { users: globalUsers, setUsers: setGlobalUsers } = useUsers();
+  const [tableUsers, setTableUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [centers, setCenters] = useState([]);
 
   const loadUsersData = async () => {
     try {
@@ -113,907 +472,1106 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
     }
   };
 
-  useEffect(() => { loadUsersData(); }, []);
-
-  const resetForm = () => {
-    setNewUserForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User', replaceOldName: '' });
-    setPasswordStrength({ message: '', color: '' });
-    setValidationErrors({});
-  };
-
-  const validateForm = () => {
-    const errors = {};
-    if (!newUserForm.username?.trim()) errors.username = 'Required';
-    else if (newUserForm.username.length < 3) errors.username = 'Min 3 characters';
-    
-    // Password policy validation
-    if (!newUserForm.password?.trim()) {
-      errors.password = 'Required';
-    } else {
-      const policyErrors = validatePassword(newUserForm.password);
-      if (policyErrors.length > 0) errors.password = policyErrors.join(', ');
-    }
-    
-    if (!newUserForm.firstname?.trim()) errors.firstname = 'Required';
-    if (!newUserForm.lastname?.trim()) errors.lastname = 'Required';
-    if (!newUserForm.email?.trim()) errors.email = 'Required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUserForm.email)) errors.email = 'Invalid email';
-    if (!newUserForm.mobile?.trim()) errors.mobile = 'Required';
-    else if (!/^[0-9]{10}$/.test(newUserForm.mobile)) errors.mobile = '10 digits required';
-    if (newUserForm.Role === 'Center User' && !newUserForm.centerCode?.trim()) {
-      errors.centerCode = 'Center Code required for Center User';
-    }
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleBulkUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setBulkLoading(true);
-    setBulkResult(null);
+  const loadCenters = async () => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const wb = XLSX.read(arrayBuffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      let headerIdx = rows.findIndex(r => r.some(c => String(c).toLowerCase().trim() === 'username'));
-      if (headerIdx === -1) { alert('Could not find header row. Make sure Excel has: username, password, first name, last name, email, mobileno., role, centercode, centername'); setBulkLoading(false); return; }
-      const headers = rows[headerIdx].map(h => String(h).toLowerCase().trim());
-      const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => c !== ''));
-      const g = (row, col) => { const i = headers.indexOf(col); return i >= 0 ? String(row[i] || '').trim() : ''; };
-      const users = dataRows.map(row => ({
-        username: g(row, 'username'),
-        password: g(row, 'password'),
-        firstname: g(row, 'first name') || g(row, 'firstname'),
-        lastname: g(row, 'last name') || g(row, 'lastname'),
-        email: g(row, 'email'),
-        mobile: g(row, 'mobileno.') || g(row, 'mobile') || g(row, 'mobileno'),
-        Role: g(row, 'role'),
-        centerCode: g(row, 'centercode') || g(row, 'center code'),
-        centerName: g(row, 'centername') || g(row, 'center name'),
-      })).filter(u => u.username && u.password);
-
-      if (users.length === 0) { alert('No valid rows found. Check Excel format.'); setBulkLoading(false); return; }
-
-      const res = await fetch(`${API_URL}/api/users/bulk-import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users, createdBy: createdBy || '', auditUserMode })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setBulkResult(data.results);
-      } else {
-        alert('Error: ' + (data.error || 'Upload failed'));
-      }
-    } catch(err) {
-      alert('Error reading file: ' + err.message);
-    } finally {
-      setBulkLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!validateForm()) return showMessage('Fix validation errors', 'error');
-    if (globalUsers.some(u => u.username?.toLowerCase() === newUserForm.username?.toLowerCase())) {
-      return showMessage('Username already exists!', 'error');
-    }
-    try {
-      setLoading(true);
-      const userData = { 
-        ...newUserForm, 
-        username: newUserForm.username.toLowerCase(), 
-        email: newUserForm.email?.toLowerCase() || '',
-        centerCode: newUserForm.centerCode?.toUpperCase() || '',
-        createdByRole: auditUserMode ? 'Audit User' : 'Admin',
-        createdBy: createdBy || (auditUserMode ? 'Audit User' : 'Admin')
-      };
-      
-      const res = await fetch(`${API_URL}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
-      });
-      
-      if (res.ok) {
-        const result = await res.json();
-        showMessage('✅ User created! They will be asked to set a new password on first login.', 'success');
-
-        // Bulk replace old name if hierarchy role
-        const hierarchyRoles = ['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'];
-        if (hierarchyRoles.includes(newUserForm.Role) && newUserForm.replaceOldName?.trim()) {
-          try {
-            const newFullName = `${newUserForm.firstname} ${newUserForm.lastname}`.trim();
-            const replaceRes = await fetch(`${API_URL}/api/bulk-replace-hierarchy-name`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role: newUserForm.Role, oldName: newUserForm.replaceOldName.trim(), newName: newFullName })
-            });
-            const replaceData = await replaceRes.json();
-            if (replaceData.success) showMessage(`✅ User created! ${replaceData.message}`, 'success');
-          } catch (replaceErr) {
-            console.error('Bulk replace error:', replaceErr);
-          }
-        }
-
-        resetForm();
-        await loadUsersData();
-      } else {
-        const error = await res.json();
-        showMessage(`❌ ${error.error}`, 'error');
-      }
+      const response = await fetch(`${API_URL}/api/centers`);
+      if (response.ok) setCenters(await response.json());
     } catch (err) {
-      showMessage(`❌ ${err.message}`, 'error');
-    } finally {
-      setLoading(false);
+      console.error('❌ Error loading centers:', err);
     }
   };
+
+  return { globalUsers, tableUsers, loading, setLoading, centers, loadUsersData, loadCenters };
+};
+
+const useClickOutside = (ref, onOutside) => {
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onOutside();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+};
+
+const useDefaultOption = (defaultOption, setActiveOption, loadUsersData) => {
+  useEffect(() => {
+    if (!defaultOption) return;
+    setActiveOption(defaultOption);
+    if (RELOAD_OPTIONS.includes(defaultOption)) loadUsersData();
+  }, [defaultOption]);
+};
+
+// ========================================
+// SMALL UI PIECES
+// ========================================
+const FlashMessage = ({ message }) =>
+  message.text ? <div className={`message ${message.type}`}>{message.text}</div> : null;
+
+const PasswordChecklist = ({ password }) => (
+  <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
+    {PASSWORD_RULES.map(({ test, label }) => {
+      const ok = test(password);
+      return (
+        <div key={label} style={{ fontSize: '12px', color: ok ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
+          {ok ? '✅' : '❌'} {label}
+        </div>
+      );
+    })}
+  </div>
+);
+
+const PasswordFeedback = ({ password }) => {
+  if (!password) return null;
+  const strength = checkPasswordStrength(password);
+  return (
+    <>
+      <div className="helper-text" style={{ color: strength.color }}>
+        {strength.message}
+      </div>
+      <PasswordChecklist password={password} />
+    </>
+  );
+};
+
+const PasswordField = ({ invalid = false, style, ...inputProps }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="password-wrapper">
+      <input
+        autoComplete="new-password"
+        {...inputProps}
+        type={visible ? 'text' : 'password'}
+        className={invalid ? 'error' : ''}
+        style={style}
+      />
+      <button type="button" className="password-toggle" onClick={() => setVisible((v) => !v)}>
+        {visible ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+};
+
+const Field = ({ label, error, children }) => (
+  <div className="field-box">
+    <label>{label}</label>
+    {children}
+    {error && <div className="error-text">{error}</div>}
+  </div>
+);
+
+const TextField = ({ label, error, children, ...inputProps }) => (
+  <Field label={label} error={error}>
+    <input autoComplete="off" type="text" {...inputProps} className={error ? 'error' : ''} />
+    {children}
+  </Field>
+);
+
+const RoleSelect = ({ value, onChange, style }) => (
+  <select value={value} onChange={onChange} style={style}>
+    {ROLES.map((role) => (
+      <option key={role} value={role}>
+        {role}
+      </option>
+    ))}
+  </select>
+);
+
+const CenterCodeField = ({ value, onChange, centers, error }) => (
+  <div className="field-box">
+    <label>🏢 Center Code *</label>
+    <select
+      value={value}
+      onChange={onChange}
+      className={error ? 'error' : ''}
+      style={{
+        width: '100%',
+        padding: '12px',
+        border: error ? '2px solid #f44336' : '2px solid #4caf50',
+        borderRadius: '8px',
+        fontSize: '14px',
+        cursor: 'pointer',
+        backgroundColor: '#f0fdf4',
+      }}
+    >
+      <option value="">Select Center Code *</option>
+      {centers.map((center) => (
+        <option key={center.centerCode} value={center.centerCode}>
+          {center.centerCode} - {center.centerName}
+        </option>
+      ))}
+    </select>
+    {error && <div className="error-text">{error}</div>}
+    <div className="helper-text" style={{ color: '#1565c0', marginTop: '8px' }}>
+      ℹ️ Center User will only see reports for: <strong>{value || 'No center selected'}</strong>
+    </div>
+  </div>
+);
+
+const DigitCounter = ({ value }) => {
+  if (!value) return null;
+  return (
+    <div className="helper-text" style={{ color: value.length === 10 ? '#4caf50' : '#ff9800' }}>
+      {value.length}/10 digits
+    </div>
+  );
+};
+
+const ReplaceOldNameField = ({ role, firstname, value, onChange }) => (
+  <div
+    className="field-box"
+    style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}
+  >
+    <label style={{ color: '#e65100', fontWeight: '700' }}>
+      🔄 Replace Old Name in Centers & Reports{' '}
+      <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
+    </label>
+    <input
+      type="text"
+      placeholder={`Enter old ${role} name to replace`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: '100%',
+        padding: '10px 14px',
+        border: '2px solid #ffcc02',
+        borderRadius: '8px',
+        fontSize: '14px',
+        marginTop: '6px',
+      }}
+    />
+    <div style={{ fontSize: '12px', color: '#e65100', marginTop: '6px' }}>
+      ⚠️ Agar koi purana {role} tha — uska naam yahan daalo. Naye user ka naam ({firstname || '?'}) saare
+      Centers aur Audit Reports mein replace ho jaayega.
+    </div>
+  </div>
+);
+
+const SearchBox = ({ value, onChange, placeholder, marginBottom, padding, background }) => (
+  <div style={{ marginBottom, position: 'relative' }}>
+    <input
+      type="text"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: '100%',
+        padding,
+        border: '2px solid #667eea',
+        borderRadius: '10px',
+        fontSize: '14px',
+        outline: 'none',
+        boxSizing: 'border-box',
+        background,
+      }}
+    />
+    {value && (
+      <button
+        type="button"
+        onClick={() => onChange('')}
+        style={{
+          position: 'absolute',
+          right: '12px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '18px',
+          color: '#999',
+        }}
+      >
+        ✕
+      </button>
+    )}
+  </div>
+);
+
+// ========================================
+// HEADER / DROPDOWN
+// ========================================
+const MenuItem = ({ item, active, onClick }) => (
+  <button
+    className={`um-aed-item${active ? ' um-aed-item--active' : ''}`}
+    style={{ '--item-color': item.color }}
+    onClick={onClick}
+  >
+    <span className="um-aed-item-icon">{item.icon}</span>
+    <span className="um-aed-item-label">{item.label}</span>
+    {active && <span className="um-aed-item-check">✓</span>}
+  </button>
+);
+
+const UserMenuBar = ({ activeOption, onSelect, total, loading, onRefresh }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useClickOutside(wrapRef, () => setOpen(false));
+  const active = MENU_ITEMS.find((item) => item.key === activeOption);
+
+  const handleSelect = async (key) => {
+    await onSelect(key);
+    setOpen(false);
+  };
+
+  return (
+    <div className="um-tab-row">
+      <div className="um-excel-tab-wrap" ref={wrapRef}>
+        <button
+          className={`um-excel-tab${open ? ' um-excel-tab--open' : ''}`}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className="um-aet-icon">👥</span>
+          <span className="um-aet-title">User Management</span>
+          {active && (
+            <span className="um-aet-active-chip" style={{ background: active.color }}>
+              {active.icon} {active.label}
+            </span>
+          )}
+          <span className="um-aet-caret">{open ? '▲' : '▼'}</span>
+        </button>
+        {open && (
+          <div className="um-excel-dropdown">
+            <div className="um-aed-header">👥 User Management</div>
+            {MENU_ITEMS.map((item) => (
+              <MenuItem
+                key={item.key}
+                item={item}
+                active={item.key === activeOption}
+                onClick={() => handleSelect(item.key)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="um-status-right">
+        <span className="um-total-badge">📊 Total Users: {total}</span>
+        <button className="um-refresh-btn" onClick={onRefresh} disabled={loading}>
+          {loading ? '⏳' : '🔄 Refresh'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ========================================
+// ADMIN RESET PASSWORD MODAL
+// ========================================
+const ResetPasswordModal = ({ user, showMessage, onClose }) => {
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    const validationError = getResetError(newPwd, confirmPwd);
+    if (validationError) return showMessage(validationError, 'error');
+    setLoading(true);
+    const outcome = await adminResetPassword(user, newPwd);
+    setLoading(false);
+    showMessage(outcome.text, outcome.type);
+    if (outcome.ok) onClose();
+  };
+
+  const submitDisabled = validatePassword(newPwd).length > 0 || newPwd !== confirmPwd;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          background: 'white',
+          borderRadius: '16px',
+          padding: '32px',
+          width: '420px',
+          maxWidth: '90vw',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
+        <h3 style={{ margin: '0 0 8px', color: '#1a237e' }}>🔑 Reset Password</h3>
+        <p style={{ color: '#666', fontSize: '14px', margin: '0 0 20px' }}>
+          Resetting for: <strong>{user.username}</strong> ({user.firstname} {user.lastname})
+          <br />
+          <span style={{ color: '#e65100', fontSize: '12px' }}>
+            ⚠️ User will be forced to change password on next login.
+          </span>
+        </p>
+
+        <div className="field-box">
+          <label>🔐 New Password</label>
+          <PasswordField
+            value={newPwd}
+            onChange={(e) => setNewPwd(e.target.value)}
+            placeholder="Enter new password"
+          />
+          {newPwd && <PasswordChecklist password={newPwd} />}
+        </div>
+
+        <div className="field-box">
+          <label>✅ Confirm Password</label>
+          <PasswordField
+            value={confirmPwd}
+            onChange={(e) => setConfirmPwd(e.target.value)}
+            placeholder="Confirm new password"
+            style={{ borderColor: confirmBorderColor(confirmPwd, newPwd) }}
+          />
+          {confirmPwd && confirmPwd !== newPwd && <div className="error-text">❌ Passwords don't match</div>}
+        </div>
+
+        <div className="btn-group" style={{ marginTop: '16px' }}>
+          <button className="btn-green" onClick={handleSubmit} disabled={loading || submitDisabled}>
+            {loading ? '⏳ Resetting...' : '🔑 Reset Password'}
+          </button>
+          <button className="btn-gray" onClick={onClose}>
+            ❌ Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========================================
+// BULK UPLOAD
+// ========================================
+const BulkResultPanel = ({ results, onDismiss }) => {
+  const successCount = results.filter((r) => r.status === 'success').length;
+  const errors = results.filter((r) => r.status === 'error');
+  return (
+    <div
+      style={{
+        marginTop: '14px',
+        padding: '14px',
+        background: '#f0fff4',
+        border: '2px solid #38a169',
+        borderRadius: '10px',
+      }}
+    >
+      <div style={{ fontWeight: 'bold', color: '#276749', marginBottom: '10px' }}>📊 Upload Result</div>
+      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
+        <span style={{ ...RESULT_PILL_BASE, background: '#c6f6d5', color: '#276749' }}>
+          ✅ Success: {successCount}
+        </span>
+        <span style={{ ...RESULT_PILL_BASE, background: '#fed7d7', color: '#822727' }}>
+          ❌ Errors: {errors.length}
+        </span>
+      </div>
+      {errors.length > 0 && (
+        <div style={{ fontSize: '12px', color: '#822727' }}>
+          <strong>Errors:</strong> {errors.map((e) => `${e.username}: ${e.error}`).join(', ')}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onDismiss}
+        style={{
+          marginTop: '8px',
+          padding: '3px 10px',
+          background: '#e2e8f0',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '12px',
+        }}
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+};
+
+const BulkUploadBox = ({ createdBy, auditUserMode }) => {
+  const fileInputRef = useRef(null);
+  const [result, setResult] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e) => {
+    const input = e.target;
+    const file = input.files[0];
+    if (!file) return;
+    setUploading(true);
+    setResult(null);
+    const { alertText, results } = await importUsersFromFile(file, createdBy, auditUserMode);
+    if (alertText) window.alert(alertText);
+    else setResult(results);
+    setUploading(false);
+    input.value = '';
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: '20px',
+        padding: '16px',
+        background: '#f0f4ff',
+        borderRadius: '10px',
+        border: '2px dashed #667eea',
+      }}
+    >
+      <div style={{ fontWeight: 'bold', color: '#1a237e', marginBottom: '10px', fontSize: '14px' }}>
+        📂 Bulk Upload Users from Excel
+      </div>
+      <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>
+        Excel columns:{' '}
+        <strong>username, password, first name, last name, email, mobileno., role, centercode, centername</strong>
+      </div>
+      <div style={{ fontSize: '12px', color: '#e65100', marginBottom: '12px' }}>
+        ⚠️ Password must meet policy: 8+ chars, uppercase, lowercase, number, special char
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={handleUpload}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        style={getUploadButtonStyle(uploading)}
+      >
+        {uploading ? '⏳ Uploading...' : '📂 Upload Excel'}
+      </button>
+      {result && <BulkResultPanel results={result} onDismiss={() => setResult(null)} />}
+    </div>
+  );
+};
+
+// ========================================
+// CREATE USER
+// ========================================
+const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, auditUserMode }) => {
+  const [form, setForm] = useState(EMPTY_NEW_USER_FORM);
+  const [errors, setErrors] = useState({});
+
+  const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const handleRoleChange = (role) => setForm((prev) => applyRoleChange(prev, role));
+  const reset = () => {
+    setForm(EMPTY_NEW_USER_FORM);
+    setErrors({});
+  };
+
+  const handleSubmit = async () => {
+    const found = validateNewUser(form);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return showMessage('Fix validation errors', 'error');
+    if (await onCreate(form)) reset();
+  };
+
+  return (
+    <div className="create-user">
+      <h3>➕ Create New User</h3>
+
+      <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+        <div className="info-box">
+          <span>
+            📋 Required fields marked with * &nbsp;|&nbsp; 🔐 User will be asked to set new password on first
+            login
+          </span>
+        </div>
+
+        <TextField
+          label="👤 Username *"
+          name="create_username_field"
+          placeholder="Enter username (min 3 characters)"
+          value={form.username}
+          onChange={(e) => update('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
+          error={errors.username}
+        />
+
+        <Field
+          label={
+            <>
+              🔐 Password *{' '}
+              <span style={{ fontWeight: '400', fontSize: '12px', color: '#667eea' }}>
+                (User must change on first login)
+              </span>
+            </>
+          }
+          error={errors.password}
+        >
+          <PasswordField
+            name="create_password_field"
+            placeholder="Min 8 chars, uppercase, number, special char"
+            value={form.password}
+            onChange={(e) => update('password', e.target.value)}
+            invalid={Boolean(errors.password)}
+          />
+          <PasswordFeedback password={form.password} />
+        </Field>
+
+        <TextField
+          label="📝 First Name *"
+          placeholder="Enter first name"
+          value={form.firstname}
+          onChange={(e) => update('firstname', e.target.value)}
+          error={errors.firstname}
+        />
+
+        <TextField
+          label="📝 Last Name *"
+          placeholder="Enter last name"
+          value={form.lastname}
+          onChange={(e) => update('lastname', e.target.value)}
+          error={errors.lastname}
+        />
+
+        <TextField
+          label="📧 Email *"
+          type="email"
+          placeholder="Enter email"
+          value={form.email}
+          onChange={(e) => update('email', e.target.value)}
+          error={errors.email}
+        />
+
+        <TextField
+          label="📱 Mobile *"
+          placeholder="Enter 10 digit mobile"
+          value={form.mobile}
+          maxLength="10"
+          onChange={(e) => update('mobile', sanitizeMobile(e.target.value))}
+          error={errors.mobile}
+        >
+          <DigitCounter value={form.mobile} />
+        </TextField>
+
+        <Field label="👤 Role *">
+          <RoleSelect
+            value={form.Role}
+            onChange={(e) => handleRoleChange(e.target.value)}
+            style={CREATE_ROLE_SELECT_STYLE}
+          />
+        </Field>
+
+        {form.Role === 'Center User' && (
+          <CenterCodeField
+            value={form.centerCode}
+            onChange={(e) => update('centerCode', e.target.value)}
+            centers={centers}
+            error={errors.centerCode}
+          />
+        )}
+
+        {HIERARCHY_ROLES.includes(form.Role) && (
+          <ReplaceOldNameField
+            role={form.Role}
+            firstname={form.firstname}
+            value={form.replaceOldName}
+            onChange={(value) => update('replaceOldName', value)}
+          />
+        )}
+
+        <div className="btn-group">
+          <button type="button" className="btn-green" onClick={handleSubmit} disabled={loading}>
+            {loading ? '⏳ Creating...' : '✅ Create User'}
+          </button>
+          <button type="button" className="btn-gray" onClick={reset}>
+            🔄 Reset
+          </button>
+        </div>
+
+        <BulkUploadBox createdBy={createdBy} auditUserMode={auditUserMode} />
+      </form>
+    </div>
+  );
+};
+
+// ========================================
+// VIEW USERS
+// ========================================
+const PasswordStatus = ({ user }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+    <span
+      style={{
+        background: '#e8f5e9',
+        color: '#2e7d32',
+        padding: '2px 8px',
+        borderRadius: '10px',
+        fontSize: '11px',
+        fontWeight: 'bold',
+        display: 'inline-block',
+      }}
+    >
+      🔒 Secured
+    </span>
+    {user.forcePasswordChange && (
+      <span
+        style={{
+          background: '#fff3e0',
+          color: '#e65100',
+          padding: '2px 8px',
+          borderRadius: '10px',
+          fontSize: '10px',
+          fontWeight: 'bold',
+        }}
+      >
+        ⚠️ Must Change
+      </span>
+    )}
+    {getExpiryBadge(user)}
+  </div>
+);
+
+const CenterCodeBadge = ({ code }) => (
+  <span style={code ? CENTER_BADGE_STYLE : CENTER_EMPTY_STYLE}>{code || '-'}</span>
+);
+
+const RoleCell = ({ user }) => (
+  <>
+    <span className={`role-badge ${getRole(user).toLowerCase().replace(/ /g, '-')}`}>
+      {getRole(user) || '-'}
+    </span>
+    {(user.approvalStatus === 'pending' || user.modifyApprovalStatus === 'pending') && (
+      <span
+        style={{
+          marginLeft: '6px',
+          padding: '2px 6px',
+          background: '#fff3cd',
+          color: '#856404',
+          borderRadius: '8px',
+          fontSize: '10px',
+          fontWeight: 'bold',
+          border: '1px solid #ffc107',
+        }}
+      >
+        ⏳ Pending
+      </span>
+    )}
+  </>
+);
+
+const UserRow = ({ user, index, showActions, onReset }) => (
+  <tr>
+    <td>{index + 1}</td>
+    <td>
+      <span className="username-badge">{user.username}</span>
+    </td>
+    <td>
+      {/* Security: never show the actual password - show status instead */}
+      <PasswordStatus user={user} />
+    </td>
+    <td>{user.firstname}</td>
+    <td>{user.lastname || '-'}</td>
+    <td>{user.email || '-'}</td>
+    <td>{user.mobile || '-'}</td>
+    <td>
+      <CenterCodeBadge code={user.centerCode} />
+    </td>
+    <td>
+      <RoleCell user={user} />
+    </td>
+    {showActions && (
+      <td>
+        <button
+          onClick={() => onReset(user)}
+          style={{
+            padding: '5px 12px',
+            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: '600',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          🔑 Reset Pwd
+        </button>
+      </td>
+    )}
+  </tr>
+);
+
+const ViewUsersTable = ({ users, auditUserMode, onReset }) => {
+  const [search, setSearch] = useState('');
+  const scoped = visibleUsers(users, auditUserMode);
+  const rows = scoped.filter((u) =>
+    matchesSearch([u.username, u.firstname, u.lastname, u.email, u.mobile, u.centerCode, getRole(u)], search)
+  );
+
+  return (
+    <div className="view-user">
+      <h3>👁️ Users List ({scoped.length})</h3>
+
+      <SearchBox
+        value={search}
+        onChange={setSearch}
+        placeholder="Search by name, username, email, role, center code..."
+        marginBottom="16px"
+        padding="12px 40px 12px 16px"
+      />
+
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Username</th>
+              <th>Password Status</th>
+              <th>First Name</th>
+              <th>Last Name</th>
+              <th>Email</th>
+              <th>Mobile</th>
+              <th>Center Code</th>
+              <th>Role</th>
+              {!auditUserMode && <th>Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((u, i) => (
+              <UserRow key={u._id || i} user={u} index={i} showActions={!auditUserMode} onReset={onReset} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ========================================
+// MODIFY USER
+// ========================================
+const UserPickerRow = ({ user: u, selected, onSelect }) => {
+  const [hovered, setHovered] = useState(false);
+  const role = u.Role || u.role || 'User';
+  const roleColor = getRoleColor(role);
+
+  return (
+    <div
+      onClick={() => onSelect(u)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: '12px 16px',
+        cursor: 'pointer',
+        borderBottom: '1px solid #f0f0f0',
+        background: getRowBackground(selected, hovered),
+        borderLeft: selected ? '4px solid #667eea' : '4px solid transparent',
+        transition: 'all 0.15s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+      }}
+    >
+      <div
+        style={{
+          width: '38px',
+          height: '38px',
+          borderRadius: '50%',
+          background: `linear-gradient(135deg, ${roleColor}, ${roleColor}99)`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontWeight: '700',
+          fontSize: '15px',
+          flexShrink: 0,
+        }}
+      >
+        {(u.firstname || u.username || '?')[0].toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: '700', fontSize: '14px', color: '#1a237e' }}>
+          {u.firstname} {u.lastname}
+          <span style={{ fontWeight: '400', color: '#667eea', fontSize: '13px', marginLeft: '6px' }}>
+            @{u.username}
+          </span>
+        </div>
+        <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>{u.email || '-'}</div>
+      </div>
+      <span
+        style={{
+          padding: '3px 10px',
+          borderRadius: '20px',
+          fontSize: '11px',
+          fontWeight: '700',
+          background: `${roleColor}20`,
+          color: roleColor,
+          border: `1px solid ${roleColor}40`,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        {role}
+      </span>
+      {u.forcePasswordChange && (
+        <span
+          style={{
+            background: '#fff3e0',
+            color: '#e65100',
+            padding: '2px 6px',
+            borderRadius: '8px',
+            fontSize: '10px',
+            fontWeight: 'bold',
+          }}
+        >
+          ⚠️ Must Change
+        </span>
+      )}
+      {selected && <span style={{ color: '#667eea', fontSize: '18px', flexShrink: 0 }}>✓</span>}
+    </div>
+  );
+};
+
+const UserPicker = ({ users, auditUserMode, search, onSearch, selectedUsername, onSelect }) => {
+  const filtered = visibleUsers(users, auditUserMode).filter((u) =>
+    matchesSearch([u.username, u.firstname, u.lastname, getRole(u), u.email], search)
+  );
+
+  return (
+    <div className="field-box">
+      <label>Select User to Modify:</label>
+      <SearchBox
+        value={search}
+        onChange={onSearch}
+        placeholder="Name, username, email ya role type karo..."
+        marginBottom="10px"
+        padding="12px 40px 12px 14px"
+        background="#f8f9ff"
+      />
+      <div
+        style={{
+          maxHeight: '280px',
+          overflowY: 'auto',
+          border: '2px solid #e0e0e0',
+          borderRadius: '10px',
+          background: 'white',
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '14px' }}>
+            😕 Koi user nahi mila
+          </div>
+        ) : (
+          filtered.map((u) => (
+            <UserPickerRow
+              key={u._id || u.username}
+              user={u}
+              selected={selectedUsername === u.username}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EditUserForm = ({ user, centers, loading, showMessage, onUpdate, onDelete, onDone }) => {
+  const [form, setForm] = useState(() => userToEditForm(user));
+
+  const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const handleRoleChange = (role) => setForm((prev) => applyRoleChange(prev, role));
 
   const handleUpdate = async () => {
-    if (!selectedUser) return;
-    if (editForm.Role === 'Center User' && !editForm.centerCode?.trim()) {
-      return showMessage('Center Code required for Center User', 'error');
-    }
-    
-    // Validate edit password if provided
-    if (editForm.password?.trim()) {
-      const policyErrors = validatePassword(editForm.password);
-      if (policyErrors.length > 0) {
-        return showMessage('Password policy: ' + policyErrors.join(', '), 'error');
-      }
-    }
-    
-    try {
-      setLoading(true);
-      const user = globalUsers.find(u => u.username === selectedUser);
-      if (user?._id) {
-        const updateData = {
-          ...editForm,
-          centerCode: editForm.centerCode?.toUpperCase() || '',
-          modifiedByRole: auditUserMode ? 'Audit User' : 'Admin',
-          modifiedBy: auditUserMode ? createdBy : 'Admin'
-        };
-        
-        const res = await fetch(`${API_URL}/api/users/${user._id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updateData)
-        });
-        
-        if (res.ok) {
-          const result = await res.json();
-          showMessage(result.pendingApproval ? '✅ Modify request submitted!' : '✅ Updated!', 'success');
-          await loadUsersData();
-        }
-      }
-      setSelectedUser(null);
-      setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
-      setEditPasswordStrength({ message: '', color: '' });
-    } catch (err) {
-      showMessage(`❌ ${err.message}`, 'error');
-    } finally {
-      setLoading(false);
-    }
+    const error = validateEditForm(form);
+    if (error) return showMessage(error, 'error');
+    if (await onUpdate(form)) onDone();
   };
 
   const handleDelete = async () => {
-    if (!selectedUser || !window.confirm(`Delete "${selectedUser}"?`)) return;
-    try {
-      setLoading(true);
-      const user = globalUsers.find(u => u.username === selectedUser);
-      if (user?._id) {
-        const res = await fetch(`${API_URL}/api/users/${user._id}`, { method: 'DELETE' });
-        if (res.ok) { showMessage('✅ Deleted!', 'success'); await loadUsersData(); }
-      }
-      setSelectedUser(null);
-      setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
-    } catch (err) {
-      showMessage(`❌ ${err.message}`, 'error');
-    } finally {
-      setLoading(false);
-    }
+    if (window.confirm(`Delete "${user.username}"?`) && (await onDelete())) onDone();
   };
 
-  const handleSelectUser = (e) => {
-    const username = e.target.value;
-    if (!username) {
-      setSelectedUser(null);
-      setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' });
-      return;
-    }
-    setSelectedUser(username);
-    const user = globalUsers.find(u => u.username === username);
-    if (user) {
-      setEditForm({
-        username: user.username || '',
-        password: '',  // ← Password blank: admin must enter new one explicitly
-        firstname: user.firstname || '',
-        lastname: user.lastname || '',
-        email: user.email || '',
-        mobile: user.mobile || '',
-        centerCode: user.centerCode || '',
-        Role: user.Role || 'User'
-      });
-      setEditPasswordStrength({ message: '', color: '' });
-    }
-  };
+  return (
+    <div className="edit-section">
+      <h4>✏️ Editing: {user.username}</h4>
 
-  // ── Admin Reset Password ──
-  const openResetModal = (user) => {
-    setResetTargetUser(user);
-    setResetNewPwd('');
-    setResetConfirmPwd('');
-    setShowResetPwd(false);
-    setShowResetConfirm(false);
-    setShowResetModal(true);
-  };
+      <TextField label="👤 Username" value={form.username} disabled style={{ background: '#e9ecef', cursor: 'not-allowed' }}>
+        <div className="helper-text">Username cannot be changed</div>
+      </TextField>
 
-  const handleAdminReset = async () => {
-    if (resetNewPwd !== resetConfirmPwd) {
-      return showMessage('Passwords do not match!', 'error');
-    }
-    const policyErrors = validatePassword(resetNewPwd);
-    if (policyErrors.length > 0) {
-      return showMessage('Password policy: ' + policyErrors.join(', '), 'error');
-    }
-    try {
-      setResetLoading(true);
-      const res = await fetch(`${API_URL}/api/admin-reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: resetTargetUser._id, newPassword: resetNewPwd })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showMessage(`✅ Password reset for ${resetTargetUser.username}. They must change on next login.`, 'success');
-        setShowResetModal(false);
-        setResetTargetUser(null);
-        setResetNewPwd('');
-        setResetConfirmPwd('');
-      } else {
-        showMessage(`❌ ${data.error}`, 'error');
-      }
-    } catch (err) {
-      showMessage(`❌ ${err.message}`, 'error');
-    } finally {
-      setResetLoading(false);
-    }
-  };
+      <Field
+        label={
+          <>
+            🔐 New Password{' '}
+            <span style={{ fontWeight: '400', fontSize: '12px', color: '#999' }}>(leave blank to keep current)</span>
+          </>
+        }
+      >
+        <PasswordField
+          value={form.password}
+          placeholder="Enter new password (or leave blank)"
+          onChange={(e) => update('password', e.target.value)}
+        />
+        <PasswordFeedback password={form.password} />
+        <div className="helper-text" style={{ color: '#e65100', marginTop: '4px' }}>
+          ⚠️ If changed by Admin → user must reset on next login
+        </div>
+      </Field>
 
-  // Password expiry display
-  const getExpiryBadge = (user) => {
-    if (!user.passwordExpiresAt) return null;
-    const now = new Date();
-    const expiry = new Date(user.passwordExpiresAt);
-    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-    if (daysLeft < 0) return <span style={{ background: '#ffebee', color: '#c62828', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', marginLeft: '4px' }}>⏰ Expired</span>;
-    if (daysLeft <= 5) return <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', marginLeft: '4px' }}>⚠️ {daysLeft}d left</span>;
-    return null;
-  };
+      <TextField label="📝 First Name" value={form.firstname} onChange={(e) => update('firstname', e.target.value)} />
+      <TextField label="📝 Last Name" value={form.lastname} onChange={(e) => update('lastname', e.target.value)} />
+      <TextField label="📧 Email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} />
+      <TextField
+        label="📱 Mobile"
+        value={form.mobile}
+        maxLength="10"
+        onChange={(e) => update('mobile', sanitizeMobile(e.target.value))}
+      />
+
+      <Field label="👥 Role">
+        <RoleSelect value={form.Role} onChange={(e) => handleRoleChange(e.target.value)} />
+      </Field>
+
+      {form.Role === 'Center User' && (
+        <CenterCodeField
+          value={form.centerCode}
+          onChange={(e) => update('centerCode', e.target.value)}
+          centers={centers}
+          error={form.centerCode ? '' : 'Center Code required for Center User'}
+        />
+      )}
+
+      <div className="btn-group">
+        <button type="button" className="btn-green" onClick={handleUpdate} disabled={loading}>
+          {loading ? '⏳' : '✅ Update'}
+        </button>
+        <button type="button" className="btn-red" onClick={handleDelete} disabled={loading}>
+          🗑️ Delete
+        </button>
+        <button type="button" className="btn-gray" onClick={onDone}>
+          ❌ Cancel
+        </button>
+      </div>
+
+      <div className="warning-box">
+        <span>⚠️ Delete action is permanent and cannot be undone!</span>
+      </div>
+    </div>
+  );
+};
+
+const ModifyUserForm = ({ users, centers, auditUserMode, loading, showMessage, onUpdate, onDelete }) => {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
+
+  return (
+    <div className="modify-user">
+      <h3>✏️ Modify User</h3>
+
+      <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+        <UserPicker
+          users={users}
+          auditUserMode={auditUserMode}
+          search={search}
+          onSearch={setSearch}
+          selectedUsername={selected?.username}
+          onSelect={setSelected}
+        />
+
+        {selected && (
+          <EditUserForm
+            key={selected.username}
+            user={selected}
+            centers={centers}
+            loading={loading}
+            showMessage={showMessage}
+            onUpdate={(form) => onUpdate(selected.username, form)}
+            onDelete={() => onDelete(selected.username)}
+            onDone={() => setSelected(null)}
+          />
+        )}
+      </form>
+    </div>
+  );
+};
+
+// ========================================
+// MAIN COMPONENT
+// ========================================
+const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '', hideHeader = false }) => {
+  const [message, showMessage] = useFlashMessage();
+  const { globalUsers, tableUsers, loading, setLoading, centers, loadUsersData, loadCenters } =
+    useUsersData(showMessage);
+  const [activeOption, setActiveOption] = useState(defaultOption || '');
+  const [formKey, setFormKey] = useState(0); // bump = reset Create / Modify form state
+  const [resetTarget, setResetTarget] = useState(null);
 
   useEffect(() => {
-    if (newUserForm.Role === 'Center User') {
-      console.log('🏢 Center Code changed:', `"${newUserForm.centerCode}"`);
+    loadCenters();
+  }, []);
+  useEffect(() => {
+    loadUsersData();
+  }, []);
+  useDefaultOption(defaultOption, setActiveOption, loadUsersData);
+
+  const ctx = { users: globalUsers, setLoading, showMessage, reload: loadUsersData, auditUserMode, createdBy };
+
+  const selectOption = async (key) => {
+    if (RELOAD_OPTIONS.includes(key)) await loadUsersData();
+    setFormKey((k) => k + 1);
+    setActiveOption(key);
+  };
+
+  const refresh = async () => {
+    await loadUsersData();
+    showMessage('✅ Refreshed!', 'success');
+  };
+
+  const renderActiveView = () => {
+    switch (activeOption) {
+      case 'create':
+        return (
+          <CreateUserForm
+            key={formKey}
+            centers={centers}
+            loading={loading}
+            showMessage={showMessage}
+            createdBy={createdBy}
+            auditUserMode={auditUserMode}
+            onCreate={(form) => createUser(ctx, form)}
+          />
+        );
+      case 'view':
+        return <ViewUsersTable users={tableUsers} auditUserMode={auditUserMode} onReset={setResetTarget} />;
+      case 'modify':
+        return (
+          <ModifyUserForm
+            key={formKey}
+            users={globalUsers}
+            centers={centers}
+            auditUserMode={auditUserMode}
+            loading={loading}
+            showMessage={showMessage}
+            onUpdate={(username, form) => updateUser(ctx, username, form)}
+            onDelete={(username) => deleteUser(ctx, username)}
+          />
+        );
+      default:
+        return null;
     }
-  }, [newUserForm.centerCode]);
+  };
 
   return (
     <div className="management-section">
-      {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
+      <FlashMessage message={message} />
 
-      {/* ── ADMIN RESET PASSWORD MODAL ── */}
-      {showResetModal && resetTargetUser && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '420px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-            <h3 style={{ margin: '0 0 8px', color: '#1a237e' }}>🔑 Reset Password</h3>
-            <p style={{ color: '#666', fontSize: '14px', margin: '0 0 20px' }}>
-              Resetting for: <strong>{resetTargetUser.username}</strong> ({resetTargetUser.firstname} {resetTargetUser.lastname})<br/>
-              <span style={{ color: '#e65100', fontSize: '12px' }}>⚠️ User will be forced to change password on next login.</span>
-            </p>
-
-            <div className="field-box">
-              <label>🔐 New Password</label>
-              <div className="password-wrapper">
-                <input
-                  type={showResetPwd ? 'text' : 'password'}
-                  value={resetNewPwd}
-                  onChange={(e) => setResetNewPwd(e.target.value)}
-                  placeholder="Enter new password"
-                  autoComplete="new-password"
-                />
-                <button type="button" className="password-toggle" onClick={() => setShowResetPwd(!showResetPwd)}>
-                  {showResetPwd ? '🙈' : '👁️'}
-                </button>
-              </div>
-              {/* Policy checklist */}
-              {resetNewPwd && (
-                <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
-                  {[
-                    { check: resetNewPwd.length >= 8, text: 'Min 8 characters' },
-                    { check: /[A-Z]/.test(resetNewPwd), text: 'Uppercase (A-Z)' },
-                    { check: /[a-z]/.test(resetNewPwd), text: 'Lowercase (a-z)' },
-                    { check: /[0-9]/.test(resetNewPwd), text: 'Number (0-9)' },
-                    { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(resetNewPwd), text: 'Special char (@$!%*?&)' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
-                      {item.check ? '✅' : '❌'} {item.text}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="field-box">
-              <label>✅ Confirm Password</label>
-              <div className="password-wrapper">
-                <input
-                  type={showResetConfirm ? 'text' : 'password'}
-                  value={resetConfirmPwd}
-                  onChange={(e) => setResetConfirmPwd(e.target.value)}
-                  placeholder="Confirm new password"
-                  style={{ borderColor: resetConfirmPwd ? (resetConfirmPwd === resetNewPwd ? '#4caf50' : '#f44336') : undefined }}
-                />
-                <button type="button" className="password-toggle" onClick={() => setShowResetConfirm(!showResetConfirm)}>
-                  {showResetConfirm ? '🙈' : '👁️'}
-                </button>
-              </div>
-              {resetConfirmPwd && resetConfirmPwd !== resetNewPwd && <div className="error-text">❌ Passwords don't match</div>}
-            </div>
-
-            <div className="btn-group" style={{ marginTop: '16px' }}>
-              <button className="btn-green" onClick={handleAdminReset}
-                disabled={resetLoading || validatePassword(resetNewPwd).length > 0 || resetNewPwd !== resetConfirmPwd}>
-                {resetLoading ? '⏳ Resetting...' : '🔑 Reset Password'}
-              </button>
-              <button className="btn-gray" onClick={() => { setShowResetModal(false); setResetTargetUser(null); }}>
-                ❌ Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+      {resetTarget && (
+        <ResetPasswordModal user={resetTarget} showMessage={showMessage} onClose={() => setResetTarget(null)} />
       )}
 
-      {/* ── EXCEL-STYLE DROPDOWN ── */}
       {!hideHeader && (
-        <div className="um-tab-row">
-          <div className="um-excel-tab-wrap" ref={umDropRef}>
-            <button className={`um-excel-tab${umDropOpen ? ' um-excel-tab--open' : ''}`} onClick={() => setUmDropOpen(o => !o)}>
-              <span className="um-aet-icon">👥</span>
-              <span className="um-aet-title">User Management</span>
-              {activeOption === 'create' && <span className="um-aet-active-chip" style={{ background: '#11998e' }}>➕ Create User</span>}
-              {activeOption === 'view'   && <span className="um-aet-active-chip" style={{ background: '#2196f3' }}>👁️ View User</span>}
-              {activeOption === 'modify' && <span className="um-aet-active-chip" style={{ background: '#f7971e' }}>✏️ Modify User</span>}
-              <span className="um-aet-caret">{umDropOpen ? '▲' : '▼'}</span>
-            </button>
-            {umDropOpen && (
-              <div className="um-excel-dropdown">
-                <div className="um-aed-header">👥 User Management</div>
-                <button className={`um-aed-item${activeOption==='create'?' um-aed-item--active':''}`} style={{'--item-color':'#11998e'}}
-                  onClick={() => { resetForm(); setActiveOption('create'); setUmDropOpen(false); }}>
-                  <span className="um-aed-item-icon">➕</span><span className="um-aed-item-label">Create User</span>
-                  {activeOption==='create'&&<span className="um-aed-item-check">✓</span>}
-                </button>
-                <button className={`um-aed-item${activeOption==='view'?' um-aed-item--active':''}`} style={{'--item-color':'#2196f3'}}
-                  onClick={async () => { await loadUsersData(); setActiveOption('view'); setUmDropOpen(false); }}>
-                  <span className="um-aed-item-icon">👁️</span><span className="um-aed-item-label">View User</span>
-                  {activeOption==='view'&&<span className="um-aed-item-check">✓</span>}
-                </button>
-                <button className={`um-aed-item${activeOption==='modify'?' um-aed-item--active':''}`} style={{'--item-color':'#f7971e'}}
-                  onClick={async () => { await loadUsersData(); setActiveOption('modify'); setSelectedUser(null); setUmDropOpen(false); }}>
-                  <span className="um-aed-item-icon">✏️</span><span className="um-aed-item-label">Modify User</span>
-                  {activeOption==='modify'&&<span className="um-aed-item-check">✓</span>}
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="um-status-right">
-            <span className="um-total-badge">📊 Total Users: {globalUsers.length}</span>
-            <button className="um-refresh-btn" onClick={async () => { await loadUsersData(); showMessage('✅ Refreshed!', 'success'); }} disabled={loading}>
-              {loading ? '⏳' : '🔄 Refresh'}
-            </button>
-          </div>
-        </div>
+        <UserMenuBar
+          activeOption={activeOption}
+          onSelect={selectOption}
+          total={globalUsers.length}
+          loading={loading}
+          onRefresh={refresh}
+        />
       )}
 
-      {/* ── CREATE USER ── */}
-      {activeOption === 'create' && (
-        <div className="create-user">
-          <h3>➕ Create New User</h3>
-          
-          <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
-            <div className="info-box">
-              <span>📋 Required fields marked with * &nbsp;|&nbsp; 🔐 User will be asked to set new password on first login</span>
-            </div>
-
-            <div className="field-box">
-              <label>👤 Username *</label>
-              <input name="create_username_field" autoComplete="off" type="text"
-                placeholder="Enter username (min 3 characters)"
-                value={newUserForm.username}
-                onChange={(e) => setNewUserForm({...newUserForm, username: e.target.value.toLowerCase().replace(/\s/g, '')})}
-                className={validationErrors.username ? 'error' : ''}
-              />
-              {validationErrors.username && <div className="error-text">{validationErrors.username}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>🔐 Password * <span style={{ fontWeight: '400', fontSize: '12px', color: '#667eea' }}>(User must change on first login)</span></label>
-              <div className="password-wrapper">
-                <input
-                  name="create_password_field" autoComplete="new-password"
-                  type={showCreatePassword ? 'text' : 'password'}
-                  placeholder="Min 8 chars, uppercase, number, special char"
-                  value={newUserForm.password}
-                  onChange={(e) => {
-                    setNewUserForm({...newUserForm, password: e.target.value});
-                    setPasswordStrength(checkPasswordStrength(e.target.value));
-                  }}
-                  className={validationErrors.password ? 'error' : ''}
-                />
-                <button type="button" className="password-toggle" onClick={() => setShowCreatePassword(!showCreatePassword)}>
-                  {showCreatePassword ? '🙈' : '👁️'}
-                </button>
-              </div>
-
-              {/* Strength + Policy */}
-              {newUserForm.password && (
-                <>
-                  <div className="helper-text" style={{ color: passwordStrength.color }}>{passwordStrength.message}</div>
-                  <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
-                    {[
-                      { check: newUserForm.password.length >= 8, text: 'Min 8 characters' },
-                      { check: /[A-Z]/.test(newUserForm.password), text: 'Uppercase letter (A-Z)' },
-                      { check: /[a-z]/.test(newUserForm.password), text: 'Lowercase letter (a-z)' },
-                      { check: /[0-9]/.test(newUserForm.password), text: 'Number (0-9)' },
-                      { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(newUserForm.password), text: 'Special character (@$!%*?&)' },
-                    ].map((item, i) => (
-                      <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
-                        {item.check ? '✅' : '❌'} {item.text}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              {validationErrors.password && <div className="error-text">{validationErrors.password}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>📝 First Name *</label>
-              <input autoComplete="off" type="text" placeholder="Enter first name"
-                value={newUserForm.firstname}
-                onChange={(e) => setNewUserForm({...newUserForm, firstname: e.target.value})}
-                className={validationErrors.firstname ? 'error' : ''}
-              />
-              {validationErrors.firstname && <div className="error-text">{validationErrors.firstname}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>📝 Last Name *</label>
-              <input autoComplete="off" type="text" placeholder="Enter last name"
-                value={newUserForm.lastname}
-                onChange={(e) => setNewUserForm({...newUserForm, lastname: e.target.value})}
-                className={validationErrors.lastname ? 'error' : ''}
-              />
-              {validationErrors.lastname && <div className="error-text">{validationErrors.lastname}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>📧 Email *</label>
-              <input autoComplete="off" type="email" placeholder="Enter email"
-                value={newUserForm.email}
-                onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
-                className={validationErrors.email ? 'error' : ''}
-              />
-              {validationErrors.email && <div className="error-text">{validationErrors.email}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>📱 Mobile *</label>
-              <input autoComplete="off" type="text" placeholder="Enter 10 digit mobile"
-                value={newUserForm.mobile}
-                onChange={(e) => setNewUserForm({...newUserForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10)})}
-                maxLength="10"
-                className={validationErrors.mobile ? 'error' : ''}
-              />
-              {newUserForm.mobile && <div className="helper-text" style={{ color: newUserForm.mobile.length === 10 ? '#4caf50' : '#ff9800' }}>{newUserForm.mobile.length}/10 digits</div>}
-              {validationErrors.mobile && <div className="error-text">{validationErrors.mobile}</div>}
-            </div>
-
-            <div className="field-box">
-              <label>👤 Role *</label>
-              <select value={newUserForm.Role}
-                onChange={(e) => {
-                  setNewUserForm({...newUserForm, Role: e.target.value});
-                  if (e.target.value !== 'Center User') setNewUserForm(prev => ({...prev, centerCode: ''}));
-                }}
-                style={{ width: '100%', padding: '12px', border: '2px solid #ddd', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: 'white' }}
-              >
-                <option value="Audit User">Audit User</option>
-                <option value="Center User">Center User</option>
-                <option value="Zonal Manager">Zonal Manager</option>
-                <option value="Region Head">Region Head</option>
-                <option value="Area Manager">Area Manager</option>
-                <option value="Cluster Manager">Cluster Manager</option>
-                <option value="Operation Head">Operation Head</option>
-                <option value="Placement Coordinator">Placement Coordinator</option>
-                <option value="Senior Manager Placement">Senior Manager Placement</option>
-                <option value="National Head Placement">National Head Placement</option>
-                <option value="National Head">National Head</option>
-                <option value="Admin">Admin</option>
-              </select>
-            </div>
-
-            {newUserForm.Role === 'Center User' && (
-              <div className="field-box">
-                <label>🏢 Center Code *</label>
-                <select value={newUserForm.centerCode}
-                  onChange={(e) => setNewUserForm({...newUserForm, centerCode: e.target.value})}
-                  className={validationErrors.centerCode ? 'error' : ''}
-                  style={{ width: '100%', padding: '12px', border: validationErrors.centerCode ? '2px solid #f44336' : '2px solid #4caf50', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: '#f0fdf4' }}
-                >
-                  <option value="">Select Center Code *</option>
-                  {centers.map(center => (
-                    <option key={center.centerCode} value={center.centerCode}>{center.centerCode} - {center.centerName}</option>
-                  ))}
-                </select>
-                {validationErrors.centerCode && <div className="error-text">{validationErrors.centerCode}</div>}
-                <div className="helper-text" style={{ color: '#1565c0', marginTop: '8px' }}>
-                  ℹ️ Center User will only see reports for: <strong>{newUserForm.centerCode || 'No center selected'}</strong>
-                </div>
-              </div>
-            )}
-
-            {['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'].includes(newUserForm.Role) && (
-              <div className="field-box" style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}>
-                <label style={{ color: '#e65100', fontWeight: '700' }}>
-                  🔄 Replace Old Name in Centers & Reports <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
-                </label>
-                <input type="text"
-                  placeholder={`Enter old ${newUserForm.Role} name to replace`}
-                  value={newUserForm.replaceOldName}
-                  onChange={(e) => setNewUserForm({...newUserForm, replaceOldName: e.target.value})}
-                  style={{ width: '100%', padding: '10px 14px', border: '2px solid #ffcc02', borderRadius: '8px', fontSize: '14px', marginTop: '6px' }}
-                />
-                <div style={{ fontSize: '12px', color: '#e65100', marginTop: '6px' }}>
-                  ⚠️ Agar koi purana {newUserForm.Role} tha — uska naam yahan daalo. Naye user ka naam ({newUserForm.firstname || '?'}) saare Centers aur Audit Reports mein replace ho jaayega.
-                </div>
-              </div>
-            )}
-
-            <div className="btn-group">
-              <button type="button" className="btn-green" onClick={handleCreate} disabled={loading}>
-                {loading ? '⏳ Creating...' : '✅ Create User'}
-              </button>
-              <button type="button" className="btn-gray" onClick={resetForm}>🔄 Reset</button>
-            </div>
-
-            {/* Bulk Upload */}
-            <div style={{ marginTop: '20px', padding: '16px', background: '#f0f4ff', borderRadius: '10px', border: '2px dashed #667eea' }}>
-              <div style={{ fontWeight: 'bold', color: '#1a237e', marginBottom: '10px', fontSize: '14px' }}>📂 Bulk Upload Users from Excel</div>
-              <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>
-                Excel columns: <strong>username, password, first name, last name, email, mobileno., role, centercode, centername</strong>
-              </div>
-              <div style={{ fontSize: '12px', color: '#e65100', marginBottom: '12px' }}>
-                ⚠️ Password must meet policy: 8+ chars, uppercase, lowercase, number, special char
-              </div>
-              <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
-              <button type='button'
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                disabled={bulkLoading}
-                style={{ padding: '10px 24px', background: bulkLoading ? '#9ca3af' : 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', borderRadius: '8px', cursor: bulkLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '14px' }}
-              >
-                {bulkLoading ? '⏳ Uploading...' : '📂 Upload Excel'}
-              </button>
-
-              {bulkResult && (
-                <div style={{ marginTop: '14px', padding: '14px', background: '#f0fff4', border: '2px solid #38a169', borderRadius: '10px' }}>
-                  <div style={{ fontWeight: 'bold', color: '#276749', marginBottom: '10px' }}>📊 Upload Result</div>
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                    <span style={{ background: '#c6f6d5', color: '#276749', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>
-                      ✅ Success: {bulkResult.filter(r => r.status === 'success').length}
-                    </span>
-                    <span style={{ background: '#fed7d7', color: '#822727', padding: '3px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '13px' }}>
-                      ❌ Errors: {bulkResult.filter(r => r.status === 'error').length}
-                    </span>
-                  </div>
-                  {bulkResult.filter(r => r.status === 'error').length > 0 && (
-                    <div style={{ fontSize: '12px', color: '#822727' }}>
-                      <strong>Errors:</strong> {bulkResult.filter(r => r.status === 'error').map(e => `${e.username}: ${e.error}`).join(', ')}
-                    </div>
-                  )}
-                  <button onClick={() => setBulkResult(null)} style={{ marginTop: '8px', padding: '3px 10px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Dismiss</button>
-                </div>
-              )}
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ── VIEW USERS ── */}
-      {activeOption === 'view' && (
-        <div className="view-user">
-          <h3>👁️ Users List ({auditUserMode ? tableUsers.filter(u => u.Role === 'Center User' || u.role === 'center user').length : tableUsers.length})</h3>
-
-          <div style={{ marginBottom: '16px', position: 'relative' }}>
-            <input type="text" placeholder="Search by name, username, email, role, center code..."
-              value={viewSearch} onChange={e => setViewSearch(e.target.value)}
-              style={{ width: '100%', padding: '12px 40px 12px 16px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-            />
-            {viewSearch && (
-              <button onClick={() => setViewSearch('')}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>✕</button>
-            )}
-          </div>
-          
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Username</th>
-                  <th>Password Status</th>
-                  <th>First Name</th>
-                  <th>Last Name</th>
-                  <th>Email</th>
-                  <th>Mobile</th>
-                  <th>Center Code</th>
-                  <th>Role</th>
-                  {!auditUserMode && <th>Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {tableUsers
-                  .filter(u => !auditUserMode || u.Role === 'Center User' || u.role === 'center user')
-                  .filter(u => {
-                    if (!viewSearch) return true;
-                    const q = viewSearch.toLowerCase();
-                    return (u.username?.toLowerCase().includes(q) || u.firstname?.toLowerCase().includes(q) || u.lastname?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.mobile?.includes(q) || u.centerCode?.toLowerCase().includes(q) || (u.Role || u.role || '').toLowerCase().includes(q));
-                  })
-                  .map((u, i) => (
-                  <tr key={u._id || i}>
-                    <td>{i + 1}</td>
-                    <td><span className="username-badge">{u.username}</span></td>
-                    <td>
-                      {/* Security: Don't show actual password - show status instead */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', display: 'inline-block' }}>
-                          🔒 Secured
-                        </span>
-                        {u.forcePasswordChange && (
-                          <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' }}>
-                            ⚠️ Must Change
-                          </span>
-                        )}
-                        {getExpiryBadge(u)}
-                      </div>
-                    </td>
-                    <td>{u.firstname}</td>
-                    <td>{u.lastname || '-'}</td>
-                    <td>{u.email || '-'}</td>
-                    <td>{u.mobile || '-'}</td>
-                    <td>
-                      <span style={{ fontWeight: 'bold', color: u.centerCode ? '#2196f3' : '#999', background: u.centerCode ? '#e3f2fd' : 'transparent', padding: u.centerCode ? '4px 8px' : '0', borderRadius: u.centerCode ? '4px' : '0' }}>
-                        {u.centerCode || '-'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`role-badge ${(u.Role || u.role || '').toLowerCase().replace(/ /g, '-')}`}>
-                        {u.Role || u.role || '-'}
-                      </span>
-                      {(u.approvalStatus === 'pending' || u.modifyApprovalStatus === 'pending') && (
-                        <span style={{ marginLeft: '6px', padding: '2px 6px', background: '#fff3cd', color: '#856404', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold', border: '1px solid #ffc107' }}>⏳ Pending</span>
-                      )}
-                    </td>
-                    {!auditUserMode && (
-                      <td>
-                        <button
-                          onClick={() => openResetModal(u)}
-                          style={{ padding: '5px 12px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}
-                        >
-                          🔑 Reset Pwd
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODIFY USER ── */}
-      {activeOption === 'modify' && (
-        <div className="modify-user">
-          <h3>✏️ Modify User</h3>
-          
-          <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
-            <div className="field-box">
-              <label>Select User to Modify:</label>
-              <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <input type="text" placeholder="Name, username, email ya role type karo..."
-                  value={modifySearch} onChange={e => setModifySearch(e.target.value)}
-                  style={{ width: '100%', padding: '12px 40px 12px 14px', border: '2px solid #667eea', borderRadius: '10px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', background: '#f8f9ff' }}
-                />
-                {modifySearch && (
-                  <button onClick={() => setModifySearch('')}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#999' }}>✕</button>
-                )}
-              </div>
-
-              <div style={{ maxHeight: '280px', overflowY: 'auto', border: '2px solid #e0e0e0', borderRadius: '10px', background: 'white' }}>
-                {(() => {
-                  const filtered = globalUsers.filter(u => {
-                    if (auditUserMode && u.Role !== 'Center User' && u.role !== 'center user') return false;
-                    if (!modifySearch) return true;
-                    const q = modifySearch.toLowerCase();
-                    return u.username?.toLowerCase().includes(q) || u.firstname?.toLowerCase().includes(q) || u.lastname?.toLowerCase().includes(q) || (u.Role||u.role||'').toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
-                  });
-                  if (filtered.length === 0) return (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '14px' }}>😕 Koi user nahi mila</div>
-                  );
-                  return filtered.map(u => {
-                    const role = u.Role || u.role || 'User';
-                    const isSelected = selectedUser === u.username;
-                    const roleColor = role === 'Admin' ? '#f5576c' : role === 'Audit User' ? '#4facfe' : role === 'Center User' ? '#11998e' : '#667eea';
-                    return (
-                      <div key={u._id || u.username}
-                        onClick={() => handleSelectUser({ target: { value: u.username } })}
-                        style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', background: isSelected ? 'linear-gradient(135deg, #667eea15, #764ba215)' : 'white', borderLeft: isSelected ? '4px solid #667eea' : '4px solid transparent', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '12px' }}
-                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8f9ff'; }}
-                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'white'; }}
-                      >
-                        <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: `linear-gradient(135deg, ${roleColor}, ${roleColor}99)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '15px', flexShrink: 0 }}>
-                          {(u.firstname || u.username || '?')[0].toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '700', fontSize: '14px', color: '#1a237e' }}>
-                            {u.firstname} {u.lastname}
-                            <span style={{ fontWeight: '400', color: '#667eea', fontSize: '13px', marginLeft: '6px' }}>@{u.username}</span>
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>{u.email || '-'}</div>
-                        </div>
-                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: `${roleColor}20`, color: roleColor, border: `1px solid ${roleColor}40`, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          {role}
-                        </span>
-                        {u.forcePasswordChange && <span style={{ background: '#fff3e0', color: '#e65100', padding: '2px 6px', borderRadius: '8px', fontSize: '10px', fontWeight: 'bold' }}>⚠️ Must Change</span>}
-                        {isSelected && <span style={{ color: '#667eea', fontSize: '18px', flexShrink: 0 }}>✓</span>}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-
-            {selectedUser && (
-              <div className="edit-section">
-                <h4>✏️ Editing: {selectedUser}</h4>
-
-                <div className="field-box">
-                  <label>👤 Username</label>
-                  <input value={editForm.username} disabled style={{ background: '#e9ecef', cursor: 'not-allowed' }} />
-                  <div className="helper-text">Username cannot be changed</div>
-                </div>
-
-                <div className="field-box">
-                  <label>🔐 New Password <span style={{ fontWeight: '400', fontSize: '12px', color: '#999' }}>(leave blank to keep current)</span></label>
-                  <div className="password-wrapper">
-                    <input
-                      autoComplete="new-password"
-                      type={showEditPassword ? 'text' : 'password'}
-                      value={editForm.password}
-                      placeholder="Enter new password (or leave blank)"
-                      onChange={(e) => {
-                        setEditForm({...editForm, password: e.target.value});
-                        setEditPasswordStrength(e.target.value ? checkPasswordStrength(e.target.value) : { message: '', color: '' });
-                      }}
-                    />
-                    <button type="button" className="password-toggle" onClick={() => setShowEditPassword(!showEditPassword)}>
-                      {showEditPassword ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                  {editPasswordStrength.message && <div className="helper-text" style={{ color: editPasswordStrength.color }}>{editPasswordStrength.message}</div>}
-                  {editForm.password && (
-                    <div style={{ marginTop: '8px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 14px' }}>
-                      {[
-                        { check: editForm.password.length >= 8, text: 'Min 8 characters' },
-                        { check: /[A-Z]/.test(editForm.password), text: 'Uppercase (A-Z)' },
-                        { check: /[a-z]/.test(editForm.password), text: 'Lowercase (a-z)' },
-                        { check: /[0-9]/.test(editForm.password), text: 'Number (0-9)' },
-                        { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(editForm.password), text: 'Special char (@$!%*?&)' },
-                      ].map((item, i) => (
-                        <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '2px' }}>
-                          {item.check ? '✅' : '❌'} {item.text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="helper-text" style={{ color: '#e65100', marginTop: '4px' }}>
-                    ⚠️ If changed by Admin → user must reset on next login
-                  </div>
-                </div>
-
-                <div className="field-box">
-                  <label>📝 First Name</label>
-                  <input autoComplete="off" value={editForm.firstname} onChange={(e) => setEditForm({...editForm, firstname: e.target.value})} />
-                </div>
-                <div className="field-box">
-                  <label>📝 Last Name</label>
-                  <input autoComplete="off" value={editForm.lastname} onChange={(e) => setEditForm({...editForm, lastname: e.target.value})} />
-                </div>
-                <div className="field-box">
-                  <label>📧 Email</label>
-                  <input autoComplete="off" type="email" value={editForm.email} onChange={(e) => setEditForm({...editForm, email: e.target.value})} />
-                </div>
-                <div className="field-box">
-                  <label>📱 Mobile</label>
-                  <input autoComplete="off" value={editForm.mobile} onChange={(e) => setEditForm({...editForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10)})} maxLength="10" />
-                </div>
-
-                <div className="field-box">
-                  <label>👥 Role</label>
-                  <select value={editForm.Role}
-                    onChange={(e) => {
-                      setEditForm({...editForm, Role: e.target.value});
-                      if (e.target.value !== 'Center User') setEditForm(prev => ({...prev, centerCode: ''}));
-                    }}
-                  >
-                    <option value="Audit User">Audit User</option>
-                    <option value="Center User">Center User</option>
-                    <option value="Zonal Manager">Zonal Manager</option>
-                    <option value="Region Head">Region Head</option>
-                    <option value="Area Manager">Area Manager</option>
-                    <option value="Cluster Manager">Cluster Manager</option>
-                    <option value="Operation Head">Operation Head</option>
-                    <option value="Placement Coordinator">Placement Coordinator</option>
-                    <option value="Senior Manager Placement">Senior Manager Placement</option>
-                    <option value="National Head Placement">National Head Placement</option>
-                    <option value="National Head">National Head</option>
-                    <option value="Admin">Admin</option>
-                  </select>
-                </div>
-
-                {editForm.Role === 'Center User' && (
-                  <div className="field-box">
-                    <label>🏢 Center Code *</label>
-                    <select value={editForm.centerCode}
-                      onChange={(e) => setEditForm({...editForm, centerCode: e.target.value})}
-                      style={{ width: '100%', padding: '12px', border: !editForm.centerCode ? '2px solid #f44336' : '2px solid #4caf50', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', backgroundColor: '#f0fdf4' }}
-                    >
-                      <option value="">Select Center Code *</option>
-                      {centers.map(center => (
-                        <option key={center.centerCode} value={center.centerCode}>{center.centerCode} - {center.centerName}</option>
-                      ))}
-                    </select>
-                    {!editForm.centerCode && <div className="error-text">Center Code required for Center User</div>}
-                    <div className="helper-text" style={{ color: '#1565c0', marginTop: '8px' }}>
-                      ℹ️ Center User will only see reports for: <strong>{editForm.centerCode || 'No center selected'}</strong>
-                    </div>
-                  </div>
-                )}
-
-                <div className="btn-group">
-                  <button type="button" className="btn-green" onClick={handleUpdate} disabled={loading}>
-                    {loading ? '⏳' : '✅ Update'}
-                  </button>
-                  <button type="button" className="btn-red" onClick={handleDelete} disabled={loading}>
-                    🗑️ Delete
-                  </button>
-                  <button type="button" className="btn-gray" onClick={() => { setSelectedUser(null); setEditForm({ username: '', password: '', firstname: '', lastname: '', email: '', mobile: '', centerCode: '', Role: 'Audit User' }); setEditPasswordStrength({ message: '', color: '' }); }}>
-                    ❌ Cancel
-                  </button>
-                </div>
-
-                <div className="warning-box">
-                  <span>⚠️ Delete action is permanent and cannot be undone!</span>
-                </div>
-              </div>
-            )}
-          </form>
-        </div>
-      )}
+      {renderActiveView()}
     </div>
   );
 };
