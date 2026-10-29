@@ -141,8 +141,8 @@ const AreaSection = ({ area, report, tdStyle, tdLeftStyle }) => (
         <td colSpan={7} style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', color: '#555', paddingRight: '16px' }}>
           {area.name} Total:
         </td>
-        <td style={{ ...tdStyle, fontWeight: '800', fontSize: '15px', background: '#fff9c4', color: parseFloat(area.totalScore||0) >= area.max*0.8 ? '#2e7d32' : '#e65100' }}>
-          {parseFloat(area.totalScore || 0).toFixed(2)} / {area.max}
+        <td style={{ ...tdStyle, fontWeight: '800', fontSize: '15px', background: '#fff9c4', color: Number.parseFloat(area.totalScore||0) >= area.max*0.8 ? '#2e7d32' : '#e65100' }}>
+          {Number.parseFloat(area.totalScore || 0).toFixed(2)} / {area.max}
         </td>
         <td colSpan={2} style={tdStyle}></td>
       </tr>
@@ -215,7 +215,7 @@ const RemarksSection = ({ report }) => {
 // ── EXACT IMAGE-2 STYLE MODAL ──────────────────────────
 const ReportModal = ({ report, onClose }) => {
   if (!report) return null;
-  const score = parseFloat(report.grandTotal) || 0;
+  const score = Number.parseFloat(report.grandTotal) || 0;
   const auditStatus = bandPick(score, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
   const statusColor = bandPick(score, 80, 65, '#4caf50', '#ff9800', '#f44336');
 

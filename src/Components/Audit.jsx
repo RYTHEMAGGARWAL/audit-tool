@@ -3519,7 +3519,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
       if (parts.length !== 3) return null;
       const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
       return Number.isNaN(parsed.getTime()) ? null : parsed;
-    } catch (e) {
+    } catch {
       // Intentionally silent — malformed/empty date strings are expected and just mean "no date"
       return null;
     }
@@ -3605,7 +3605,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
 
   const checkDeadlines = async () => {
     try { await fetch(`${API_URL}/api/audit-reports/check-deadlines`, { method: 'POST' }); }
-    catch (e) { /* silent */ }
+    catch { /* silent */ }
   };
   // ========================================
 

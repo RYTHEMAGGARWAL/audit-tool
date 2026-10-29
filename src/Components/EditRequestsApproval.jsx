@@ -10,10 +10,10 @@ const getAuditStatus = (report) => {
   const ppMax = 15;
   const mpMax = report.placementApplicable === 'no' ? 20 : 15;
 
-  const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
-  const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
-  const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
-  const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+  const foPercent = (Number.parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+  const dpPercent = (Number.parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+  const ppPercent = report.placementApplicable === 'no' ? null : (Number.parseFloat(report.placementScore || 0) / ppMax) * 100;
+  const mpPercent = (Number.parseFloat(report.managementScore || 0) / mpMax) * 100;
 
   const areas = [
     { name: 'FO', percent: foPercent },
@@ -52,7 +52,7 @@ const getAuditStatusLabel = report => AUDIT_STATUS_LABELS[getAuditStatus(report)
 
 const getAreaScoreInfo = (score, maxScore) => {
   if (score === 'NA') return { status: 'NA', color: '#999' };
-  const numScore = parseFloat(score || 0);
+  const numScore = Number.parseFloat(score || 0);
   const percent = (numScore / maxScore) * 100;
 
   if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
@@ -190,30 +190,30 @@ const AuditScoresSection = ({ report }) => (
       <div>
         <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Front Office:</strong>
         <span style={{ fontSize: '16px', fontWeight: 'bold', color: getAreaScoreInfo(report.frontOfficeScore, report.placementApplicable === 'no' ? 35 : 30).color }}>
-          {parseFloat(report.frontOfficeScore || 0).toFixed(2)}
+          {Number.parseFloat(report.frontOfficeScore || 0).toFixed(2)}
         </span>
       </div>
       <div>
         <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Delivery:</strong>
         <span style={{ fontSize: '16px', fontWeight: 'bold', color: getAreaScoreInfo(report.deliveryProcessScore, report.placementApplicable === 'no' ? 45 : 40).color }}>
-          {parseFloat(report.deliveryProcessScore || 0).toFixed(2)}
+          {Number.parseFloat(report.deliveryProcessScore || 0).toFixed(2)}
         </span>
       </div>
       <div>
         <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Placement:</strong>
         <span style={{ fontSize: '16px', fontWeight: 'bold', color: report.placementApplicable === 'no' ? '#999' : getAreaScoreInfo(report.placementScore, 15).color }}>
-          {report.placementApplicable === 'no' ? 'N/A' : parseFloat(report.placementScore || 0).toFixed(2)}
+          {report.placementApplicable === 'no' ? 'N/A' : Number.parseFloat(report.placementScore || 0).toFixed(2)}
         </span>
       </div>
       <div>
         <strong style={{display: 'block', color: '#666', fontSize: '11px'}}>Management:</strong>
         <span style={{ fontSize: '16px', fontWeight: 'bold', color: getAreaScoreInfo(report.managementScore, report.placementApplicable === 'no' ? 20 : 15).color }}>
-          {parseFloat(report.managementScore || 0).toFixed(2)}
+          {Number.parseFloat(report.managementScore || 0).toFixed(2)}
         </span>
       </div>
       <div style={{ gridColumn: 'span 2', background: getGrandTotalGradient(report), padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
         <strong style={{display: 'block', color: 'white', fontSize: '12px'}}>GRAND TOTAL</strong>
-        <span style={{fontSize: '22px', fontWeight: 'bold', color: 'white'}}>{parseFloat(report.grandTotal || 0).toFixed(2)}/100</span>
+        <span style={{fontSize: '22px', fontWeight: 'bold', color: 'white'}}>{Number.parseFloat(report.grandTotal || 0).toFixed(2)}/100</span>
         <div style={{fontSize: '11px', color: 'white', marginTop: '4px'}}>{getAuditStatusLabel(report)}</div>
       </div>
     </div>
@@ -406,7 +406,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
           });
         } else setSelectedReport(report);
       } else setSelectedReport(report);
-    } catch(e) { setSelectedReport(report); }
+    } catch { setSelectedReport(report); }
     setShowModal(true);
   };
 

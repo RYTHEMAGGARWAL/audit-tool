@@ -14,10 +14,10 @@ const getAuditStatus = (report) => {
   const ppMax = 15;
   const mpMax = report.placementApplicable === 'no' ? 20 : 15;
 
-  const foPercent = (parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
-  const dpPercent = (parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
-  const ppPercent = report.placementApplicable === 'no' ? null : (parseFloat(report.placementScore || 0) / ppMax) * 100;
-  const mpPercent = (parseFloat(report.managementScore || 0) / mpMax) * 100;
+  const foPercent = (Number.parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+  const dpPercent = (Number.parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+  const ppPercent = report.placementApplicable === 'no' ? null : (Number.parseFloat(report.placementScore || 0) / ppMax) * 100;
+  const mpPercent = (Number.parseFloat(report.managementScore || 0) / mpMax) * 100;
 
   const areas = [
     { name: 'FO', percent: foPercent },
@@ -53,7 +53,7 @@ const getGrandTotalStyle = (report) => GRAND_TOTAL_STYLES[getGrandTotalColor(rep
 
 const getAreaScoreInfo = (score, maxScore) => {
   if (score === 'NA') return { status: 'NA', color: '#999' };
-  const numScore = parseFloat(score || 0);
+  const numScore = Number.parseFloat(score || 0);
   const percent = (numScore / maxScore) * 100;
 
   if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
@@ -108,7 +108,7 @@ const PendingReportRow = ({ report, index, onViewRemarks }) => {
   const placementInfo = getAreaScoreInfo(report.placementScore, ppMax);
   const managementInfo = getAreaScoreInfo(report.managementScore, mpMax);
   const placementColor = report.placementApplicable === 'no' ? '#999' : placementInfo.color;
-  const placementValue = report.placementApplicable === 'no' ? 'N/A' : parseFloat(report.placementScore || 0).toFixed(2);
+  const placementValue = report.placementApplicable === 'no' ? 'N/A' : Number.parseFloat(report.placementScore || 0).toFixed(2);
 
   return (
     <tr style={{
@@ -122,16 +122,16 @@ const PendingReportRow = ({ report, index, onViewRemarks }) => {
       <td style={{ textAlign: 'center' }}><CenterTypeBadge type={report.centerType} /></td>
       <td>{report.auditDate}</td>
       <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: frontOfficeInfo.color }}>
-        {parseFloat(report.frontOfficeScore || 0).toFixed(2)}
+        {Number.parseFloat(report.frontOfficeScore || 0).toFixed(2)}
       </td>
       <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: deliveryInfo.color }}>
-        {parseFloat(report.deliveryProcessScore || 0).toFixed(2)}
+        {Number.parseFloat(report.deliveryProcessScore || 0).toFixed(2)}
       </td>
       <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: placementColor }}>
         {placementValue}
       </td>
       <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', color: managementInfo.color }}>
-        {parseFloat(report.managementScore || 0).toFixed(2)}
+        {Number.parseFloat(report.managementScore || 0).toFixed(2)}
       </td>
       <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '18px', color: getGrandTotalColor(report) }}>
         {report.grandTotal}
@@ -202,7 +202,7 @@ const ModalCenterInfoGrid = ({ r }) => {
       <div><strong>Audit Period:</strong> {r.auditPeriod || '-'}</div>
       <div><strong>Financial Year:</strong> <span style={{color: '#667eea', fontWeight: 'bold'}}>{r.financialYear || 'FY26'}</span></div>
       <div><strong>Audit Date:</strong> {r.auditDate || '-'}</div>
-      <div><strong>Grand Total:</strong> <span style={{ fontSize: '15px', fontWeight: 'bold', color: getGrandTotalColor(r) }}>{parseFloat(r.grandTotal || 0).toFixed(2)}/100</span></div>
+      <div><strong>Grand Total:</strong> <span style={{ fontSize: '15px', fontWeight: 'bold', color: getGrandTotalColor(r) }}>{Number.parseFloat(r.grandTotal || 0).toFixed(2)}/100</span></div>
       <div><strong>Status:</strong> <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', background: statusBg, color: statusColor }}>{getAuditStatus(r)}</span></div>
     </div>
   );
@@ -246,7 +246,7 @@ const ModalAreaSection = ({ area, number, selectedRemarks }) => {
   let areaTotal = 0;
   area.checkpoints.forEach(cp => {
     const cpData = selectedRemarks.data?.[cp.id] || {};
-    areaTotal += parseFloat(cpData.score || 0);
+    areaTotal += Number.parseFloat(cpData.score || 0);
   });
   return (
     <React.Fragment>
@@ -363,7 +363,7 @@ const fetchCenterInfo = async (centerCode) => {
     if (!cRes.ok) return {};
     const centers = await cRes.json();
     return centers.find(c => c.centerCode === centerCode) || {};
-  } catch (e) {
+  } catch {
     console.log('Center fetch failed, using report data');
     return {};
   }

@@ -89,8 +89,8 @@ const parseIndianDate = (dateStr) => {
     const parts = dateStr.split(',')[0].trim().split('/');
     if (parts.length !== 3) return null;
     const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    return isNaN(parsed) ? null : parsed;
-  } catch (e) {
+    return Number.isNaN(Number(parsed)) ? null : parsed;
+  } catch {
     return null;
   }
 };
@@ -156,8 +156,8 @@ const getEditRequestDeadline = (report) => {
   try {
     const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
     if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-  } catch(e) {}
-  if (!remarksDate || isNaN(remarksDate)) return null;
+  } catch {}
+  if (!remarksDate || Number.isNaN(Number(remarksDate))) return null;
   // Add 3 working days
   let d = new Date(remarksDate); d.setHours(0,0,0,0);
   let count = 0;
@@ -747,7 +747,7 @@ const CenterDashboard = () => {
           }
         }));
       }
-    } catch (e) {
+    } catch {
       console.warn('Fresh fetch failed, using cached report');
     }
 

@@ -106,7 +106,7 @@ async function migrateUsers() {
 
     for (const userData of rows) {
       if (!userData.username) continue;
-      await User.findOneAndUpdate(
+      await User.findOneAndUpdate( // NOSONAR - sequential on purpose
         { username: userData.username },
         userData,
         { upsert: true }
@@ -203,7 +203,7 @@ async function migrateAuditReports() {
     });
 
     for (const reportData of rows) {
-      await AuditReport.findOneAndUpdate(
+      await AuditReport.findOneAndUpdate( // NOSONAR - sequential on purpose
         { centerCode: reportData.centerCode },
         reportData,
         { upsert: true }

@@ -57,9 +57,9 @@ const ScoreGauge = ({ score, max, label, color }) => {
 
 const Card = ({ children, style, id }) => <div id={id} style={{ background: 'white', borderRadius: 14, padding: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', ...style }}>{children}</div>;
 const SectionTitle = ({ icon, title }) => <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><span style={{ fontSize: 18 }}>{icon}</span><h3 style={{ margin: 0, fontSize: 16, fontWeight: '700', color: '#1a237e' }}>{title}</h3></div>;
-const gc = s => bandPick(parseFloat(s), 80, 65, '#2e7d32', '#e65100', '#c62828');
-const gl = s => bandPick(parseFloat(s), 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
-const ge = s => bandPick(parseFloat(s), 80, 65, 'green', 'yellow', 'red');
+const gc = s => bandPick(Number.parseFloat(s), 80, 65, '#2e7d32', '#e65100', '#c62828');
+const gl = s => bandPick(Number.parseFloat(s), 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
+const ge = s => bandPick(Number.parseFloat(s), 80, 65, 'green', 'yellow', 'red');
 
 const FILTER_LABELS = {
   compliant: 'Compliant Reports', amber: 'Amber Reports', nonCompliant: 'Non-Compliant Reports',
@@ -229,8 +229,8 @@ const AreaSection = ({ area, report, tdS, tdL }) => (
     {!area.isNA && (
       <tr style={{ background: '#f0f0f0' }}>
         <td colSpan={7} style={{ ...tdS, textAlign: 'right', fontWeight: '700', color: '#555', paddingRight: '16px' }}>{area.name} Total:</td>
-        <td style={{ ...tdS, fontWeight: '800', fontSize: '15px', background: '#fff9c4', color: parseFloat(area.totalScore || 0) >= area.max * 0.8 ? '#2e7d32' : '#e65100' }}>
-          {parseFloat(area.totalScore || 0).toFixed(2)}/{area.max}
+        <td style={{ ...tdS, fontWeight: '800', fontSize: '15px', background: '#fff9c4', color: Number.parseFloat(area.totalScore || 0) >= area.max * 0.8 ? '#2e7d32' : '#e65100' }}>
+          {Number.parseFloat(area.totalScore || 0).toFixed(2)}/{area.max}
         </td>
         <td colSpan={2} style={tdS}></td>
       </tr>
@@ -294,7 +294,7 @@ const RemarksSection = ({ report }) => {
 
 const ReportDetailModal = ({ report, onClose, loading }) => {
   if (!report && !loading) return null;
-  const score = parseFloat(report?.grandTotal) || 0;
+  const score = Number.parseFloat(report?.grandTotal) || 0;
   const stColor = bandPick(score, 80, 65, '#2e7d32', '#e65100', '#c62828');
   const stBg = bandPick(score, 80, 65, '#e8f5e9', '#fff3e0', '#fce4ec');
   const auditSt = bandPick(score, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
@@ -627,7 +627,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/api/analytics`);
       if (res.ok) { setData(await res.json()); setLastRefresh(new Date().toLocaleTimeString('en-IN')); }
-    } catch (e) {}
+    } catch {}
     setLoading(false);
   };
 
@@ -649,7 +649,7 @@ export default function Dashboard() {
       const report = reports.find(r => r.centerCode === centerCode);
       if (!report) { alert('Report not found'); setModalLoading(false); return; }
       setSelectedReport(report);
-    } catch (e) { alert('Error'); }
+    } catch { alert('Error'); }
     setModalLoading(false);
   };
 
@@ -664,7 +664,7 @@ export default function Dashboard() {
   );
   if (!data) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>No data</div>;
 
-  const all = (data.allReports || []).map(r => ({ ...r, grandTotal: parseFloat(r.grandTotal) || 0 }));
+  const all = (data.allReports || []).map(r => ({ ...r, grandTotal: Number.parseFloat(r.grandTotal) || 0 }));
   const filtered = getFilteredReports(all, activeFilter);
   const displayed = reportView === 'recent' && !activeFilter ? [...all].reverse().slice(0, 5) : filtered;
 

@@ -28,7 +28,7 @@ const HIERARCHY_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster M
 const AUDIT_BANDS = [
   { min: 80, status: 'Compliant',     color: '#2e7d32', bg: '#e8f5e9', bar: '#43a047', emoji: '✅' },
   { min: 65, status: 'Amber',         color: '#e65100', bg: '#fff3e0', bar: '#fb8c00', emoji: '🟡' },
-  { min: -Infinity, status: 'Non-Compliant', color: '#c62828', bg: '#fce4ec', bar: '#e53935', emoji: '❌' },
+  { min: Number.NEGATIVE_INFINITY, status: 'Non-Compliant', color: '#c62828', bg: '#fce4ec', bar: '#e53935', emoji: '❌' },
 ];
 const bandFor = s => AUDIT_BANDS.find(b => s >= b.min) || AUDIT_BANDS[2];
 const getAuditStatus = s => bandFor(s).status;
@@ -36,7 +36,7 @@ const sColor = s => bandFor(s).color;
 const sBg    = s => bandFor(s).bg;
 const scoreEmoji = s => bandFor(s).emoji;
 const bandByStatus = status => AUDIT_BANDS.find(b => b.status === status) || AUDIT_BANDS[2];
-const barColor = pct => bandFor(parseFloat(pct)).bar;
+const barColor = pct => bandFor(Number.parseFloat(pct)).bar;
 
 const CENTER_TYPE_STYLE = {
   CDC: { bg: '#e3f2fd', color: '#1565c0' },
@@ -116,7 +116,7 @@ const InfoValue = ({ value }) => {
 
 const ReportModal = ({ report, onClose }) => {
   if (!report) return null;
-  const score=parseFloat(report.grandTotal)||0, stColor=sColor(score), stBg=sBg(score);
+  const score=Number.parseFloat(report.grandTotal)||0, stColor=sColor(score), stBg=sBg(score);
   const cpConfig={
     FO1:{name:'Enquires Entered in Pulse(Y/N)',w:'30%',m:9},FO2:{name:'Enrolment form available in Pulse(Y/N)',w:'20%',m:6},
     FO3:{name:'Pre assessment Available(Y/N)',w:'0%',m:0},FO4:{name:'Documents uploaded in Pulse(Y/N)',w:'40%',m:12},
@@ -188,7 +188,7 @@ const ReportModal = ({ report, onClose }) => {
                       <td style={{...tdL,color:'#444'}}>{cp.remarks||'-'}</td>
                       <td style={{...tdL,background:cp.centerHeadRemarks?'#f1fff4':'#fafafa',color:cp.centerHeadRemarks?'#2e7d32':'#aaa',fontStyle:cp.centerHeadRemarks?'normal':'italic'}}>{cp.centerHeadRemarks||'No remarks'}</td>
                     </tr>);})}
-                  {!area.isNA&&<tr style={{background:'#f0f0f0'}}><td colSpan={7} style={{...tdS,textAlign:'right',fontWeight:'700',color:'#555',paddingRight:'14px'}}>{area.name} Total:</td><td style={{...tdS,fontWeight:'800',fontSize:'14px',background:'#fff9c4',color:parseFloat(area.totalScore||0)>=area.max*0.8?'#2e7d32':'#e65100'}}>{parseFloat(area.totalScore||0).toFixed(2)}/{area.max}</td><td colSpan={2} style={tdS}></td></tr>}
+                  {!area.isNA&&<tr style={{background:'#f0f0f0'}}><td colSpan={7} style={{...tdS,textAlign:'right',fontWeight:'700',color:'#555',paddingRight:'14px'}}>{area.name} Total:</td><td style={{...tdS,fontWeight:'800',fontSize:'14px',background:'#fff9c4',color:Number.parseFloat(area.totalScore||0)>=area.max*0.8?'#2e7d32':'#e65100'}}>{Number.parseFloat(area.totalScore||0).toFixed(2)}/{area.max}</td><td colSpan={2} style={tdS}></td></tr>}
                 </tbody>
               ))}
               <tbody><tr style={{background:'#e8f5e9'}}><td colSpan={7} style={{...tdS,textAlign:'right',fontWeight:'800',fontSize:'14px',paddingRight:'14px',color:'#1a237e'}}>🎯 GRAND TOTAL:</td><td style={{...tdS,fontWeight:'900',fontSize:'17px',color:stColor,background:'#fff'}}>{score.toFixed(2)}/100</td><td colSpan={2} style={{...tdS,fontWeight:'700',color:stColor}}>{getAuditStatus(score)}</td></tr></tbody>
@@ -334,7 +334,7 @@ const AvgScoresRow = ({ avgAreaScores }) => (
             <span className="rdb-avg-num" style={{color:a.color}}>{a.avg}</span>
             <span className="rdb-avg-max">/{a.max}</span>
           </div>
-          <div className="rdb-avg-pct" style={{color:sColor(parseFloat(a.pct))}}>{a.pct}%</div>
+          <div className="rdb-avg-pct" style={{color:sColor(Number.parseFloat(a.pct))}}>{a.pct}%</div>
           <div className="rdb-avg-bar-wrap"><div className="rdb-avg-bar" style={{width:`${Math.min(a.pct,100)}%`,background:barColor(a.pct)}}/></div>
         </div>
       ))}
@@ -637,10 +637,10 @@ const RoleDashboard = () => {
     {name:'Management',       sub:'out of 15', key:'managementScore',      max:15},
   ].map(sec=>{
     const app=dashReports.filter(r=>!(sec.isP&&r.placementApplicable==='no'));
-    const c=app.filter(r=>(parseFloat(r[sec.key]||0)/sec.max)*100>=80).length;
-    const a=app.filter(r=>{const p=(parseFloat(r[sec.key]||0)/sec.max)*100;return p>=65&&p<80;}).length;
-    const nc=app.filter(r=>(parseFloat(r[sec.key]||0)/sec.max)*100<65).length;
-    const avgPct=app.length>0?(app.reduce((s,r)=>s+(parseFloat(r[sec.key]||0)/sec.max)*100,0)/app.length).toFixed(1):'0.0';
+    const c=app.filter(r=>(Number.parseFloat(r[sec.key]||0)/sec.max)*100>=80).length;
+    const a=app.filter(r=>{const p=(Number.parseFloat(r[sec.key]||0)/sec.max)*100;return p>=65&&p<80;}).length;
+    const nc=app.filter(r=>(Number.parseFloat(r[sec.key]||0)/sec.max)*100<65).length;
+    const avgPct=app.length>0?(app.reduce((s,r)=>s+(Number.parseFloat(r[sec.key]||0)/sec.max)*100,0)/app.length).toFixed(1):'0.0';
     return {...sec,c,a,nc,applicable:app.length,avgPct};
   });
 
@@ -651,7 +651,7 @@ const RoleDashboard = () => {
     {label:'Management',   key:'managementScore',      max:15, color:'#8e24aa'},
   ].map(a=>{
     const app=dashReports.filter(r=>!(a.isP&&r.placementApplicable==='no'));
-    const avg=app.length>0?(app.reduce((s,r)=>s+(parseFloat(r[a.key]||0)),0)/app.length).toFixed(2):'0.00';
+    const avg=app.length>0?(app.reduce((s,r)=>s+(Number.parseFloat(r[a.key]||0)),0)/app.length).toFixed(2):'0.00';
     const pct=((avg/a.max)*100).toFixed(1);
     return {...a,avg,pct};
   });

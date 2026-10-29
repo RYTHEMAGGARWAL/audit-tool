@@ -69,7 +69,7 @@ const requireAuth = (req, res, next) => {
   try {
     req.user = jwt.verify(token, PASSWORD_POLICY.jwtSecret);
     next();
-  } catch (e) {
+  } catch {
     return res.status(401).json({ error: 'Invalid or expired session, please log in again' });
   }
 };
@@ -477,7 +477,7 @@ app.post('/api/admin-reset-password', async (req, res) => {
     }, { new: true });
 
     if (!user) return res.status(404).json({ error: 'User not found' });
-    console.log(`✅ Admin reset password for: ${user.username}`);
+    console.log(`✅ Admin reset password for: ${logSafe(user.username)}`);
     res.json({ success: true, message: 'Password reset. User must change on next login.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -512,7 +512,7 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
     try {
       await transporter.sendMail(mailOptions);
       res.json({ success: true, message: 'OTP sent to your email', email });
-    } catch (emailErr) {
+    } catch {
       console.log('⚠️ Email failed, OTP:', otp);
       res.json({ success: true, message: 'OTP generated (check console)', email, devOtp: otp });
     }
@@ -704,16 +704,16 @@ app.post('/api/update-users', async (req, res) => {
   try {
     const users = req.body.users || req.body;
     console.log(`\n💾 ========== BULK UPDATE USERS ==========`);
-    console.log(`💾 Total: ${users.length}`);
+    console.log(`💾 Total: ${logSafe(users.length)}`);
 
     for (const userData of users) {
       let pwd = userData.password;
       let isHashed = false;
       if (pwd && !pwd.startsWith('$2b$') && !pwd.startsWith('$2a$')) {
-        pwd = await hashPassword(pwd);
+        pwd = await hashPassword(pwd); // NOSONAR - sequential on purpose
         isHashed = true;
       }
-      await User.findOneAndUpdate(
+      await User.findOneAndUpdate( // NOSONAR - sequential on purpose
         { username: userData.username.toLowerCase() },
         {
           password: pwd,
@@ -751,10 +751,10 @@ app.post('/api/users/bulk-import', async (req, res) => {
           results.push({ username: userData.username, status: 'error', error: 'Password policy failed: ' + policyErrors[0] });
           continue;
         }
-        const hashed = await hashPassword(userData.password);
+        const hashed = await hashPassword(userData.password); // NOSONAR - sequential on purpose
         const now = new Date();
         const expiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
-        await User.findOneAndUpdate(
+        await User.findOneAndUpdate( // NOSONAR - sequential on purpose
           { username: userData.username?.toLowerCase() },
           {
             username: userData.username?.toLowerCase(),
@@ -817,9 +817,9 @@ app.post('/api/hierarchy-emails', async (req, res) => {
       }
       if (user?.email) {
         emails.push(user.email);
-        console.log('✅ Found ' + Role + ' (' + name + ') [actual: ' + user.role + ']: ' + user.email);
+        console.log('✅ Found ' + logSafe(Role) + ' (' + logSafe(name) + ') [actual: ' + user.role + ']: ' + logSafe(user.email));
       } else {
-        console.log('⚠️ No email found for ' + Role + ': ' + name);
+        console.log('⚠️ No email found for ' + logSafe(Role) + ': ' + logSafe(name));
       }
     };
 
@@ -918,7 +918,7 @@ app.put('/api/centers/:id', requireAuth, async (req, res) => {
     // Non-admins can never apply changes directly — always stored as a pending edit request
     if (!isAdmin) {
       const { editRequestBy, editRequestDate, editApprovalStatus, changedFields, _id, __v, createdAt, updatedAt, ...actualEditData } = updateData;
-      console.log('📝 Changed fields received:', JSON.stringify(changedFields));
+      console.log('📝 Changed fields received:', logSafe(JSON.stringify(changedFields)));
       const updated = await Center.findByIdAndUpdate(
         req.params.id,
         {
@@ -933,7 +933,7 @@ app.put('/api/centers/:id', requireAuth, async (req, res) => {
         { new: true }
       );
       if (!updated) return res.status(404).json({ error: 'Center not found' });
-      console.log(`✅ Center edit request stored: ${updated.centerCode}`);
+      console.log(`✅ Center edit request stored: ${logSafe(updated.centerCode)}`);
       return res.json({ success: true, center: updated, pendingApproval: true });
     }
 
@@ -945,7 +945,7 @@ app.put('/api/centers/:id', requireAuth, async (req, res) => {
       { new: true, runValidators: false }
     );
     if (!updatedCenter) return res.status(404).json({ error: 'Center not found' });
-    console.log(`✅ Center updated: ${updatedCenter.centerCode}`);
+    console.log(`✅ Center updated: ${logSafe(updatedCenter.centerCode)}`);
     res.json(updatedCenter);
   } catch (err) {
     console.error('❌ Error updating center:', err.message);
@@ -961,7 +961,7 @@ app.delete('/api/centers/:id', requireAuth, async (req, res) => {
     if (!deletedCenter) {
       return res.status(404).json({ error: 'Center not found' });
     }
-    console.log(`✅ Center deleted: ${deletedCenter.centerCode}`);
+    console.log(`✅ Center deleted: ${logSafe(deletedCenter.centerCode)}`);
     res.json({ success: true, message: 'Center deleted successfully', center: deletedCenter });
   } catch (err) {
     console.error('❌ Error deleting center:', err.message);
@@ -996,7 +996,7 @@ app.post('/api/centers', requireAuth, async (req, res) => {
 
     const center = new Center(centerData);
     await center.save();
-    console.log(`✅ Center created: ${center.centerCode} | approval: ${centerData.approvalStatus}`);
+    console.log(`✅ Center created: ${logSafe(center.centerCode)} | approval: ${centerData.approvalStatus}`);
     res.status(201).json({ 
       success: true, 
       center,
@@ -1012,10 +1012,10 @@ app.post('/api/update-centers', async (req, res) => {
   try {
     const centers = Array.isArray(req.body) ? req.body : req.body.centers;
     console.log(`\n💾 ========== BULK UPDATE CENTERS ==========`);
-    console.log(`💾 Total: ${centers.length}`);
+    console.log(`💾 Total: ${logSafe(centers.length)}`);
 
     for (const centerData of centers) {
-      await Center.findOneAndUpdate(
+      await Center.findOneAndUpdate( // NOSONAR - sequential on purpose
         { centerCode: centerData.centerCode.toUpperCase() },
         {
           centerName: centerData.centerName,
@@ -1076,14 +1076,14 @@ app.post('/api/save-audit-report', async (req, res) => {
     const data = req.body;
     console.log(`\n💾 ========== SAVING AUDIT REPORT ==========`);
     console.log(`💾 Center: ${logSafe(data.centerCode)} - ${logSafe(data.centerName)}`);
-    console.log(`💾 Grand Total: ${data.grandTotal}/100`);
+    console.log(`💾 Grand Total: ${logSafe(data.grandTotal)}/100`);
 
     // ✅ STEP 1: FETCH CENTER DATA FIRST (before using it!)
     const centerData = await Center.findOne({ centerCode: String(data.centerCode || '') });
     console.log('🏢 Fetched center data:', {
       found: !!centerData,
       centerType: centerData?.centerType,
-      centerCode: data.centerCode
+      centerCode: logSafe(data.centerCode)
     });
 
     // Parse audit data JSON if provided
@@ -1244,8 +1244,8 @@ ${managementTable}
         }, {}))
     };
     
-    console.log('💾 Saving with centerType:', updateData.centerType);
-    console.log('💾 Saving placementApplicable:', data.placementApplicable);
+    console.log('💾 Saving with centerType:', logSafe(updateData.centerType));
+    console.log('💾 Saving placementApplicable:', logSafe(data.placementApplicable));
 
     // ✅ STEP 3: Save to database
     // IMPORTANT: Use $set so center head remarks fields are NOT overwritten
@@ -1293,7 +1293,7 @@ app.put('/api/audit-reports/:id/remarks', async (req, res) => {
     const { remarks } = req.body;
     console.log(`\n💬 ========== UPDATING REMARKS ==========`);
     console.log(`💬 Report ID: ${logSafe(req.params.id)}`);
-    console.log(`💬 Remarks: "${remarks}"`);
+    console.log(`💬 Remarks: "${logSafe(remarks)}"`);
     
     const report = await AuditReport.findById(req.params.id);
     if (!report) {
@@ -1306,7 +1306,7 @@ app.put('/api/audit-reports/:id/remarks', async (req, res) => {
     
     await report.save();
 
-    console.log(`✅ Remarks updated for ${report.centerCode}`);
+    console.log(`✅ Remarks updated for ${logSafe(report.centerCode)}`);
     console.log('💬 ========================================\n');
     
     res.json({ success: true, report });
@@ -1496,7 +1496,7 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
 
     await report.save();
 
-    console.log(`✅ All remarks saved successfully for ${report.centerCode}`);
+    console.log(`✅ All remarks saved successfully for ${logSafe(report.centerCode)}`);
     console.log('💬 =============================================\n');
     
     res.json({ 
@@ -1550,8 +1550,8 @@ app.get('/api/audit-reports/:id/debug-remarks', async (req, res) => {
     }
     
     console.log('\n🔍 ========== DEBUG REPORT REMARKS ==========');
-    console.log('Center:', report.centerCode);
-    console.log('centerHeadCheckpointRemarks object:', report.centerHeadCheckpointRemarks);
+    console.log('Center:', logSafe(report.centerCode));
+    console.log('centerHeadCheckpointRemarks object:', logSafe(JSON.stringify(report.centerHeadCheckpointRemarks)));
     console.log('Sample FO1 data:', report.FO1);
     console.log('Sample FO2 data:', report.FO2);
     console.log('Locked:', report.centerHeadRemarksLocked);
@@ -1598,7 +1598,7 @@ app.post('/api/audit-reports/:id/request-edit', async (req, res) => {
     const { centerUserName } = req.body;
     console.log(`\n🔓 ========== EDIT REQUEST ==========`);
     console.log(`🔓 Report ID: ${logSafe(req.params.id)}`);
-    console.log(`🔓 Requested by: ${centerUserName}`);
+    console.log(`🔓 Requested by: ${logSafe(centerUserName)}`);
     
     const report = await AuditReport.findById(req.params.id);
     if (!report) {
@@ -1637,7 +1637,7 @@ app.post('/api/audit-reports/:id/request-edit', async (req, res) => {
     
     await report.save();
 
-    console.log(`✅ Edit request submitted for ${report.centerCode}`);
+    console.log(`✅ Edit request submitted for ${logSafe(report.centerCode)}`);
     console.log('🔓 ========================================\n');
     
     res.json({ success: true, message: 'Edit request submitted to admin', report });
@@ -1655,7 +1655,7 @@ app.post('/api/audit-reports/:id/approve-edit', async (req, res) => {
     const { adminName } = req.body;
     console.log(`\n✅ ========== APPROVE EDIT REQUEST ==========`);
     console.log(`✅ Report ID: ${logSafe(req.params.id)}`);
-    console.log(`✅ Approved by: ${adminName}`);
+    console.log(`✅ Approved by: ${logSafe(adminName)}`);
     
     const report = await AuditReport.findById(req.params.id);
     if (!report) {
@@ -1683,7 +1683,7 @@ app.post('/api/audit-reports/:id/approve-edit', async (req, res) => {
     
     await report.save();
 
-    console.log(`✅ Edit permission granted for ${report.centerCode}`);
+    console.log(`✅ Edit permission granted for ${logSafe(report.centerCode)}`);
     console.log('✅ Center Head can now edit remarks once');
     console.log('✅ ========================================\n');
     
@@ -1744,7 +1744,7 @@ async function sendReminderEmail(report, daysLeft) {
     });
 
     if (!centerUser || !centerUser.email) {
-      console.log(`⚠️ No center user email for ${report.centerCode}`);
+      console.log(`⚠️ No center user email for ${logSafe(report.centerCode)}`);
       return false;
     }
 
@@ -1882,11 +1882,11 @@ async function sendReminderEmail(report, daysLeft) {
       html: htmlBody
     });
 
-    console.log(`✅ Reminder email sent to ${centerUser.email} | ${report.centerCode} | daysLeft: ${daysLeft}`);
+    console.log(`✅ Reminder email sent to ${logSafe(centerUser.email)} | ${logSafe(report.centerCode)} | daysLeft: ${daysLeft}`);
     return true;
 
   } catch (err) {
-    console.error(`❌ Reminder email failed for ${report.centerCode}:`, err.message);
+    console.error(`❌ Reminder email failed for ${logSafe(report.centerCode)}:`, err.message);
     return false;
   }
 }
@@ -1898,7 +1898,7 @@ async function sendAuditorReminderEmail(report, daysLeft) {
   try {
     // auditedBy naam se Audit User dhundo
     if (!report.auditedBy) {
-      console.log(`⚠️ No auditedBy for ${report.centerCode}`);
+      console.log(`⚠️ No auditedBy for ${logSafe(report.centerCode)}`);
       return false;
     }
 
@@ -1911,7 +1911,7 @@ async function sendAuditorReminderEmail(report, daysLeft) {
     });
 
     if (!auditorUser || !auditorUser.email) {
-      console.log(`⚠️ No auditor email found for: ${report.auditedBy}`);
+      console.log(`⚠️ No auditor email found for: ${logSafe(report.auditedBy)}`);
       return false;
     }
 
@@ -2059,11 +2059,11 @@ async function sendAuditorReminderEmail(report, daysLeft) {
       html: htmlBody
     });
 
-    console.log(`✅ Auditor reminder sent to ${auditorUser.email} | ${report.centerCode} | daysLeft: ${daysLeft}`);
+    console.log(`✅ Auditor reminder sent to ${logSafe(auditorUser.email)} | ${logSafe(report.centerCode)} | daysLeft: ${daysLeft}`);
     return true;
 
   } catch (err) {
-    console.error(`❌ Auditor reminder failed for ${report.centerCode}:`, err.message);
+    console.error(`❌ Auditor reminder failed for ${logSafe(report.centerCode)}:`, err.message);
     return false;
   }
 }
@@ -2072,9 +2072,9 @@ async function sendAuditorReminderEmail(report, daysLeft) {
 async function sendEmailInBackground(to, cc, subject, customMessage, reportData, hierarchyEmails = [], placementEmail = null) {
   try {
     console.log('📧 Background email started...');
-    console.log('   To (CH):', to);
-    console.log('   Placement:', placementEmail || 'N/A');
-    console.log('   Hierarchy CC:', hierarchyEmails);
+    console.log('   To (CH):', logSafe(to));
+    console.log('   Placement:', logSafe(placementEmail || 'N/A'));
+    console.log('   Hierarchy CC:', logSafe(hierarchyEmails));
 
     const pdfBuffer = await generatePDF(reportData);
     console.log('✅ PDF generated');
@@ -2133,7 +2133,7 @@ https://audit-tool-liard.vercel.app`;
         attachments: attachment
       };
       const info3 = await transporter.sendMail(mail3);
-      console.log('✅ Hierarchy email sent to:', hierarchyEmails.join(', '), info3.messageId);
+      console.log('✅ Hierarchy email sent to:', logSafe(hierarchyEmails.join(', ')), info3.messageId);
     }
 
     // Update DB
@@ -2156,10 +2156,10 @@ app.post('/api/send-audit-email', async (req, res) => {
 
     const ppEmail = placementEmail || (placementEmails && placementEmails[0]) || null;
 
-    console.log('\n📧 EMAIL REQUEST:', reportData.centerName);
-    console.log('   To (CH):', to);
-    console.log('   Placement Email:', ppEmail || 'N/A');
-    console.log('   Hierarchy CC:', hierarchyEmails || []);
+    console.log('\n📧 EMAIL REQUEST:', logSafe(reportData.centerName));
+    console.log('   To (CH):', logSafe(to));
+    console.log('   Placement Email:', logSafe(ppEmail || 'N/A'));
+    console.log('   Hierarchy CC:', logSafe(hierarchyEmails || []));
 
     res.json({ success: true, message: 'Email is being sent...' });
 
@@ -2254,7 +2254,7 @@ app.post('/api/fix-center-codes', async (req, res) => {
 
     let fixed = 0;
     for (const report of reports) {
-      console.log(`\n📋 Checking: "${report.centerName}"`);
+      console.log(`\n📋 Checking: "${logSafe(report.centerName)}"`);
       console.log(`   Current centerCode: "${report.centerCode || 'EMPTY'}"`);
 
       if (report.centerCode) {
@@ -2265,7 +2265,7 @@ app.post('/api/fix-center-codes', async (req, res) => {
       const newCode = findCenterCodeFor(report);
       if (newCode) {
         report.centerCode = newCode;
-        await report.save();
+        await report.save(); // NOSONAR - sequential on purpose
         console.log(`   ✅ UPDATED to: ${newCode}`);
         fixed++;
       } else {
@@ -2299,7 +2299,7 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
     for (const report of reports) {
       try {
         // Fetch center data from Centers table
-        const centerData = await Center.findOne({ centerCode: report.centerCode });
+        const centerData = await Center.findOne({ centerCode: report.centerCode }); // NOSONAR - sequential on purpose
         
         if (centerData) {
           // Update report with ALL center fields
@@ -2314,9 +2314,9 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
           if (!report.auditedBy) { report.auditedBy = centerData.auditedBy || ''; }
           if (!report.auditPeriod) { report.auditPeriod = centerData.auditPeriod || ''; }
           
-          await report.save();
+          await report.save(); // NOSONAR - sequential on purpose
           
-          console.log(`✅ ${report.centerCode} (${report.financialYear}): ${centerData.centerType}`);
+          console.log(`✅ ${logSafe(report.centerCode)} (${report.financialYear}): ${centerData.centerType}`);
           summary.push({
             centerCode: report.centerCode,
             centerName: report.centerName,
@@ -2326,7 +2326,7 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
           });
           updated++;
         } else {
-          console.log(`⚠️ ${report.centerCode}: Center not found in database`);
+          console.log(`⚠️ ${logSafe(report.centerCode)}: Center not found in database`);
           summary.push({
             centerCode: report.centerCode,
             centerName: report.centerName,
@@ -2337,7 +2337,7 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
           skipped++;
         }
       } catch (err) {
-        console.error(`❌ Error updating ${report.centerCode}:`, err.message);
+        console.error(`❌ Error updating ${logSafe(report.centerCode)}:`, err.message);
       }
     }
     
@@ -2390,7 +2390,7 @@ app.get('/api/fix-audited-by', async (req, res) => {
       // woh report mein already hoga - bas markModified karo
       report.markModified('auditedBy');
       report.markModified('auditPeriod');
-      await report.save();
+      await report.save(); // NOSONAR - sequential on purpose
       updated++;
     }
     
@@ -2480,7 +2480,7 @@ app.get('/api/fix-audit-index', async (req, res) => {
     
     for (const indexName of indexesToDrop) {
       try {
-        await collection.dropIndex(indexName);
+        await collection.dropIndex(indexName); // NOSONAR - sequential on purpose
         console.log(`✅ Dropped: ${indexName}`);
         results.push({ index: indexName, status: 'DROPPED' });
       } catch (e) {
@@ -2550,9 +2550,9 @@ async function lockOverdueCenterRemarksManual(now) {
     report.centerHeadRemarksLocked = true;
     if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
     report.autoClosedDate = now.toLocaleDateString('en-GB');
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
-    console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+    console.log(`🔒 Center deadline: ${logSafe(report.centerCode)} remarks locked`);
   }
   return count;
 }
@@ -2569,10 +2569,10 @@ function remainingWorkingDaysOrOverdue(now, deadlineDate) {
 async function sendReminderIfDue(report, rem, thresholds, sentArr, sendFn, sentField) {
   for (const threshold of thresholds) {
     if (rem === threshold && !sentArr.includes(threshold)) {
-      const sent = await sendFn(report, threshold);
+      const sent = await sendFn(report, threshold); // NOSONAR - sequential on purpose
       if (sent) {
         report[sentField] = [...sentArr, threshold];
-        await report.save();
+        await report.save(); // NOSONAR - sequential on purpose
         return true;
       }
       break;
@@ -2594,7 +2594,7 @@ async function sendCenterReminderEmailsManual(now) {
   for (const report of activeReports) {
     if (!report.centerDeadline) continue;
     const rem = remainingWorkingDaysOrOverdue(now, report.centerDeadline);
-    const sent = await sendReminderIfDue(report, rem, [4, 2, 1, 0], report.remindersSent || [], sendReminderEmail, 'remindersSent');
+    const sent = await sendReminderIfDue(report, rem, [4, 2, 1, 0], report.remindersSent || [], sendReminderEmail, 'remindersSent'); // NOSONAR - sequential on purpose
     if (sent) count++;
   }
   return count;
@@ -2614,13 +2614,13 @@ async function sendClosedNoticeEmailsManual(now) {
 
   for (const report of overdueReports) {
     report.centerHeadRemarksLocked = true;
-    const sent = await sendReminderEmail(report, 'closed');
+    const sent = await sendReminderEmail(report, 'closed'); // NOSONAR - sequential on purpose
     if (sent) {
       report.reminderClosedSent = true;
     }
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
-    console.log(`🔒 Closed (no remarks submitted): ${report.centerCode}`);
+    console.log(`🔒 Closed (no remarks submitted): ${logSafe(report.centerCode)}`);
   }
   return count;
 }
@@ -2640,16 +2640,16 @@ async function autoCloseReviewOverdueReports(now) {
     report.currentStatus = 'Closed';
     report.auditorClosedDate = now.toLocaleDateString('en-GB');
     report.auditorClosedBy = 'Auto-closed (5 day review period expired)';
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
-    console.log(`🔒 Auto-closed (review expired): ${report.centerCode}`);
+    console.log(`🔒 Auto-closed (review expired): ${logSafe(report.centerCode)}`);
 
-    const centerUser = await User.findOne({
+    const centerUser = await User.findOne({ // NOSONAR - sequential on purpose
       centerCode: report.centerCode.toUpperCase(),
       role: 'Center User', isActive: true
     });
     if (centerUser?.email) {
-      await sendReminderEmail(report, 'closed').catch(e => console.log('Email err:', e.message));
+      await sendReminderEmail(report, 'closed').catch(e => console.log('Email err:', e.message)); // NOSONAR - sequential on purpose
     }
   }
   return count;
@@ -2782,7 +2782,7 @@ app.post('/api/audit-reports/:id/close-report', async (req, res) => {
           subject: `🔒 Audit Report Closed - ${report.centerName}`,
           html
         });
-        console.log(`✅ Closed email sent to ${centerUser.email}`);
+        console.log(`✅ Closed email sent to ${logSafe(centerUser.email)}`);
       } catch(emailErr) {
         console.log('⚠️ Closed email failed:', emailErr.message);
       }
@@ -2892,7 +2892,7 @@ app.post('/api/audit-reports/:id/reopen', async (req, res) => {
           subject: `Audit Report Reopened - ${report.centerName} | New Deadline: ${report.centerDeadlineString}`,
           html
         });
-        console.log(`Reopen email sent to: ${centerUser.email}`);
+        console.log(`Reopen email sent to: ${logSafe(centerUser.email)}`);
       } catch(e) {
         console.log('Reopen email failed:', e.message);
       }
@@ -3069,7 +3069,7 @@ app.post('/api/pending-approvals/user/:id/approve', async (req, res) => {
       user.approvalDate = new Date().toLocaleDateString('en-GB');
     }
     await user.save();
-    console.log(`✅ User approved: ${user.username}`);
+    console.log(`✅ User approved: ${logSafe(user.username)}`);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3091,7 +3091,7 @@ app.post('/api/pending-approvals/user/:id/reject', async (req, res) => {
       user.approvalDate = new Date().toLocaleDateString('en-GB');
     }
     await user.save();
-    console.log(`❌ User rejected: ${user.username}`);
+    console.log(`❌ User rejected: ${logSafe(user.username)}`);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3115,7 +3115,7 @@ app.post('/api/pending-approvals/center/:id/approve', async (req, res) => {
       center.approvalDate = new Date().toLocaleDateString('en-GB');
     }
     await center.save();
-    console.log(`✅ Center approved: ${center.centerCode}`);
+    console.log(`✅ Center approved: ${logSafe(center.centerCode)}`);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3138,7 +3138,7 @@ app.post('/api/pending-approvals/center/:id/reject', async (req, res) => {
       center.approvalDate = new Date().toLocaleDateString('en-GB');
     }
     await center.save();
-    console.log(`❌ Center rejected: ${center.centerCode}`);
+    console.log(`❌ Center rejected: ${logSafe(center.centerCode)}`);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3207,7 +3207,7 @@ app.get('/api/hierarchy-reports', async (req, res) => {
       .select('centerCode centerName centerType zmName regionHeadName areaClusterManager areaManager clusterManager placementCoordinator seniorManagerPlacement nationalHeadPlacement financialYear grandTotal currentStatus auditDateString auditStatus projectName location auditedBy auditPeriod centerHeadName chName frontOfficeScore deliveryProcessScore placementScore managementScore placementApplicable remarksText centerRemarks centerHeadRemarksLocked submissionStatus placementRemarksSubmitted placementRemarksLocked placementRemarksEditedOnce placementRemarksDate placementEditRequest placementEditRequestBy placementEditRequestDate PP1 PP2 PP3 PP4 FO1 FO2 FO3 FO4 FO5 DP1 DP2 DP3 DP4 DP5 DP6 DP7 DP8 DP9 DP10 DP11 MP1 MP2 MP3 MP4 MP5 MP6 MP7')
       .sort({ auditDateString: -1 });
 
-    console.log(`Found ${reports.length} hierarchy reports for ${role}`);
+    console.log(`Found ${reports.length} hierarchy reports for ${logSafe(role)}`);
     res.json(reports);
   } catch (err) {
     console.error('Hierarchy reports error:', err.message);
@@ -3362,9 +3362,9 @@ async function closeOverdueAuditorReports(now) {
     report.currentStatus = 'Closed';
     report.autoClosedBy = 'auditor_deadline';
     report.autoClosedDate = now.toLocaleDateString('en-GB');
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
-    console.log(`🔒 Auditor deadline: ${report.centerCode} closed`);
+    console.log(`🔒 Auditor deadline: ${logSafe(report.centerCode)} closed`);
   }
   return count;
 }
@@ -3383,9 +3383,9 @@ async function lockOverdueCenterRemarks(now) {
     report.centerHeadRemarksLocked = true;
     if (!report.autoClosedBy) report.autoClosedBy = 'center_deadline';
     report.autoClosedDate = now.toLocaleDateString('en-GB');
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
-    console.log(`🔒 Center deadline: ${report.centerCode} remarks locked`);
+    console.log(`🔒 Center deadline: ${logSafe(report.centerCode)} remarks locked`);
   }
   return count;
 }
@@ -3409,10 +3409,10 @@ async function sendCenterReminderEmails(now) {
 
     for (const threshold of thresholds) {
       if (rem === threshold && !remindersSentArr.includes(threshold)) {
-        const sent = await sendReminderEmail(report, threshold);
+        const sent = await sendReminderEmail(report, threshold); // NOSONAR - sequential on purpose
         if (sent) {
           report.remindersSent = [...remindersSentArr, threshold];
-          await report.save();
+          await report.save(); // NOSONAR - sequential on purpose
           count++;
         }
         break;
@@ -3435,9 +3435,9 @@ async function sendClosedNoticeEmails(now) {
   });
   for (const report of overdueReports) {
     report.centerHeadRemarksLocked = true;
-    const sent = await sendReminderEmail(report, 'closed');
+    const sent = await sendReminderEmail(report, 'closed'); // NOSONAR - sequential on purpose
     if (sent) { report.reminderClosedSent = true; }
-    await report.save();
+    await report.save(); // NOSONAR - sequential on purpose
     count++;
   }
   return count;
@@ -3454,9 +3454,9 @@ async function autoCloseUnreviewedReports(now) {
     report.currentStatus = 'Closed';
     report.auditorClosedDate = now.toLocaleDateString('en-GB');
     report.auditorClosedBy = 'Auto-closed (review deadline)';
-    await sendReminderEmail(report, 'closed');
-    await report.save();
-    console.log(`🔒 Review deadline auto-closed: ${report.centerCode}`);
+    await sendReminderEmail(report, 'closed'); // NOSONAR - sequential on purpose
+    await report.save(); // NOSONAR - sequential on purpose
+    console.log(`🔒 Review deadline auto-closed: ${logSafe(report.centerCode)}`);
   }
 }
 
@@ -3477,10 +3477,10 @@ async function sendAuditorSubmissionReminders(now) {
 
     for (const threshold of thresholds) {
       if (rem === threshold && !sentArr.includes(threshold)) {
-        const sent = await sendAuditorReminderEmail(report, threshold);
+        const sent = await sendAuditorReminderEmail(report, threshold); // NOSONAR - sequential on purpose
         if (sent) {
           report.auditorRemindersSent = [...sentArr, threshold];
-          await report.save();
+          await report.save(); // NOSONAR - sequential on purpose
           count++;
         }
         break;
@@ -3499,10 +3499,10 @@ async function sendAuditorAutoClosedEmails() {
     auditedBy: { $exists: true, $ne: '' }
   });
   for (const report of auditorAutoClose) {
-    const sent = await sendAuditorReminderEmail(report, 'auto_closed');
+    const sent = await sendAuditorReminderEmail(report, 'auto_closed'); // NOSONAR - sequential on purpose
     if (sent) {
       report.auditorAutoClosedEmailSent = true;
-      await report.save();
+      await report.save(); // NOSONAR - sequential on purpose
     }
   }
 }

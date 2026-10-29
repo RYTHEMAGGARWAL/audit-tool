@@ -87,8 +87,8 @@ const getEditDeadline = (dateStr) => {
     const parts = dateStr.split(',')[0].trim().split('/');
     if (parts.length === 3) base = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
     else base = new Date(dateStr);
-  } catch(e) { return null; }
-  if (!base || isNaN(base)) return null;
+  } catch { return null; }
+  if (!base || Number.isNaN(Number(base))) return null;
   let d = new Date(base); d.setHours(0,0,0,0);
   let count = 0;
   while (count < 3) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
@@ -147,7 +147,7 @@ const CheckpointRemarksCell = ({ isEditable, isPlacementArea, cpId, cp, ppRemark
 const PlacementCheckpointRow = ({ cpId, i, area, selectedReport, isLocked, ppRemarks, setPpRemarks, tdStyle }) => {
   const cp = selectedReport[cpId] || {};
   const meta = CHECKPOINT_META[cpId] || {};
-  const score = parseFloat(cp.score) || 0;
+  const score = Number.parseFloat(cp.score) || 0;
   const maxScore = getMaxScore(cpId, selectedReport.placementApplicable);
   const isEditable = area.isPlacement && !isLocked;
   const rowBg = getCheckpointRowBg(area.isPlacement, i);
@@ -159,7 +159,7 @@ const PlacementCheckpointRow = ({ cpId, i, area, selectedReport, isLocked, ppRem
       <td style={tdStyle}>{maxScore}</td>
       <td style={tdStyle}>{cp.totalSamples || '-'}</td>
       <td style={tdStyle}>{cp.samplesCompliant || cp.compliantSamples || '-'}</td>
-      <td style={{ ...tdStyle, color: '#667eea', fontWeight: '600' }}>{cp.compliantPercent != null ? `${parseFloat(cp.compliantPercent).toFixed(0)}%` : '0%'}</td>
+      <td style={{ ...tdStyle, color: '#667eea', fontWeight: '600' }}>{cp.compliantPercent != null ? `${Number.parseFloat(cp.compliantPercent).toFixed(0)}%` : '0%'}</td>
       <td style={{ ...tdStyle, fontWeight: '800', color: score > 0 ? '#2e7d32' : '#c62828' }}>{score.toFixed(2)}</td>
       <td style={{ ...tdStyle, color: '#555', textAlign: 'left', fontSize: '12px' }}>{cp.remarks || '-'}</td>
       <td style={{ ...tdStyle, minWidth: '180px' }}>
@@ -180,7 +180,7 @@ const PlacementCheckpointRow = ({ cpId, i, area, selectedReport, isLocked, ppRem
 
 
 const PlacementAreaSection = ({ area, selectedReport, isLocked, tdStyle, ppRemarks, setPpRemarks }) => {
-                    const areaTotal = area.keys.reduce((s, k) => s + (parseFloat((selectedReport[k]||{}).score)||0), 0);
+                    const areaTotal = area.keys.reduce((s, k) => s + (Number.parseFloat((selectedReport[k]||{}).score)||0), 0);
                     const isNA = area.isPlacement && selectedReport.placementApplicable === 'no';
                     return (
                       <React.Fragment key={area.label}>
@@ -270,7 +270,7 @@ const PlacementReportRow = ({ r, idx, getScore, getStatusColor, getStatusLabel, 
                             </td>
                             <td style={{ padding: '12px 14px', fontWeight: '600', color: '#1565c0' }}>{r.financialYear}</td>
                             <td style={{ padding: '12px 14px', fontWeight: '800', color: getStatusColor(s) }}>{s.toFixed(2)}</td>
-                            <td style={{ padding: '12px 14px', color: '#e65100', fontWeight: '700' }}>{parseFloat(r.placementScore||0).toFixed(2)}/15</td>
+                            <td style={{ padding: '12px 14px', color: '#e65100', fontWeight: '700' }}>{Number.parseFloat(r.placementScore||0).toFixed(2)}/15</td>
                             <td style={{ padding: '12px 14px' }}>
                               <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', background: getScoreBadgeBackground(s), color: getStatusColor(s) }}>
                                 {getStatusLabel(s)}
@@ -414,7 +414,7 @@ const bandPick = (v, hi, mid, top, middle, bottom) => {
   return bottom;
 };
 
-const getScore = (r) => parseFloat(r.grandTotal || 0);
+const getScore = (r) => Number.parseFloat(r.grandTotal || 0);
 const getStatusColor = (s) => bandPick(s, 80, 65, '#2e7d32', '#e65100', '#c62828');
 const getStatusLabel = (s) => bandPick(s, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
 
@@ -494,7 +494,7 @@ const PlacementDashboard = () => {
         setRemarksDate(st.remarksDate);
         setChSubmitted(st.chSubmitted); // CH submitted AND locked
       }
-    } catch (e) { setPpRemarks({}); }
+    } catch { setPpRemarks({}); }
   };
 
   // Maps a failed save response to a user-facing message
@@ -534,7 +534,7 @@ const PlacementDashboard = () => {
         // Refresh state from server
         void handleViewReport(selectedReport);
       }
-    } catch (e) { showMsg('❌ Error saving', 'error'); }
+    } catch { showMsg('❌ Error saving', 'error'); }
     setSaving(false);
   };
 
@@ -567,7 +567,7 @@ const PlacementDashboard = () => {
         const err = await res.json().catch(() => ({}));
         showMsg(getRequestEditErrorMessage(err), 'error');
       }
-    } catch (e) { showMsg('❌ Network error', 'error'); }
+    } catch { showMsg('❌ Network error', 'error'); }
   };
 
   const showMsg = (text, type) => {
@@ -647,7 +647,7 @@ const PlacementDashboard = () => {
                 ['Audited By', selectedReport.auditedBy || '-'],
                 ['Audit Period', selectedReport.auditPeriod || '-'],
                 ['Financial Year', selectedReport.financialYear],
-                ['Grand Total', `${parseFloat(selectedReport.grandTotal||0).toFixed(2)}/100`],
+                ['Grand Total', `${Number.parseFloat(selectedReport.grandTotal||0).toFixed(2)}/100`],
                 ['Status', getStatusLabel(getScore(selectedReport))],
                 ...(selectedReport.placementCoordinator ? [['Placement Coordinator', selectedReport.placementCoordinator]] : []),
                 ...(selectedReport.seniorManagerPlacement ? [['Sr. Manager Placement', selectedReport.seniorManagerPlacement]] : []),
