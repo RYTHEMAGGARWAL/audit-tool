@@ -5,13 +5,13 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { generatePDF } = require('./pdfGenerator');
-const path = require('path');
-const fs = require('fs');
+const path = require('node:path');
+const fs = require('node:fs');
 const { generateEmailHTML, generateEmailSubject } = require('./emailTemplate');
 require('dotenv').config();
 
@@ -30,12 +30,15 @@ const PASSWORD_POLICY = {
   jwtExpiry: '7d'
 };
 
+// Strip CR/LF so user-controlled values can't forge log lines
+const logSafe = (v) => String(v).replace(/[\r\n]/g, ' ');
+
 const validatePassword = (password) => {
   const errors = [];
   if (password.length < 8) errors.push('At least 8 characters required');
   if (!/[A-Z]/.test(password)) errors.push('At least one uppercase letter (A-Z)');
   if (!/[a-z]/.test(password)) errors.push('At least one lowercase letter (a-z)');
-  if (!/[0-9]/.test(password)) errors.push('At least one number (0-9)');
+  if (!/\d/.test(password)) errors.push('At least one number (0-9)');
   if (!/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) errors.push('At least one special character (@$!%*?& etc)');
   return errors;
 };
@@ -358,7 +361,7 @@ app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     console.log(`\n🔐 ========== LOGIN ATTEMPT ==========`);
-    console.log(`👤 Username: ${username}`);
+    console.log(`👤 Username: ${logSafe(username)}`);
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
@@ -366,19 +369,19 @@ app.post('/api/login', async (req, res) => {
 
     const user = await User.findOne({ username: username.toLowerCase(), isActive: true });
     if (!user) {
-      console.log(`❌ User not found: ${username}`);
+      console.log(`❌ User not found: ${logSafe(username)}`);
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     const isValid = await verifyPassword(password, user.password);
     if (!isValid) {
-      console.log(`❌ Wrong password for ${username}`);
+      console.log(`❌ Wrong password for ${logSafe(username)}`);
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     // Migrate plain text password to bcrypt on first successful login
     if (!user.isPasswordHashed) {
-      console.log(`🔄 Migrating password to bcrypt for ${username}`);
+      console.log(`🔄 Migrating password to bcrypt for ${logSafe(username)}`);
       const hashed = await hashPassword(password);
       const now = new Date();
       const expiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
@@ -398,7 +401,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     const token = generateToken(user);
-    console.log(`✅ Login successful for ${username} | Role: ${user.role} | ForceChange: ${user.forcePasswordChange}`);
+    console.log(`✅ Login successful for ${logSafe(username)} | Role: ${user.role} | ForceChange: ${user.forcePasswordChange}`);
 
     res.json({
       success: true,
@@ -447,7 +450,7 @@ app.post('/api/change-password', async (req, res) => {
     user.passwordExpiresAt = new Date(now.getTime() + PASSWORD_POLICY.expiryDays * 24 * 60 * 60 * 1000);
     await user.save();
 
-    console.log(`✅ Password changed for ${username}`);
+    console.log(`✅ Password changed for ${logSafe(username)}`);
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -485,7 +488,7 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
   try {
     const { email } = req.body;
     console.log(`\n📧 ========== FORGOT PASSWORD ==========`);
-    console.log(`📧 Email: ${email}`);
+    console.log(`📧 Email: ${logSafe(email)}`);
 
     const user = await User.findOne({ email: email.toLowerCase(), isActive: true });
     if (!user) {
@@ -812,7 +815,7 @@ app.post('/api/hierarchy-emails', async (req, res) => {
       if (!user && !strictRole) {
         user = await User.findOne({ isActive: true, $or: orConds });
       }
-      if (user && user.email) {
+      if (user?.email) {
         emails.push(user.email);
         console.log('✅ Found ' + Role + ' (' + name + ') [actual: ' + user.role + ']: ' + user.email);
       } else {
@@ -1072,7 +1075,7 @@ app.post('/api/save-audit-report', async (req, res) => {
   try {
     const data = req.body;
     console.log(`\n💾 ========== SAVING AUDIT REPORT ==========`);
-    console.log(`💾 Center: ${data.centerCode} - ${data.centerName}`);
+    console.log(`💾 Center: ${logSafe(data.centerCode)} - ${logSafe(data.centerName)}`);
     console.log(`💾 Grand Total: ${data.grandTotal}/100`);
 
     // ✅ STEP 1: FETCH CENTER DATA FIRST (before using it!)
@@ -1088,11 +1091,11 @@ app.post('/api/save-audit-report', async (req, res) => {
     if (data.auditDataJson) {
       try {
         auditData = typeof data.auditDataJson === 'string' ? JSON.parse(data.auditDataJson) : data.auditDataJson;
-      } catch (e) {}
+      } catch { /* ignore - non-critical */ }
     }
 
     // Calculate audit status
-    const grandTotalNum = parseFloat(data.grandTotal) || 0;
+    const grandTotalNum = Number.parseFloat(data.grandTotal) || 0;
     let auditStatus = 'Non-Compliant';
     if (grandTotalNum >= 80) auditStatus = 'Compliant';
     else if (grandTotalNum >= 65) auditStatus = 'Amber';
@@ -1166,10 +1169,10 @@ app.post('/api/save-audit-report', async (req, res) => {
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  📈 SCORES SUMMARY                                                            ║
 ║  ─────────────────────────────────────────────────────────────────────────── ║
-║  Front Office     : ${parseFloat(data.frontOfficeScore || 0).toFixed(2).padStart(6)} / 30                                     ║
-║  Delivery Process : ${parseFloat(data.deliveryProcessScore || 0).toFixed(2).padStart(6)} / 40                                     ║
-║  Placement        : ${data.placementApplicable === 'no' ? '    NA     ' : parseFloat(data.placementScore || 0).toFixed(2).padStart(6) + ' / 15'}                                     ║
-║  Management       : ${parseFloat(data.managementScore || 0).toFixed(2).padStart(6)} / 15                                     ║
+║  Front Office     : ${Number.parseFloat(data.frontOfficeScore || 0).toFixed(2).padStart(6)} / 30                                     ║
+║  Delivery Process : ${Number.parseFloat(data.deliveryProcessScore || 0).toFixed(2).padStart(6)} / 40                                     ║
+║  Placement        : ${data.placementApplicable === 'no' ? '    NA     ' : Number.parseFloat(data.placementScore || 0).toFixed(2).padStart(6) + ' / 15'}                                     ║
+║  Management       : ${Number.parseFloat(data.managementScore || 0).toFixed(2).padStart(6)} / 15                                     ║
 ║  ─────────────────────────────────────────────────────────────────────────── ║
 ║  🎯 GRAND TOTAL   : ${grandTotalNum.toFixed(2).padStart(6)} / 100    Status: ${auditStatus.padEnd(15)}            ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -1204,11 +1207,11 @@ ${managementTable}
       geolocation: data.geolocation || '',
       
       // ========== SCORES ==========
-      frontOfficeScore: parseFloat(data.frontOfficeScore) || 0,
-      deliveryProcessScore: parseFloat(data.deliveryProcessScore) || 0,
-      placementScore: parseFloat(data.placementScore) || 0,
+      frontOfficeScore: Number.parseFloat(data.frontOfficeScore) || 0,
+      deliveryProcessScore: Number.parseFloat(data.deliveryProcessScore) || 0,
+      placementScore: Number.parseFloat(data.placementScore) || 0,
       placementApplicable: data.placementApplicable || 'yes',
-      managementScore: parseFloat(data.managementScore) || 0,
+      managementScore: Number.parseFloat(data.managementScore) || 0,
       grandTotal: grandTotalNum,
       auditStatus: auditStatus,
       
@@ -1269,7 +1272,7 @@ ${managementTable}
     }
     // If center head submitted even once — leave ALL lock fields untouched
     
-    console.log(`✅ Report saved for ${data.centerCode}`);
+    console.log(`✅ Report saved for ${logSafe(data.centerCode)}`);
     console.log(`✅ Saved centerType: ${report.centerType}`);
     
     res.json({ success: true, message: 'Audit report saved successfully', report });
@@ -1289,7 +1292,7 @@ app.put('/api/audit-reports/:id/remarks', async (req, res) => {
   try {
     const { remarks } = req.body;
     console.log(`\n💬 ========== UPDATING REMARKS ==========`);
-    console.log(`💬 Report ID: ${req.params.id}`);
+    console.log(`💬 Report ID: ${logSafe(req.params.id)}`);
     console.log(`💬 Remarks: "${remarks}"`);
     
     const report = await AuditReport.findById(req.params.id);
@@ -1390,7 +1393,7 @@ app.put('/api/audit-reports/:id/center-remarks', async (req, res) => {
   try {
     console.log('\n💬 ========== SAVING CENTER HEAD REMARKS ==========');
     const { centerRemarks, centerHeadCheckpointRemarks, centerRemarksBy } = req.body;
-    console.log('📋 Report ID:', req.params.id);
+    console.log('📋 Report ID:', logSafe(req.params.id));
     console.log('📝 Total remarks:', Object.keys(centerHeadCheckpointRemarks || {}).length);
     
     const report = await AuditReport.findById(req.params.id);
@@ -1594,7 +1597,7 @@ app.post('/api/audit-reports/:id/request-edit', async (req, res) => {
   try {
     const { centerUserName } = req.body;
     console.log(`\n🔓 ========== EDIT REQUEST ==========`);
-    console.log(`🔓 Report ID: ${req.params.id}`);
+    console.log(`🔓 Report ID: ${logSafe(req.params.id)}`);
     console.log(`🔓 Requested by: ${centerUserName}`);
     
     const report = await AuditReport.findById(req.params.id);
@@ -1651,7 +1654,7 @@ app.post('/api/audit-reports/:id/approve-edit', async (req, res) => {
   try {
     const { adminName } = req.body;
     console.log(`\n✅ ========== APPROVE EDIT REQUEST ==========`);
-    console.log(`✅ Report ID: ${req.params.id}`);
+    console.log(`✅ Report ID: ${logSafe(req.params.id)}`);
     console.log(`✅ Approved by: ${adminName}`);
     
     const report = await AuditReport.findById(req.params.id);
@@ -2121,7 +2124,7 @@ https://audit-tool-liard.vercel.app`;
     }
 
     // ── EMAIL 3: Hierarchy (ZM/RH/AM/CM/SMP/NHP) — summary + PDF, no credentials ──
-    if (hierarchyEmails && hierarchyEmails.length > 0) {
+    if (hierarchyEmails?.length > 0) {
       const mail3 = {
         from: `NIIT Audit System <${process.env.EMAIL_USER}>`,
         to: hierarchyEmails.join(', '),
@@ -2160,7 +2163,7 @@ app.post('/api/send-audit-email', async (req, res) => {
 
     res.json({ success: true, message: 'Email is being sent...' });
 
-    sendEmailInBackground(to, cc, subject, customMessage || '', reportData, hierarchyEmails || [], ppEmail);
+    void sendEmailInBackground(to, cc, subject, customMessage || '', reportData, hierarchyEmails || [], ppEmail);
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2724,7 +2727,7 @@ app.post('/api/audit-reports/:id/close-report', async (req, res) => {
     report.auditorRemindersSent = [0, 1, 3, 5, 10]; // Cancel all auditor reminders too
     await report.save();
 
-    console.log(`🔒 Report manually closed: ${report.centerCode} by ${closedBy}`);
+    console.log(`🔒 Report manually closed: ${report.centerCode} by ${logSafe(closedBy)}`);
 
     // Send closed email to center user
     const centerUser = await User.findOne({
@@ -2829,7 +2832,7 @@ app.post('/api/audit-reports/:id/reopen', async (req, res) => {
     report.reopenedDate = new Date().toLocaleDateString('en-GB');
     await report.save();
 
-    console.log(`Report reopened: ${report.centerCode} by ${reopenedBy}, deadline: ${report.centerDeadlineString}`);
+    console.log(`Report reopened: ${report.centerCode} by ${logSafe(reopenedBy)}, deadline: ${report.centerDeadlineString}`);
 
     // Center user ko email
     const centerUser = await User.findOne({
@@ -2838,7 +2841,7 @@ app.post('/api/audit-reports/:id/reopen', async (req, res) => {
       isActive: true
     });
 
-    if (centerUser && centerUser.email) {
+    if (centerUser?.email) {
       const loginUrl = 'https://audit-tool-liard.vercel.app';
       const hadRemarks = !!report.centerRemarksDate;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
@@ -2913,9 +2916,9 @@ app.get('/api/analytics', async (req, res) => {
     );
 
     const total = reports.length;
-    const compliant = reports.filter(r => parseFloat(r.grandTotal) >= 80).length;
-    const amber = reports.filter(r => parseFloat(r.grandTotal) >= 65 && parseFloat(r.grandTotal) < 80).length;
-    const nonCompliant = reports.filter(r => parseFloat(r.grandTotal) < 65).length;
+    const compliant = reports.filter(r => Number.parseFloat(r.grandTotal) >= 80).length;
+    const amber = reports.filter(r => Number.parseFloat(r.grandTotal) >= 65 && Number.parseFloat(r.grandTotal) < 80).length;
+    const nonCompliant = reports.filter(r => Number.parseFloat(r.grandTotal) < 65).length;
 
     const statusBreakdown = {};
     reports.forEach(r => { const s = r.currentStatus || 'Unknown'; statusBreakdown[s] = (statusBreakdown[s] || 0) + 1; });
@@ -2933,49 +2936,49 @@ app.get('/api/analytics', async (req, res) => {
 
     const placementReports = reports.filter(r => r.placementApplicable === 'yes');
     const sectionAvg = {
-      frontOffice: reports.reduce((s, r) => s + (parseFloat(r.frontOfficeScore) || 0), 0) / (total || 1),
-      delivery: reports.reduce((s, r) => s + (parseFloat(r.deliveryProcessScore) || 0), 0) / (total || 1),
-      placement: placementReports.reduce((s, r) => s + (parseFloat(r.placementScore) || 0), 0) / (placementReports.length || 1),
-      management: reports.reduce((s, r) => s + (parseFloat(r.managementScore) || 0), 0) / (total || 1),
+      frontOffice: reports.reduce((s, r) => s + (Number.parseFloat(r.frontOfficeScore) || 0), 0) / (total || 1),
+      delivery: reports.reduce((s, r) => s + (Number.parseFloat(r.deliveryProcessScore) || 0), 0) / (total || 1),
+      placement: placementReports.reduce((s, r) => s + (Number.parseFloat(r.placementScore) || 0), 0) / (placementReports.length || 1),
+      management: reports.reduce((s, r) => s + (Number.parseFloat(r.managementScore) || 0), 0) / (total || 1),
     };
 
     // Section-wise compliance breakdown
     const sectionBreakdown = {
       frontOffice: {
-        compliant: reports.filter(r => (parseFloat(r.frontOfficeScore)||0)/30 >= 0.80).length,
-        amber: reports.filter(r => { const p=(parseFloat(r.frontOfficeScore)||0)/30; return p>=0.65&&p<0.80; }).length,
-        nonCompliant: reports.filter(r => (parseFloat(r.frontOfficeScore)||0)/30 < 0.65).length,
+        compliant: reports.filter(r => (Number.parseFloat(r.frontOfficeScore)||0)/30 >= 0.80).length,
+        amber: reports.filter(r => { const p=(Number.parseFloat(r.frontOfficeScore)||0)/30; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (Number.parseFloat(r.frontOfficeScore)||0)/30 < 0.65).length,
       },
       delivery: {
-        compliant: reports.filter(r => (parseFloat(r.deliveryProcessScore)||0)/40 >= 0.80).length,
-        amber: reports.filter(r => { const p=(parseFloat(r.deliveryProcessScore)||0)/40; return p>=0.65&&p<0.80; }).length,
-        nonCompliant: reports.filter(r => (parseFloat(r.deliveryProcessScore)||0)/40 < 0.65).length,
+        compliant: reports.filter(r => (Number.parseFloat(r.deliveryProcessScore)||0)/40 >= 0.80).length,
+        amber: reports.filter(r => { const p=(Number.parseFloat(r.deliveryProcessScore)||0)/40; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (Number.parseFloat(r.deliveryProcessScore)||0)/40 < 0.65).length,
       },
       placement: {
-        compliant: placementReports.filter(r => (parseFloat(r.placementScore)||0)/15 >= 0.80).length,
-        amber: placementReports.filter(r => { const p=(parseFloat(r.placementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
-        nonCompliant: placementReports.filter(r => (parseFloat(r.placementScore)||0)/15 < 0.65).length,
+        compliant: placementReports.filter(r => (Number.parseFloat(r.placementScore)||0)/15 >= 0.80).length,
+        amber: placementReports.filter(r => { const p=(Number.parseFloat(r.placementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: placementReports.filter(r => (Number.parseFloat(r.placementScore)||0)/15 < 0.65).length,
         total: placementReports.length,
       },
       management: {
-        compliant: reports.filter(r => (parseFloat(r.managementScore)||0)/15 >= 0.80).length,
-        amber: reports.filter(r => { const p=(parseFloat(r.managementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
-        nonCompliant: reports.filter(r => (parseFloat(r.managementScore)||0)/15 < 0.65).length,
+        compliant: reports.filter(r => (Number.parseFloat(r.managementScore)||0)/15 >= 0.80).length,
+        amber: reports.filter(r => { const p=(Number.parseFloat(r.managementScore)||0)/15; return p>=0.65&&p<0.80; }).length,
+        nonCompliant: reports.filter(r => (Number.parseFloat(r.managementScore)||0)/15 < 0.65).length,
       },
     };
 
-    const avgScore = total > 0 ? reports.reduce((s, r) => s + (parseFloat(r.grandTotal) || 0), 0) / total : 0;
+    const avgScore = total > 0 ? reports.reduce((s, r) => s + (Number.parseFloat(r.grandTotal) || 0), 0) / total : 0;
     const emailPending = reports.filter(r => r.currentStatus === 'Approved' && !r.emailSent).length;
     const remarksPending = reports.filter(r => r.emailSent && !r.centerRemarksDate && r.currentStatus === 'Approved').length;
     const closed = reports.filter(r => r.currentStatus === 'Closed').length;
 
     const allReports = reports.map(r => ({
       centerName: r.centerName, centerCode: r.centerCode,
-      grandTotal: parseFloat(r.grandTotal) || 0,
-      frontOfficeScore: parseFloat(r.frontOfficeScore) || 0,
-      deliveryProcessScore: parseFloat(r.deliveryProcessScore) || 0,
-      placementScore: parseFloat(r.placementScore) || 0,
-      managementScore: parseFloat(r.managementScore) || 0,
+      grandTotal: Number.parseFloat(r.grandTotal) || 0,
+      frontOfficeScore: Number.parseFloat(r.frontOfficeScore) || 0,
+      deliveryProcessScore: Number.parseFloat(r.deliveryProcessScore) || 0,
+      placementScore: Number.parseFloat(r.placementScore) || 0,
+      managementScore: Number.parseFloat(r.managementScore) || 0,
       placementApplicable: r.placementApplicable,
       currentStatus: r.currentStatus,
       auditDateString: r.auditDateString, auditedBy: r.auditedBy,
@@ -3561,7 +3564,7 @@ app.listen(PORT, () => {
   const msUntil9AM = next9AM - now;
 
   setTimeout(() => {
-    runDailyCheck(); // First run at 9 AM
+    void runDailyCheck(); // First run at 9 AM
     setInterval(runDailyCheck, 24 * 60 * 60 * 1000); // Phir har 24 hours
   }, msUntil9AM);
 

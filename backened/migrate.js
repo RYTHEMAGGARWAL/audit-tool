@@ -5,7 +5,7 @@
 
 const mongoose = require('mongoose');
 const ExcelJS = require('exceljs');
-const path = require('path');
+const path = require('node:path');
 require('dotenv').config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -243,4 +243,4 @@ async function runMigration() {
   }
 }
 
-runMigration();
+void runMigration();
