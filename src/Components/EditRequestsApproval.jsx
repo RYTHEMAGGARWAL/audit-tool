@@ -103,18 +103,18 @@ const EditRequestTypeBadges = ({ req }) => (
 const EditRequestActions = ({ req, onApprove, onApprovePlacement, onView }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
     {req.centerHeadEditRequest && (
-      <button onClick={() => onApprove(req._id, req.centerCode)}
+      <button type="button" onClick={() => onApprove(req._id, req.centerCode)}
         style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #ff9800, #e65100)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }}>
         ✅ Approve CH
       </button>
     )}
     {req.placementEditRequest && (
-      <button onClick={() => onApprovePlacement(req._id, req.centerCode)}
+      <button type="button" onClick={() => onApprovePlacement(req._id, req.centerCode)}
         style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #4caf50, #2e7d32)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }}>
         ✅ Approve PP
       </button>
     )}
-    <button onClick={() => onView(req)}
+    <button type="button" onClick={() => onView(req)}
       style={{ padding: '6px 12px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>
       📊 View
     </button>
@@ -256,19 +256,19 @@ const RemarksSection = ({ report }) => {
 
 const ModalFooter = ({ report, onClose, onApprove, onApprovePlacement }) => (
   <div style={{ padding: '15px 25px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb' }}>
-    <button onClick={onClose}
+    <button type="button" onClick={onClose}
       style={{ background: '#6b7280', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
       ← Close
     </button>
     <div style={{ display: 'flex', gap: '10px' }}>
       {report.centerHeadEditRequest && (
-        <button onClick={onApprove}
+        <button type="button" onClick={onApprove}
           style={{ background: 'linear-gradient(135deg, #ff9800, #e65100)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
           ✅ Approve Center Head
         </button>
       )}
       {report.placementEditRequest && (
-        <button onClick={onApprovePlacement}
+        <button type="button" onClick={onApprovePlacement}
           style={{ background: 'linear-gradient(135deg, #4caf50, #2e7d32)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
           ✅ Approve Placement
         </button>
@@ -291,7 +291,7 @@ const EditRequestDetailModal = ({ report, onClose, onApprove, onApprovePlacement
               {report.centerName} ({report.centerCode}) | Grand Total: {report.grandTotal}/100
             </p>
           </div>
-          <button onClick={onClose}
+          <button type="button" onClick={onClose}
             style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             ×
           </button>

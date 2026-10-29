@@ -8,7 +8,14 @@ import './UserManagement.css';
 // CONSTANTS
 // ========================================
 const SPECIAL_CHAR = /[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Same rule as /^[^\s@]+@[^\s@]+\.[^\s@]+$/ but without the backtracking (S8786 / ReDoS):
+// "something@something" where the part after @ has a dot with at least one character on both sides.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+$/;
+const isValidEmail = (email) => {
+  if (!EMAIL_SHAPE.test(email)) return false;
+  const domain = email.slice(email.indexOf('@') + 1);
+  return domain.slice(1, -1).includes('.');
+};
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -236,7 +243,7 @@ const NEW_USER_VALIDATORS = {
   password: ({ password }) => required(password) || validatePassword(password).join(', '),
   firstname: ({ firstname }) => required(firstname),
   lastname: ({ lastname }) => required(lastname),
-  email: ({ email }) => required(email) || (EMAIL_REGEX.test(email) ? '' : 'Invalid email'),
+  email: ({ email }) => required(email) || (isValidEmail(email) ? '' : 'Invalid email'),
   mobile: ({ mobile }) => required(mobile) || (/^\d{10}$/.test(mobile) ? '' : '10 digits required'),
   centerCode: ({ Role, centerCode }) =>
     Role === 'Center User' && !centerCode?.trim() ? 'Center Code required for Center User' : '',
@@ -552,23 +559,23 @@ const PasswordField = ({ invalid = false, style, ...inputProps }) => {
   );
 };
 
-const Field = ({ label, error, children }) => (
+const Field = ({ label, htmlFor, error, children }) => (
   <div className="field-box">
-    <label>{label}</label>
+    <label htmlFor={htmlFor}>{label}</label>
     {children}
     {error && <div className="error-text">{error}</div>}
   </div>
 );
 
 const TextField = ({ label, error, children, ...inputProps }) => (
-  <Field label={label} error={error}>
+  <Field label={label} htmlFor={inputProps.id} error={error}>
     <input autoComplete="off" type="text" {...inputProps} className={error ? 'error' : ''} />
     {children}
   </Field>
 );
 
-const RoleSelect = ({ value, onChange, style }) => (
-  <select value={value} onChange={onChange} style={style}>
+const RoleSelect = ({ id, value, onChange, style }) => (
+  <select id={id} value={value} onChange={onChange} style={style}>
     {ROLES.map((role) => (
       <option key={role} value={role}>
         {role}
@@ -577,10 +584,11 @@ const RoleSelect = ({ value, onChange, style }) => (
   </select>
 );
 
-const CenterCodeField = ({ value, onChange, centers, error }) => (
+const CenterCodeField = ({ id, value, onChange, centers, error }) => (
   <div className="field-box">
-    <label>🏢 Center Code *</label>
+    <label htmlFor={id}>🏢 Center Code *</label>
     <select
+      id={id}
       value={value}
       onChange={onChange}
       className={error ? 'error' : ''}
@@ -617,16 +625,17 @@ const DigitCounter = ({ value }) => {
   );
 };
 
-const ReplaceOldNameField = ({ role, firstname, value, onChange }) => (
+const ReplaceOldNameField = ({ id, role, firstname, value, onChange }) => (
   <div
     className="field-box"
     style={{ background: '#fff8e1', border: '2px solid #ffcc02', borderRadius: '10px', padding: '14px' }}
   >
-    <label style={{ color: '#e65100', fontWeight: '700' }}>
+    <label htmlFor={id} style={{ color: '#e65100', fontWeight: '700' }}>
       🔄 Replace Old Name in Centers & Reports{' '}
       <span style={{ fontSize: '12px', fontWeight: '400' }}>(Optional)</span>
     </label>
     <input
+      id={id}
       type="text"
       placeholder={`Enter old ${role} name to replace`}
       value={value}
@@ -647,9 +656,10 @@ const ReplaceOldNameField = ({ role, firstname, value, onChange }) => (
   </div>
 );
 
-const SearchBox = ({ value, onChange, placeholder, marginBottom, padding, background }) => (
+const SearchBox = ({ id, value, onChange, placeholder, marginBottom, padding, background }) => (
   <div style={{ marginBottom, position: 'relative' }}>
     <input
+      id={id}
       type="text"
       placeholder={placeholder}
       value={value}
@@ -692,6 +702,7 @@ const SearchBox = ({ value, onChange, placeholder, marginBottom, padding, backgr
 // ========================================
 const MenuItem = ({ item, active, onClick }) => (
   <button
+    type="button"
     className={`um-aed-item${active ? ' um-aed-item--active' : ''}`}
     style={{ '--item-color': item.color }}
     onClick={onClick}
@@ -717,6 +728,7 @@ const UserMenuBar = ({ activeOption, onSelect, total, loading, onRefresh }) => {
     <div className="um-tab-row">
       <div className="um-excel-tab-wrap" ref={wrapRef}>
         <button
+          type="button"
           className={`um-excel-tab${open ? ' um-excel-tab--open' : ''}`}
           onClick={() => setOpen((o) => !o)}
         >
@@ -745,7 +757,7 @@ const UserMenuBar = ({ activeOption, onSelect, total, loading, onRefresh }) => {
       </div>
       <div className="um-status-right">
         <span className="um-total-badge">📊 Total Users: {total}</span>
-        <button className="um-refresh-btn" onClick={onRefresh} disabled={loading}>
+        <button type="button" className="um-refresh-btn" onClick={onRefresh} disabled={loading}>
           {loading ? '⏳' : '🔄 Refresh'}
         </button>
       </div>
@@ -805,8 +817,9 @@ const ResetPasswordModal = ({ user, showMessage, onClose }) => {
         </p>
 
         <div className="field-box">
-          <label>🔐 New Password</label>
+          <label htmlFor="um-reset-new-password">🔐 New Password</label>
           <PasswordField
+            id="um-reset-new-password"
             value={newPwd}
             onChange={(e) => setNewPwd(e.target.value)}
             placeholder="Enter new password"
@@ -815,8 +828,9 @@ const ResetPasswordModal = ({ user, showMessage, onClose }) => {
         </div>
 
         <div className="field-box">
-          <label>✅ Confirm Password</label>
+          <label htmlFor="um-reset-confirm-password">✅ Confirm Password</label>
           <PasswordField
+            id="um-reset-confirm-password"
             value={confirmPwd}
             onChange={(e) => setConfirmPwd(e.target.value)}
             placeholder="Confirm new password"
@@ -826,10 +840,10 @@ const ResetPasswordModal = ({ user, showMessage, onClose }) => {
         </div>
 
         <div className="btn-group" style={{ marginTop: '16px' }}>
-          <button className="btn-green" onClick={handleSubmit} disabled={loading || submitDisabled}>
+          <button type="button" className="btn-green" onClick={handleSubmit} disabled={loading || submitDisabled}>
             {loading ? '⏳ Resetting...' : '🔑 Reset Password'}
           </button>
-          <button className="btn-gray" onClick={onClose}>
+          <button type="button" className="btn-gray" onClick={onClose}>
             ❌ Cancel
           </button>
         </div>
@@ -979,6 +993,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         </div>
 
         <TextField
+          id="um-create-username"
           label="👤 Username *"
           name="create_username_field"
           placeholder="Enter username (min 3 characters)"
@@ -988,6 +1003,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         />
 
         <Field
+          htmlFor="um-create-password"
           label={
             <>
               🔐 Password *{' '}
@@ -999,6 +1015,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
           error={errors.password}
         >
           <PasswordField
+            id="um-create-password"
             name="create_password_field"
             placeholder="Min 8 chars, uppercase, number, special char"
             value={form.password}
@@ -1009,6 +1026,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         </Field>
 
         <TextField
+          id="um-create-firstname"
           label="📝 First Name *"
           placeholder="Enter first name"
           value={form.firstname}
@@ -1017,6 +1035,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         />
 
         <TextField
+          id="um-create-lastname"
           label="📝 Last Name *"
           placeholder="Enter last name"
           value={form.lastname}
@@ -1025,6 +1044,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         />
 
         <TextField
+          id="um-create-email"
           label="📧 Email *"
           type="email"
           placeholder="Enter email"
@@ -1034,6 +1054,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
         />
 
         <TextField
+          id="um-create-mobile"
           label="📱 Mobile *"
           placeholder="Enter 10 digit mobile"
           value={form.mobile}
@@ -1044,8 +1065,9 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
           <DigitCounter value={form.mobile} />
         </TextField>
 
-        <Field label="👤 Role *">
+        <Field label="👤 Role *" htmlFor="um-create-role">
           <RoleSelect
+            id="um-create-role"
             value={form.Role}
             onChange={(e) => handleRoleChange(e.target.value)}
             style={CREATE_ROLE_SELECT_STYLE}
@@ -1054,6 +1076,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
 
         {form.Role === 'Center User' && (
           <CenterCodeField
+            id="um-create-center-code"
             value={form.centerCode}
             onChange={(e) => update('centerCode', e.target.value)}
             centers={centers}
@@ -1063,6 +1086,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
 
         {HIERARCHY_ROLES.includes(form.Role) && (
           <ReplaceOldNameField
+            id="um-create-replace-old-name"
             role={form.Role}
             firstname={form.firstname}
             value={form.replaceOldName}
@@ -1172,6 +1196,7 @@ const UserRow = ({ user, index, showActions, onReset }) => (
     {showActions && (
       <td>
         <button
+          type="button"
           onClick={() => onReset(user)}
           style={{
             padding: '5px 12px',
@@ -1229,7 +1254,7 @@ const ViewUsersTable = ({ users, auditUserMode, onReset }) => {
           </thead>
           <tbody>
             {rows.map((u, i) => (
-              <UserRow key={u._id || i} user={u} index={i} showActions={!auditUserMode} onReset={onReset} />
+              <UserRow key={u._id || u.username} user={u} index={i} showActions={!auditUserMode} onReset={onReset} />
             ))}
           </tbody>
         </table>
@@ -1248,7 +1273,15 @@ const UserPickerRow = ({ user: u, selected, onSelect }) => {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(u)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(u);
+        }
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -1330,8 +1363,9 @@ const UserPicker = ({ users, auditUserMode, search, onSearch, selectedUsername, 
 
   return (
     <div className="field-box">
-      <label>Select User to Modify:</label>
+      <label htmlFor="um-modify-search">Select User to Modify:</label>
       <SearchBox
+        id="um-modify-search"
         value={search}
         onChange={onSearch}
         placeholder="Name, username, email ya role type karo..."
@@ -1387,11 +1421,12 @@ const EditUserForm = ({ user, centers, loading, showMessage, onUpdate, onDelete,
     <div className="edit-section">
       <h4>✏️ Editing: {user.username}</h4>
 
-      <TextField label="👤 Username" value={form.username} disabled style={{ background: '#e9ecef', cursor: 'not-allowed' }}>
+      <TextField id="um-edit-username" label="👤 Username" value={form.username} disabled style={{ background: '#e9ecef', cursor: 'not-allowed' }}>
         <div className="helper-text">Username cannot be changed</div>
       </TextField>
 
       <Field
+        htmlFor="um-edit-password"
         label={
           <>
             🔐 New Password{' '}
@@ -1400,6 +1435,7 @@ const EditUserForm = ({ user, centers, loading, showMessage, onUpdate, onDelete,
         }
       >
         <PasswordField
+          id="um-edit-password"
           value={form.password}
           placeholder="Enter new password (or leave blank)"
           onChange={(e) => update('password', e.target.value)}
@@ -1410,22 +1446,24 @@ const EditUserForm = ({ user, centers, loading, showMessage, onUpdate, onDelete,
         </div>
       </Field>
 
-      <TextField label="📝 First Name" value={form.firstname} onChange={(e) => update('firstname', e.target.value)} />
-      <TextField label="📝 Last Name" value={form.lastname} onChange={(e) => update('lastname', e.target.value)} />
-      <TextField label="📧 Email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} />
+      <TextField id="um-edit-firstname" label="📝 First Name" value={form.firstname} onChange={(e) => update('firstname', e.target.value)} />
+      <TextField id="um-edit-lastname" label="📝 Last Name" value={form.lastname} onChange={(e) => update('lastname', e.target.value)} />
+      <TextField id="um-edit-email" label="📧 Email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} />
       <TextField
+        id="um-edit-mobile"
         label="📱 Mobile"
         value={form.mobile}
         maxLength="10"
         onChange={(e) => update('mobile', sanitizeMobile(e.target.value))}
       />
 
-      <Field label="👥 Role">
-        <RoleSelect value={form.Role} onChange={(e) => handleRoleChange(e.target.value)} />
+      <Field label="👥 Role" htmlFor="um-edit-role">
+        <RoleSelect id="um-edit-role" value={form.Role} onChange={(e) => handleRoleChange(e.target.value)} />
       </Field>
 
       {form.Role === 'Center User' && (
         <CenterCodeField
+          id="um-edit-center-code"
           value={form.centerCode}
           onChange={(e) => update('centerCode', e.target.value)}
           centers={centers}

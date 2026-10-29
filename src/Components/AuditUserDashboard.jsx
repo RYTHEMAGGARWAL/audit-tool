@@ -52,9 +52,43 @@ const ReportTableRow = ({ r, i, getStatus }) => {
   );
 };
 
+function getStatus(r) {
+  const s = r.grandTotal || 0;
+  if (s >= 75) return 'Compliant';
+  if (s >= 50) return 'Amber';
+  return 'Non-Compliant';
+}
+
+// Donut SVG helper
+const Donut = ({ slices, size = 120, label }) => {
+  const total = slices.reduce((s, sl) => s + sl.value, 0);
+  if (total === 0) return (
+    <svg width={size} height={size} viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e0e0e0" strokeWidth="3.8" />
+      <text x="18" y="21" textAnchor="middle" fontSize="7" fontWeight="bold" fill="#999">{label}</text>
+    </svg>
+  );
+  let offset = 25;
+  const R = 15.9, C = 2 * Math.PI * R;
+  return (
+    <svg width={size} height={size} viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+      {slices.map((sl) => {
+        const pct = (sl.value / total) * 100;
+        const dash = (pct / 100) * C;
+        const gap  = C - dash;
+        const el = <circle key={sl.color} cx="18" cy="18" r={R} fill="none" stroke={sl.color} strokeWidth="3.8"
+          strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset * C / 100} />;
+        offset += pct;
+        return el;
+      })}
+      <text x="18" y="20" textAnchor="middle" fontSize="6" fontWeight="bold" fill="#333"
+        style={{ transform: 'rotate(90deg)', transformOrigin: '18px 18px' }}>{total} total</text>
+    </svg>
+  );
+};
+
 const AuditUserDashboard = () => {
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-  const auditorName = `${loggedUser.firstname || ''} ${loggedUser.lastname || ''}`.trim();
 
   const [reports, setReports]   = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -88,12 +122,6 @@ const AuditUserDashboard = () => {
   const amber       = reports.filter(r => getStatus(r) === 'Amber').length;
   const nonCompliant= reports.filter(r => getStatus(r) === 'Non-Compliant').length;
 
-  function getStatus(r) {
-    const s = r.grandTotal || 0;
-    if (s >= 75) return 'Compliant';
-    if (s >= 50) return 'Amber';
-    return 'Non-Compliant';
-  }
 
   // Center type breakdown
   const cdcCount = reports.filter(r => r.centerType === 'CDC').length;
@@ -112,34 +140,6 @@ const AuditUserDashboard = () => {
     { icon: '🟡', label: 'Amber',         value: amber,        color: '#e65100', bg: '#fff3e0', sub: total ? `${((amber/total)*100).toFixed(1)}%` : '0%' },
     { icon: '❌', label: 'Non-Compliant', value: nonCompliant, color: '#c62828', bg: '#fce4ec', sub: total ? `${((nonCompliant/total)*100).toFixed(1)}%` : '0%' },
   ];
-
-  // Donut SVG helper
-  const Donut = ({ slices, size = 120, label }) => {
-    const total = slices.reduce((s, sl) => s + sl.value, 0);
-    if (total === 0) return (
-      <svg width={size} height={size} viewBox="0 0 36 36">
-        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e0e0e0" strokeWidth="3.8" />
-        <text x="18" y="21" textAnchor="middle" fontSize="7" fontWeight="bold" fill="#999">{label}</text>
-      </svg>
-    );
-    let offset = 25;
-    const R = 15.9, C = 2 * Math.PI * R;
-    return (
-      <svg width={size} height={size} viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
-        {slices.map((sl, i) => {
-          const pct = (sl.value / total) * 100;
-          const dash = (pct / 100) * C;
-          const gap  = C - dash;
-          const el = <circle key={i} cx="18" cy="18" r={R} fill="none" stroke={sl.color} strokeWidth="3.8"
-            strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset * C / 100} />;
-          offset += pct;
-          return el;
-        })}
-        <text x="18" y="20" textAnchor="middle" fontSize="6" fontWeight="bold" fill="#333"
-          style={{ transform: 'rotate(90deg)', transformOrigin: '18px 18px' }}>{total} total</text>
-      </svg>
-    );
-  };
 
   const cardStyle = {
     background: 'white', borderRadius: 12, padding: '20px 22px',
@@ -164,7 +164,7 @@ const AuditUserDashboard = () => {
           <h2 style={{ margin:0, fontSize:22, fontWeight:800, color:'#1a237e' }}>📊 Audit Analytics Dashboard</h2>
           <p style={{ margin:'4px 0 0', fontSize:12, color:'#888' }}>Last refreshed: {lastRefresh}</p>
         </div>
-        <button onClick={loadReports} style={{ padding:'9px 24px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'white', border:'none', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:14 }}>
+        <button type="button" onClick={loadReports} style={{ padding:'9px 24px', background:'linear-gradient(135deg,#667eea,#764ba2)', color:'white', border:'none', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:14 }}>
           🔄 Refresh
         </button>
       </div>

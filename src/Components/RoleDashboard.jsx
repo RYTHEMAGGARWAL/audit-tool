@@ -21,10 +21,31 @@ const AUDIT_FILTER   = ['All','Compliant','Amber','Non-Compliant'];
 // Roles that get the extra hierarchy columns (ZM/Region/Area/Cluster) in the full table.
 const HIERARCHY_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster Manager'];
 
-const getAuditStatus = s => s >= 80 ? 'Compliant' : s >= 65 ? 'Amber' : 'Non-Compliant';
-const sColor = s => s >= 80 ? '#2e7d32' : s >= 65 ? '#e65100' : '#c62828';
-const sBg    = s => s >= 80 ? '#e8f5e9' : s >= 65 ? '#fff3e0' : '#fce4ec';
-const scoreEmoji = s => s>=80?'✅':s>=65?'🟡':'❌';
+// Score bands: >= 80 Compliant, >= 65 Amber, otherwise Non-Compliant
+const AUDIT_BANDS = [
+  { min: 80, status: 'Compliant',     color: '#2e7d32', bg: '#e8f5e9', bar: '#43a047', emoji: '✅' },
+  { min: 65, status: 'Amber',         color: '#e65100', bg: '#fff3e0', bar: '#fb8c00', emoji: '🟡' },
+  { min: -Infinity, status: 'Non-Compliant', color: '#c62828', bg: '#fce4ec', bar: '#e53935', emoji: '❌' },
+];
+const bandFor = s => AUDIT_BANDS.find(b => s >= b.min) || AUDIT_BANDS[2];
+const getAuditStatus = s => bandFor(s).status;
+const sColor = s => bandFor(s).color;
+const sBg    = s => bandFor(s).bg;
+const scoreEmoji = s => bandFor(s).emoji;
+const bandByStatus = status => AUDIT_BANDS.find(b => b.status === status) || AUDIT_BANDS[2];
+const barColor = pct => bandFor(parseFloat(pct)).bar;
+
+const CENTER_TYPE_STYLE = {
+  CDC: { bg: '#e3f2fd', color: '#1565c0' },
+  SDC: { bg: '#f3e5f5', color: '#6a1b9a' },
+  DEFAULT: { bg: '#e8f5e9', color: '#2e7d32' },
+};
+const centerTypeStyle = type => (type === 'CDC' || type === 'SDC' ? CENTER_TYPE_STYLE[type] : CENTER_TYPE_STYLE.DEFAULT);
+
+const PILL_COLORS = { Compliant: '#2e7d32', Amber: '#e65100', 'Non-Compliant': '#c62828' };
+const PILL_LABELS = { All: '🔘 All', Compliant: '✅ Compliant', Amber: '🟡 Amber', 'Non-Compliant': '❌ Non-Compliant' };
+
+const reportKey = r => r._id || `${r.centerCode}-${r.financialYear}-${r.auditPeriod}`;
 
 const statusBadge = (status) => {
   const m={'Approved':['#e8f5e9','#2e7d32','✅ Approved'],'Pending with Supervisor':['#fff3e0','#e65100','⏳ Pending'],'Not Submitted':['#fce4ec','#c62828','📝 Not Submitted'],'Closed':['#ede7f6','#4527a0','🔒 Closed'],'Sent Back':['#e3f2fd','#1565c0','↩️ Sent Back']};
@@ -46,8 +67,8 @@ const Donut = ({ slices, total, label }) => {
   return (
     <svg width="140" height="140" viewBox="0 0 140 140">
       <circle cx={cx} cy={cy} r={R} fill="none" stroke="#f0f0f0" strokeWidth={sw}/>
-      {slices.map((s,i)=>{const pct=total>0?s.value/total:0,dash=pct*circ;
-        const el=<circle key={i} cx={cx} cy={cy} r={R} fill="none" stroke={s.color} strokeWidth={sw}
+      {slices.map((s)=>{const pct=total>0?s.value/total:0,dash=pct*circ;
+        const el=<circle key={s.color} cx={cx} cy={cy} r={R} fill="none" stroke={s.color} strokeWidth={sw}
           strokeDasharray={`${dash} ${circ-dash}`} strokeDashoffset={-off}
           style={{transform:'rotate(-90deg)',transformOrigin:`${cx}px ${cy}px`,transition:'all 0.5s'}}/>;
         off+=dash;return el;})}
@@ -58,6 +79,38 @@ const Donut = ({ slices, total, label }) => {
 };
 
 // ── REPORT MODAL ──
+const headerMinWidth = (i) => {
+  if (i === 1) return '220px';
+  if (i >= 8) return '140px';
+  return 'auto';
+};
+
+// Value cells: plain text, or { text, kind } for the two styled ones
+const centerInfoRows = (report) => [
+  ['Center Code', { text: report.centerCode, kind: 'highlight' }],
+  ['Center Name', report.centerName],
+  ['Project', report.projectName],
+  ['ZM Name', report.zmName],
+  ['Region Head', report.regionHeadName],
+  ['Area Manager', report.areaManager||report.areaClusterManager||'-'],
+  ['Cluster Manager', report.clusterManager||'-'],
+  ['Center Head', report.centerHeadName||report.chName||'-'],
+  ['Center Type', { text: report.centerType, kind: 'type' }],
+  ['Location', report.location],
+  ['Audited By', report.auditedBy],
+  ['Audit Period', report.auditPeriod],
+  ['Financial Year', { text: report.financialYear, kind: 'highlight' }],
+];
+
+const InfoValue = ({ value }) => {
+  if (value && typeof value === 'object') {
+    if (value.kind === 'highlight') return <span style={{color:'#1565c0',fontWeight:'700'}}>{value.text}</span>;
+    const t = centerTypeStyle(value.text);
+    return <span style={{background:t.bg,color:t.color,padding:'1px 8px',borderRadius:'10px',fontWeight:'700',fontSize:'11px'}}>{value.text}</span>;
+  }
+  return value || '-';
+};
+
 const ReportModal = ({ report, onClose }) => {
   if (!report) return null;
   const score=parseFloat(report.grandTotal)||0, stColor=sColor(score), stBg=sBg(score);
@@ -88,23 +141,23 @@ const ReportModal = ({ report, onClose }) => {
   const tdS={padding:'7px 6px',fontSize:'12px',color:'#333',border:'1px solid #e0e0e0',textAlign:'center',verticalAlign:'middle'};
   const tdL={...tdS,textAlign:'left'};
   return (
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
+    <div role="presentation" onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
       <div style={{background:'white',borderRadius:'12px',width:'100%',maxWidth:'1100px',maxHeight:'92vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
         <div style={{background:'linear-gradient(135deg,#11998e,#38ef7d)',padding:'14px 22px',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
           <div>
             <h3 style={{margin:0,fontSize:'19px',fontWeight:'700',color:'white'}}>📊 Complete Audit Report</h3>
             <span style={{fontSize:'13px',color:'rgba(255,255,255,0.9)'}}>{report.centerName} ({report.centerCode})</span>
           </div>
-          <button onClick={onClose} style={{background:'rgba(255,255,255,0.25)',border:'2px solid rgba(255,255,255,0.5)',color:'white',width:'30px',height:'30px',borderRadius:'50%',cursor:'pointer',fontSize:'15px',fontWeight:'bold'}}>✕</button>
+          <button type="button" onClick={onClose} style={{background:'rgba(255,255,255,0.25)',border:'2px solid rgba(255,255,255,0.5)',color:'white',width:'30px',height:'30px',borderRadius:'50%',cursor:'pointer',fontSize:'15px',fontWeight:'bold'}}>✕</button>
         </div>
         <div style={{overflowY:'auto',padding:'18px',flex:1}}>
           <div style={{background:'linear-gradient(135deg,#e3f2fd,#e8f5e9)',border:'1px solid #b0bec5',borderRadius:'10px',padding:'14px 18px',marginBottom:'18px'}}>
             <h4 style={{margin:'0 0 10px',color:'#1565c0',fontSize:'14px',fontWeight:'700',textAlign:'center'}}>📋 Center Information</h4>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px 16px'}}>
-              {[['Center Code',<span style={{color:'#1565c0',fontWeight:'700'}}>{report.centerCode}</span>],['Center Name',report.centerName],['Project',report.projectName],['ZM Name',report.zmName],['Region Head',report.regionHeadName],['Area Manager',report.areaManager||report.areaClusterManager||'-'],['Cluster Manager',report.clusterManager||'-'],['Center Head',report.centerHeadName||report.chName||'-'],['Center Type',<span style={{background:report.centerType==='CDC'?'#e3f2fd':report.centerType==='SDC'?'#f3e5f5':'#e8f5e9',color:report.centerType==='CDC'?'#1565c0':report.centerType==='SDC'?'#6a1b9a':'#2e7d32',padding:'1px 8px',borderRadius:'10px',fontWeight:'700',fontSize:'11px'}}>{report.centerType}</span>],['Location',report.location],['Audited By',report.auditedBy],['Audit Period',report.auditPeriod],['Financial Year',<span style={{color:'#1565c0',fontWeight:'700'}}>{report.financialYear}</span>]].map(([l,v])=>(
+              {centerInfoRows(report).map(([l,v])=>(
                 <div key={l} style={{display:'flex',gap:'5px',alignItems:'flex-start'}}>
                   <span style={{fontSize:'11px',color:'#555',fontWeight:'600',minWidth:'95px'}}>{l}:</span>
-                  <span style={{fontSize:'12px',color:'#222'}}>{v||'-'}</span>
+                  <span style={{fontSize:'12px',color:'#222'}}><InfoValue value={v}/></span>
                 </div>
               ))}
             </div>
@@ -116,7 +169,7 @@ const ReportModal = ({ report, onClose }) => {
           </div>
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',minWidth:'860px'}}>
-              <thead><tr>{['S.NO','CHECKPOINT','WEIGHT','MAX','SAMPLES','COMPLIANT','%','SCORE','AUDITOR REMARKS','CH REMARKS'].map((h,i)=><th key={h} style={{...thS,textAlign:i===1||i>=8?'left':'center',minWidth:i===1?'220px':i>=8?'140px':'auto'}}>{h}</th>)}</tr></thead>
+              <thead><tr>{['S.NO','CHECKPOINT','WEIGHT','MAX','SAMPLES','COMPLIANT','%','SCORE','AUDITOR REMARKS','CH REMARKS'].map((h,i)=><th key={h} style={{...thS,textAlign:i===1||i>=8?'left':'center',minWidth:headerMinWidth(i)}}>{h}</th>)}</tr></thead>
               {areas.map(area=>(
                 <tbody key={area.name}>
                   <tr><td colSpan={10} style={{background:'linear-gradient(90deg,#5e35b1,#7e57c2)',color:'white',padding:'8px 12px',fontWeight:'700',fontSize:'13px'}}>Area {area.num}: {area.name} (Max: {area.max})</td></tr>
@@ -139,7 +192,7 @@ const ReportModal = ({ report, onClose }) => {
           </div>
         </div>
         <div style={{padding:'10px 18px',borderTop:'1px solid #e0e0e0',display:'flex',justifyContent:'flex-end',flexShrink:0,background:'#fafafa'}}>
-          <button onClick={onClose} style={{background:'linear-gradient(135deg,#667eea,#764ba2)',color:'white',border:'none',padding:'9px 28px',borderRadius:'8px',cursor:'pointer',fontWeight:'700',fontSize:'14px'}}>✓ Close</button>
+          <button type="button" onClick={onClose} style={{background:'linear-gradient(135deg,#4f5fd6,#764ba2)',color:'white',border:'none',padding:'9px 28px',borderRadius:'8px',cursor:'pointer',fontWeight:'700',fontSize:'14px'}}>✓ Close</button>
         </div>
       </div>
     </div>
@@ -147,26 +200,34 @@ const ReportModal = ({ report, onClose }) => {
 };
 
 // ── DASHBOARD VIEW sub-pieces ───────────────────────────────────
+const FilterSelect = ({ id, label, value, onChange, options }) => (
+  <div className="rdb-fg"><label htmlFor={id}>{label}</label>
+    <select id={id} value={value} onChange={e=>onChange(e.target.value)}>{options.map(o=><option key={o}>{o}</option>)}</select></div>
+);
+
+const FilterSearch = ({ id, label, placeholder, value, onChange }) => (
+  <div className="rdb-fg"><label htmlFor={id}>{label}</label>
+    <input id={id} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)}/></div>
+);
+
 const DashboardFiltersBar = ({ filterFY, setFilterFY, filterStatus, setFilterStatus, filterCT, setFilterCT, searchQ, setSearchQ }) => (
   <div className="rdb-filter-bar">
-    <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
-      <select value={filterFY} onChange={e=>setFilterFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
-    <div className="rdb-fg"><label>📋 STATUS</label>
-      <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-    <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
-      <select value={filterCT} onChange={e=>setFilterCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
-    <div className="rdb-fg"><label>🔍 SEARCH CENTER</label>
-      <input placeholder="Code, name or location..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/></div>
+    <FilterSelect id="rdb-filter-fy" label="📅 FINANCIAL YEAR" value={filterFY} onChange={setFilterFY} options={FY_OPTIONS} />
+    <FilterSelect id="rdb-filter-status" label="📋 STATUS" value={filterStatus} onChange={setFilterStatus} options={STATUS_OPTIONS} />
+    <FilterSelect id="rdb-filter-ct" label="🏢 CENTER TYPE" value={filterCT} onChange={setFilterCT} options={CT_OPTIONS} />
+    <FilterSearch id="rdb-filter-search" label="🔍 SEARCH CENTER" placeholder="Code, name or location..." value={searchQ} onChange={setSearchQ} />
   </div>
 );
 
 const StatCardsGrid = ({ cards, filterAudit, onCardClick }) => (
   <div className="rdb-stat-grid">
-    {cards.map((s,i)=>(
-      <div key={i}
+    {cards.map((s)=>(
+      <div key={s.label}
+        role="button" tabIndex={0}
         className={`rdb-stat-card ${s.cls}${filterAudit===s.auditKey&&s.auditKey&&s.auditKey!=='All'?' rdb-stat-active':''}`}
-        onClick={s.auditKey!==null ? ()=>onCardClick(s.auditKey) : undefined}
-        style={{cursor:s.auditKey!==null?'pointer':'default'}}>
+        onClick={()=>onCardClick(s.auditKey)}
+        onKeyDown={e=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); onCardClick(s.auditKey); } }}
+        style={{cursor:'pointer'}}>
         <div className="rdb-stat-icon-wrap">{s.icon}</div>
         <div className="rdb-stat-content">
           <div className="rdb-stat-num" style={{color:s.color}}>{s.num}</div>
@@ -187,8 +248,8 @@ const ActiveAuditFilterChip = ({ filterAudit, onClear, onViewInTable }) => {
   return (
     <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
       <span style={{background:'#e8eaf6',color:'#3949ab',padding:'4px 14px',borderRadius:'20px',fontSize:'13px',fontWeight:'600'}}>Showing: {filterAudit}</span>
-      <button onClick={onClear} style={{background:'none',border:'1px solid #ccc',borderRadius:'20px',padding:'3px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear</button>
-      <button onClick={()=>onViewInTable(filterAudit)} style={{background:'#3949ab',color:'white',border:'none',borderRadius:'20px',padding:'4px 14px',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>📋 View in Table →</button>
+      <button type="button" onClick={onClear} style={{background:'none',border:'1px solid #ccc',borderRadius:'20px',padding:'3px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear</button>
+      <button type="button" onClick={()=>onViewInTable(filterAudit)} style={{background:'#3949ab',color:'white',border:'none',borderRadius:'20px',padding:'4px 14px',cursor:'pointer',fontSize:'12px',fontWeight:'600'}}>📋 View in Table →</button>
     </div>
   );
 };
@@ -248,7 +309,7 @@ const SectionBreakdownTable = ({ sectionBreakdown, total }) => (
             <td style={{textAlign:'center'}}><span className="rdb-badge rdb-badge-r">{sec.nc}</span></td>
             <td>
               <div className="rdb-prog-wrap">
-                <div className="rdb-prog-bar" style={{width:`${Math.min(sec.avgPct,100)}%`,background:parseFloat(sec.avgPct)>=80?'#43a047':parseFloat(sec.avgPct)>=65?'#fb8c00':'#e53935'}}/>
+                <div className="rdb-prog-bar" style={{width:`${Math.min(sec.avgPct,100)}%`,background:barColor(sec.avgPct)}}/>
                 <span className="rdb-prog-lbl">{sec.avgPct}%</span>
               </div>
             </td>
@@ -271,8 +332,8 @@ const AvgScoresRow = ({ avgAreaScores }) => (
             <span className="rdb-avg-num" style={{color:a.color}}>{a.avg}</span>
             <span className="rdb-avg-max">/{a.max}</span>
           </div>
-          <div className="rdb-avg-pct" style={{color:parseFloat(a.pct)>=80?'#2e7d32':parseFloat(a.pct)>=65?'#e65100':'#c62828'}}>{a.pct}%</div>
-          <div className="rdb-avg-bar-wrap"><div className="rdb-avg-bar" style={{width:`${Math.min(a.pct,100)}%`,background:parseFloat(a.pct)>=80?'#43a047':parseFloat(a.pct)>=65?'#fb8c00':'#e53935'}}/></div>
+          <div className="rdb-avg-pct" style={{color:sColor(parseFloat(a.pct))}}>{a.pct}%</div>
+          <div className="rdb-avg-bar-wrap"><div className="rdb-avg-bar" style={{width:`${Math.min(a.pct,100)}%`,background:barColor(a.pct)}}/></div>
         </div>
       ))}
     </div>
@@ -291,8 +352,25 @@ const MiniReportRow = ({ r, i, onView }) => {
       <td style={{color:sColor(s),fontWeight:'700'}}>{s.toFixed(1)} {scoreEmoji(s)}</td>
       <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
       <td>{statusBadge(r.currentStatus)}</td>
-      <td><button onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
+      <td><button type="button" onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
     </tr>
+  );
+};
+
+const MINI_TABLE_HEADERS = ['#','Center Code','Center Name','Type','FY','Score','Status','Submit Status','View'];
+
+const RecentReportsBody = ({ dashReports, loading, onView }) => {
+  if (loading) return <div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div>;
+  if (dashReports.length === 0) return <div className="rdb-empty">📭 No reports found.</div>;
+  return (
+    <div style={{overflowX:'auto'}}>
+      <table className="rdb-mini-table">
+        <thead><tr>{MINI_TABLE_HEADERS.map(h=><th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {dashReports.slice(0,10).map((r,i)=><MiniReportRow key={reportKey(r)} r={r} i={i} onView={onView} />)}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
@@ -300,18 +378,9 @@ const RecentReportsSection = ({ dashReports, loading, recentRef, onViewAll, onVi
   <div className="rdb-section-card" ref={recentRef}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
       <h3 className="rdb-section-title" style={{margin:0}}>📋 Recent Reports (Top 10)</h3>
-      <button className="rdb-view-all-btn" onClick={onViewAll}>View All →</button>
+      <button type="button" className="rdb-view-all-btn" onClick={onViewAll}>View All →</button>
     </div>
-    {loading?<div className="rdb-loading"><div className="rdb-spinner"/><p>Loading...</p></div>
-    :dashReports.length===0?<div className="rdb-empty">📭 No reports found.</div>
-    :<div style={{overflowX:'auto'}}>
-      <table className="rdb-mini-table">
-        <thead><tr>{['#','Center Code','Center Name','Type','FY','Score','Status','Submit Status','View'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-        <tbody>
-          {dashReports.slice(0,10).map((r,i)=><MiniReportRow key={r._id||i} r={r} i={i} onView={onView} />)}
-        </tbody>
-      </table>
-    </div>}
+    <RecentReportsBody dashReports={dashReports} loading={loading} onView={onView} />
   </div>
 );
 
@@ -328,7 +397,7 @@ const DashboardView = ({
         <h2 className="rdb-analytics-title">📊 {role} Analytics Dashboard</h2>
         <p className="rdb-analytics-sub">Last refreshed: {lastRefreshed}</p>
       </div>
-      <button className="rdb-refresh-btn" onClick={loadReports} disabled={loading}>{loading?'⏳ Loading...':'🔄 Refresh'}</button>
+      <button type="button" className="rdb-refresh-btn" onClick={loadReports} disabled={loading}>{loading?'⏳ Loading...':'🔄 Refresh'}</button>
     </div>
 
     <DashboardFiltersBar filterFY={filterFY} setFilterFY={setFilterFY} filterStatus={filterStatus} setFilterStatus={setFilterStatus} filterCT={filterCT} setFilterCT={setFilterCT} searchQ={searchQ} setSearchQ={setSearchQ} />
@@ -350,13 +419,13 @@ const DashboardView = ({
 // ── TABLE VIEW sub-pieces ───────────────────────────────────────
 const AuditPillBar = ({ tAudit, setTAudit }) => (
   <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
-    <label className="rdb-filter-label">🎯 AUDIT STATUS</label>
+    <span className="rdb-filter-label">🎯 AUDIT STATUS</span>
     <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
       {AUDIT_FILTER.map(f=>(
-        <button key={f} className={`rdb-pill${tAudit===f?' rdb-pill-active':''}`}
-          style={tAudit===f&&f!=='All'?{background:f==='Compliant'?'#2e7d32':f==='Amber'?'#e65100':'#c62828',color:'white',borderColor:'transparent'}:{}}
+        <button key={f} type="button" className={`rdb-pill${tAudit===f?' rdb-pill-active':''}`}
+          style={tAudit===f&&f!=='All'?{background:PILL_COLORS[f],color:'white',borderColor:'transparent'}:{}}
           onClick={()=>setTAudit(f)}>
-          {f==='All'?'🔘 All':f==='Compliant'?'✅ Compliant':f==='Amber'?'🟡 Amber':'❌ Non-Compliant'}
+          {PILL_LABELS[f]}
         </button>
       ))}
     </div>
@@ -366,17 +435,13 @@ const AuditPillBar = ({ tAudit, setTAudit }) => (
 const TableFiltersBar = ({ tAudit, setTAudit, tFY, setTFY, tStatus, setTStatus, tCT, setTCT, tSearch, setTSearch, loading, loadReports }) => (
   <div className="rdb-filter-bar" style={{flexWrap:'wrap',alignItems:'flex-start',gap:'16px'}}>
     <AuditPillBar tAudit={tAudit} setTAudit={setTAudit} />
-    <div className="rdb-fg"><label>📅 FINANCIAL YEAR</label>
-      <select value={tFY} onChange={e=>setTFY(e.target.value)}>{FY_OPTIONS.map(f=><option key={f}>{f}</option>)}</select></div>
-    <div className="rdb-fg"><label>📋 SUBMIT STATUS</label>
-      <select value={tStatus} onChange={e=>setTStatus(e.target.value)}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-    <div className="rdb-fg"><label>🏢 CENTER TYPE</label>
-      <select value={tCT} onChange={e=>setTCT(e.target.value)}>{CT_OPTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
-    <div className="rdb-fg"><label>🔍 SEARCH</label>
-      <input placeholder="Code / name / location..." value={tSearch} onChange={e=>setTSearch(e.target.value)}/></div>
+    <FilterSelect id="rdb-table-fy" label="📅 FINANCIAL YEAR" value={tFY} onChange={setTFY} options={FY_OPTIONS} />
+    <FilterSelect id="rdb-table-status" label="📋 SUBMIT STATUS" value={tStatus} onChange={setTStatus} options={STATUS_OPTIONS} />
+    <FilterSelect id="rdb-table-ct" label="🏢 CENTER TYPE" value={tCT} onChange={setTCT} options={CT_OPTIONS} />
+    <FilterSearch id="rdb-table-search" label="🔍 SEARCH" placeholder="Code / name / location..." value={tSearch} onChange={setTSearch} />
     <div style={{display:'flex',flexDirection:'column',gap:'5px',justifyContent:'flex-end'}}>
-      <label className="rdb-filter-label"> </label>
-      <button className="rdb-refresh-sm" onClick={loadReports} disabled={loading}>{loading?'⏳':'🔄 Refresh'}</button>
+      <span className="rdb-filter-label"> </span>
+      <button type="button" className="rdb-refresh-sm" onClick={loadReports} disabled={loading}>{loading?'⏳':'🔄 Refresh'}</button>
     </div>
   </div>
 );
@@ -384,9 +449,9 @@ const TableFiltersBar = ({ tAudit, setTAudit, tFY, setTFY, tStatus, setTStatus, 
 const TableFilterSummary = ({ tableReports, totalReports, tAudit, hasActiveFilters, onClearAll }) => (
   <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
     <span style={{fontSize:'13px',color:'#666'}}>Showing <strong style={{color:'#3949ab'}}>{tableReports.length}</strong> of <strong>{totalReports}</strong> reports</span>
-    {tAudit!=='All'&&<span style={{background:tAudit==='Compliant'?'#e8f5e9':tAudit==='Amber'?'#fff3e0':'#fce4ec',color:tAudit==='Compliant'?'#2e7d32':tAudit==='Amber'?'#e65100':'#c62828',padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600'}}>{tAudit}</span>}
+    {tAudit!=='All'&&<span style={{background:bandByStatus(tAudit).bg,color:bandByStatus(tAudit).color,padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600'}}>{tAudit}</span>}
     {hasActiveFilters&&(
-      <button onClick={onClearAll} style={{background:'none',border:'1px solid #ccc',borderRadius:'12px',padding:'2px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear All</button>
+      <button type="button" onClick={onClearAll} style={{background:'none',border:'1px solid #ccc',borderRadius:'12px',padding:'2px 10px',cursor:'pointer',fontSize:'12px',color:'#666'}}>✕ Clear All</button>
     )}
   </div>
 );
@@ -411,7 +476,7 @@ const FullReportRow = ({ r, i, role, onView }) => {
       <td><span style={{padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'600',background:sBg(s),color:sColor(s)}}>{getAuditStatus(s)}</span></td>
       <td>{statusBadge(r.currentStatus)}</td>
       <td>{reportStatusBadge(r)}</td>
-      <td><button onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
+      <td><button type="button" onClick={()=>onView(r)} className="rdb-view-btn">👁️ View</button></td>
     </tr>
   );
 };
@@ -435,7 +500,7 @@ const ReportsTable = ({ tableReports, loading, role, onView }) => {
       <table className="rdb-full-table">
         <thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
         <tbody>
-          {tableReports.map((r,i)=><FullReportRow key={r._id||i} r={r} i={i} role={role} onView={onView} />)}
+          {tableReports.map((r,i)=><FullReportRow key={reportKey(r)} r={r} i={i} role={role} onView={onView} />)}
         </tbody>
       </table>
     </div>
@@ -603,13 +668,13 @@ const RoleDashboard = () => {
       {/* HEADER */}
       <header className="rdb-header">
         <h1>{meta.icon} {role} Dashboard - Welcome, {loggedUser.firstname}</h1>
-        <button className="rdb-logout" onClick={()=>{localStorage.removeItem('loggedUser');navigate('/');}}>Logout</button>
+        <button type="button" className="rdb-logout" onClick={()=>{localStorage.removeItem('loggedUser');navigate('/');}}>Logout</button>
       </header>
 
       {/* TABS */}
       <div className="rdb-tabs">
-        <button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}>📊 Dashboard</button>
-        <button className={view==='table'?'active':''} onClick={goToTable}>📋 Reports Table</button>
+        <button type="button" className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}>📊 Dashboard</button>
+        <button type="button" className={view==='table'?'active':''} onClick={goToTable}>📋 Reports Table</button>
       </div>
 
       {error&&<div className="rdb-error">{error}</div>}

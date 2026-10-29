@@ -14,7 +14,7 @@ const validatePassword = (password) => {
   if (!/[A-Z]/.test(password)) errors.push('One uppercase letter (A-Z)');
   if (!/[a-z]/.test(password)) errors.push('One lowercase letter (a-z)');
   if (!/[0-9]/.test(password)) errors.push('One number (0-9)');
-  if (!/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) errors.push('One special character (@$!%*?& etc)');
+  if (!/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) errors.push('One special character (@$!%*?& etc)');
   return errors;
 };
 
@@ -25,12 +25,24 @@ const getPasswordStrength = (password) => {
   if (/[A-Z]/.test(password)) score++;
   if (/[a-z]/.test(password)) score++;
   if (/[0-9]/.test(password)) score++;
-  if (/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) score++;
+  if (/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) score++;
   if (score <= 2) return { label: '❌ Weak', color: '#f44336', width: '30%' };
   if (score === 3) return { label: '⚠️ Medium', color: '#ff9800', width: '55%' };
   if (score === 4) return { label: '✅ Strong', color: '#4caf50', width: '75%' };
   return { label: '✅ Very Strong', color: '#2196f3', width: '100%' };
 };
+
+// Show/hide eye toggle for password inputs
+const PasswordToggle = ({ shown, onToggle, label, extraStyle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-label={label}
+    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666', background: 'none', border: 'none', padding: 0, lineHeight: 'inherit', fontFamily: 'inherit', ...extraStyle }}
+  >
+    {shown ? '🙈' : '👁️'}
+  </button>
+);
 
 // Live checklist of password policy rules against the given password
 const PasswordPolicyChecklist = ({ password, longLabels = false }) => (
@@ -40,9 +52,9 @@ const PasswordPolicyChecklist = ({ password, longLabels = false }) => (
       { check: /[A-Z]/.test(password), text: longLabels ? 'Uppercase letter (A-Z)' : 'Uppercase letter' },
       { check: /[a-z]/.test(password), text: longLabels ? 'Lowercase letter (a-z)' : 'Lowercase letter' },
       { check: /[0-9]/.test(password), text: longLabels ? 'Number (0-9)' : 'Number' },
-      { check: /[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password), text: longLabels ? 'Special character (@$!%*?& etc)' : 'Special character' },
-    ].map((item, i) => (
-      <div key={i} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>
+      { check: /[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password), text: longLabels ? 'Special character (@$!%*?& etc)' : 'Special character' },
+    ].map((item) => (
+      <div key={item.text} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>
         {item.check ? '✅' : '❌'} {item.text}
       </div>
     ))}
@@ -88,9 +100,9 @@ const ForceChangePasswordScreen = ({
 
         <form onSubmit={handleForceChangePassword}>
           <div className="input-group">
-            <label>🔑 Current Password</label>
+            <label htmlFor="force-current-pwd">🔑 Current Password</label>
             <div style={{ position: 'relative' }}>
-              <input
+              <input id="force-current-pwd"
                 type={showForceCurrent ? 'text' : 'password'}
                 value={forceCurrentPwd}
                 onChange={(e) => setForceCurrentPwd(e.target.value)}
@@ -98,17 +110,14 @@ const ForceChangePasswordScreen = ({
                 required
                 style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
               />
-              <span onClick={() => setShowForceCurrent(!showForceCurrent)}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                {showForceCurrent ? '🙈' : '👁️'}
-              </span>
+              <PasswordToggle shown={showForceCurrent} onToggle={() => setShowForceCurrent(!showForceCurrent)} label="Show or hide current password" />
             </div>
           </div>
 
           <div className="input-group">
-            <label>🔐 New Password</label>
+            <label htmlFor="force-new-pwd">🔐 New Password</label>
             <div style={{ position: 'relative' }}>
-              <input
+              <input id="force-new-pwd"
                 type={showForceNew ? 'text' : 'password'}
                 value={forceNewPwd}
                 onChange={(e) => setForceNewPwd(e.target.value)}
@@ -116,10 +125,7 @@ const ForceChangePasswordScreen = ({
                 required
                 style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
               />
-              <span onClick={() => setShowForceNew(!showForceNew)}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                {showForceNew ? '🙈' : '👁️'}
-              </span>
+              <PasswordToggle shown={showForceNew} onToggle={() => setShowForceNew(!showForceNew)} label="Show or hide new password" />
             </div>
 
             {/* Password Strength Bar */}
@@ -137,9 +143,9 @@ const ForceChangePasswordScreen = ({
           </div>
 
           <div className="input-group">
-            <label>✅ Confirm New Password</label>
+            <label htmlFor="force-confirm-pwd">✅ Confirm New Password</label>
             <div style={{ position: 'relative' }}>
-              <input
+              <input id="force-confirm-pwd"
                 type={showForceConfirm ? 'text' : 'password'}
                 value={forceConfirmPwd}
                 onChange={(e) => setForceConfirmPwd(e.target.value)}
@@ -148,10 +154,7 @@ const ForceChangePasswordScreen = ({
                 style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box',
                   borderColor: confirmBorderColor }}
               />
-              <span onClick={() => setShowForceConfirm(!showForceConfirm)}
-                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-                {showForceConfirm ? '🙈' : '👁️'}
-              </span>
+              <PasswordToggle shown={showForceConfirm} onToggle={() => setShowForceConfirm(!showForceConfirm)} label="Show or hide confirm password" />
             </div>
             {confirmMatch === false && (
               <div style={{ fontSize: '12px', color: '#f44336', marginTop: '4px' }}>❌ Passwords do not match</div>
@@ -184,8 +187,8 @@ const LoginForm = ({ username, setUsername, password, setPassword, showPassword,
 
     <form onSubmit={handleLogin}>
       <div className="input-group">
-        <label>Username</label>
-        <input
+        <label htmlFor="login-username">Username</label>
+        <input id="login-username"
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -195,9 +198,9 @@ const LoginForm = ({ username, setUsername, password, setPassword, showPassword,
       </div>
 
       <div className="input-group">
-        <label>Password</label>
+        <label htmlFor="login-password">Password</label>
         <div style={{ position: 'relative' }}>
-          <input
+          <input id="login-password"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -205,12 +208,7 @@ const LoginForm = ({ username, setUsername, password, setPassword, showPassword,
             required
             style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
           />
-          <span
-            onClick={() => setShowPassword(!showPassword)}
-            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', userSelect: 'none', color: '#666' }}
-          >
-            {showPassword ? '🙈' : '👁️'}
-          </span>
+          <PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} label="Show or hide password" extraStyle={{ userSelect: 'none' }} />
         </div>
       </div>
 
@@ -221,9 +219,9 @@ const LoginForm = ({ username, setUsername, password, setPassword, showPassword,
       </button>
     </form>
 
-    <p className="forgot-link" onClick={() => setShowForgotPassword(true)}>
+    <button type="button" className="forgot-link" onClick={() => setShowForgotPassword(true)}>
       Forgot Password?
-    </p>
+    </button>
   </>
 );
 
@@ -245,8 +243,8 @@ const ForgotPasswordFlow = ({
       <form onSubmit={handleSendOTP}>
         <p className="subtitle">Enter your email to receive OTP</p>
         <div className="input-group">
-          <label>Email</label>
-          <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="Enter your email" required />
+          <label htmlFor="forgot-email">Email</label>
+          <input id="forgot-email" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="Enter your email" required />
         </div>
         {forgotError && <p className="error-message">{forgotError}</p>}
         {forgotMessage && <p className="success-message">{forgotMessage}</p>}
@@ -260,8 +258,8 @@ const ForgotPasswordFlow = ({
       <form onSubmit={handleVerifyOTP}>
         <p className="subtitle">Enter the OTP sent to {forgotEmail}</p>
         <div className="input-group">
-          <label>OTP</label>
-          <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 6-digit OTP" maxLength={6} className="otp-input" required />
+          <label htmlFor="forgot-otp">OTP</label>
+          <input id="forgot-otp" type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 6-digit OTP" maxLength={6} className="otp-input" required />
         </div>
         {forgotError && <p className="error-message">{forgotError}</p>}
         {forgotMessage && <p className="success-message">{forgotMessage}</p>}
@@ -276,9 +274,9 @@ const ForgotPasswordFlow = ({
         <p className="subtitle">Enter your new password</p>
 
         <div className="input-group">
-          <label>New Password</label>
+          <label htmlFor="forgot-new-password">New Password</label>
           <div style={{ position: 'relative' }}>
-            <input
+            <input id="forgot-new-password"
               type={showNewPassword ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -286,10 +284,7 @@ const ForgotPasswordFlow = ({
               required
               style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
             />
-            <span onClick={() => setShowNewPassword(!showNewPassword)}
-              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-              {showNewPassword ? '🙈' : '👁️'}
-            </span>
+            <PasswordToggle shown={showNewPassword} onToggle={() => setShowNewPassword(!showNewPassword)} label="Show or hide new password" />
           </div>
 
           {/* Policy Checklist */}
@@ -297,9 +292,9 @@ const ForgotPasswordFlow = ({
         </div>
 
         <div className="input-group">
-          <label>Confirm Password</label>
+          <label htmlFor="forgot-confirm-password">Confirm Password</label>
           <div style={{ position: 'relative' }}>
-            <input
+            <input id="forgot-confirm-password"
               type={showConfirmPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -307,10 +302,7 @@ const ForgotPasswordFlow = ({
               required
               style={{ paddingRight: '40px', width: '100%', boxSizing: 'border-box' }}
             />
-            <span onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: '18px', color: '#666' }}>
-              {showConfirmPassword ? '🙈' : '👁️'}
-            </span>
+            <PasswordToggle shown={showConfirmPassword} onToggle={() => setShowConfirmPassword(!showConfirmPassword)} label="Show or hide confirm password" />
           </div>
         </div>
 
@@ -323,13 +315,13 @@ const ForgotPasswordFlow = ({
       </form>
     )}
 
-    <p className="forgot-link" onClick={resetForgotPassword}>← Back to Login</p>
+    <button type="button" className="forgot-link" onClick={resetForgotPassword}>← Back to Login</button>
   </>
 );
 
 const Login = () => {
   const navigate = useNavigate();
-  const { setUsers, users } = useUsers();
+  const { setUsers } = useUsers();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -406,10 +398,24 @@ const Login = () => {
   // ========================================
   // Strips HTML/script-bearing characters so a malicious or compromised
   // API response can't plant executable/markup content in localStorage.
+  // Linear-time equivalent of .replace(/<[^>]*>/g, '') (avoids regex backtracking)
+  const stripTags = (str) => {
+    let out = '';
+    let i = 0;
+    while (i < str.length) {
+      const open = str.indexOf('<', i);
+      if (open === -1) break;
+      const close = str.indexOf('>', open + 1);
+      if (close === -1) break;
+      out += str.slice(i, open);
+      i = close + 1;
+    }
+    return out + str.slice(i);
+  };
+
   const sanitizeString = (value) => {
     if (typeof value !== 'string') return value;
-    return value
-      .replace(/<[^>]*>/g, '')      // strip HTML tags
+    return stripTags(value)
       .replace(/[<>"'`]/g, '')      // strip remaining markup/quote chars
       .trim();
   };

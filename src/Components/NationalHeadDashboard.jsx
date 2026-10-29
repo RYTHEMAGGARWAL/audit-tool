@@ -2,6 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 
+// Pick one of three values by threshold (>= hi, >= mid, otherwise lowest)
+const bandPick = (v, hi, mid, top, middle, bottom) => {
+  if (v >= hi) return top;
+  if (v >= mid) return middle;
+  return bottom;
+};
+
+// Run `handler` when Enter or Space is pressed (keyboard access for clickable non-button elements)
+const onActivateKey = handler => e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    handler();
+  }
+};
+
 const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) return <div style={{ width: size, height: size, borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#999' }}>No data</div>;
@@ -11,9 +26,9 @@ const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
   const toXY = (a, r2) => ({ x: cx + r2 * Math.cos(a * Math.PI / 180), y: cy + r2 * Math.sin(a * Math.PI / 180) });
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {slices.map((sl, i) => {
+      {slices.map((sl) => {
         const st = toXY(sl.s, r), en = toXY(sl.e, r), large = sl.e - sl.s > 180 ? 1 : 0;
-        return <path key={i} d={`M ${cx} ${cy} L ${st.x} ${st.y} A ${r} ${r} 0 ${large} 1 ${en.x} ${en.y} Z`} fill={sl.color} stroke="white" strokeWidth={2} style={{ cursor: sl.filterKey ? 'pointer' : 'default', opacity: activeFilter && activeFilter !== sl.filterKey ? 0.5 : 1, transition: 'opacity 0.2s' }} onClick={() => sl.filterKey && onSliceClick && onSliceClick(sl.filterKey)}><title>{sl.label}: {sl.value}</title></path>;
+        return <path key={sl.label} d={`M ${cx} ${cy} L ${st.x} ${st.y} A ${r} ${r} 0 ${large} 1 ${en.x} ${en.y} Z`} fill={sl.color} stroke="white" strokeWidth={2} style={{ cursor: sl.filterKey ? 'pointer' : 'default', opacity: activeFilter && activeFilter !== sl.filterKey ? 0.5 : 1, transition: 'opacity 0.2s' }} onClick={() => sl.filterKey && onSliceClick && onSliceClick(sl.filterKey)}><title>{sl.label}: {sl.value}</title></path>;
       })}
       <circle cx={cx} cy={cy} r={r * 0.45} fill="white" />
       <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight="bold" fill="#1a237e">{total}</text>
@@ -24,7 +39,7 @@ const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
 
 const ScoreGauge = ({ score, max, label, color }) => {
   const pct = Math.min((score / max) * 100, 100);
-  const c = color || (score / max >= 0.8 ? '#2e7d32' : score / max >= 0.65 ? '#e65100' : '#c62828');
+  const c = color || bandPick(score / max, 0.8, 0.65, '#2e7d32', '#e65100', '#c62828');
   const circ = 2 * Math.PI * 32;
   return (
     <div style={{ textAlign: 'center' }}>
@@ -45,9 +60,9 @@ const ScoreGauge = ({ score, max, label, color }) => {
 
 const Card = ({ children, style, id }) => <div id={id} style={{ background: 'white', borderRadius: 14, padding: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.07)', ...style }}>{children}</div>;
 const SectionTitle = ({ icon, title }) => <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><span style={{ fontSize: 18 }}>{icon}</span><h3 style={{ margin: 0, fontSize: 16, fontWeight: '700', color: '#1a237e' }}>{title}</h3></div>;
-const gc = s => parseFloat(s) >= 80 ? '#2e7d32' : parseFloat(s) >= 65 ? '#e65100' : '#c62828';
-const gl = s => parseFloat(s) >= 80 ? 'Compliant' : parseFloat(s) >= 65 ? 'Amber' : 'Non-Compliant';
-const ge = s => parseFloat(s) >= 80 ? 'green' : parseFloat(s) >= 65 ? 'yellow' : 'red';
+const gc = s => bandPick(parseFloat(s), 80, 65, '#2e7d32', '#e65100', '#c62828');
+const gl = s => bandPick(parseFloat(s), 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
+const ge = s => bandPick(parseFloat(s), 80, 65, 'green', 'yellow', 'red');
 
 const FILTER_LABELS = {
   compliant: 'Compliant Reports', amber: 'Amber Reports', nonCompliant: 'Non-Compliant Reports',
@@ -125,15 +140,27 @@ const cpConfig = {
 };
 
 // ── ReportDetailModal sub-pieces ───────────────────────────────────
+const TYPE_BADGE_STYLES = {
+  CDC: { bg: '#e3f2fd', color: '#1565c0' },
+  SDC: { bg: '#f3e5f5', color: '#6a1b9a' },
+};
+const DEFAULT_TYPE_BADGE = { bg: '#e8f5e9', color: '#2e7d32' };
+
 const CenterTypeBadge = ({ type }) => {
-  const bg = type === 'CDC' ? '#e3f2fd' : type === 'SDC' ? '#f3e5f5' : '#e8f5e9';
-  const color = type === 'CDC' ? '#1565c0' : type === 'SDC' ? '#6a1b9a' : '#2e7d32';
+  const { bg, color } = TYPE_BADGE_STYLES[type] || DEFAULT_TYPE_BADGE;
   return <span style={{ background: bg, color, padding: '1px 9px', borderRadius: '12px', fontWeight: '700', fontSize: '12px' }}>{type}</span>;
+};
+
+// Renders one value of the center info grid (plain text, highlighted text or the type badge)
+const InfoValue = ({ kind, value }) => {
+  if (kind === 'accent') return <span style={{ color: '#1565c0', fontWeight: '700' }}>{value}</span>;
+  if (kind === 'badge') return <CenterTypeBadge type={value} />;
+  return value || '-';
 };
 
 const CenterInfoGrid = ({ report, score, stColor, stBg, auditSt }) => {
   const fields = [
-    ['Center Code', <span style={{ color: '#1565c0', fontWeight: '700' }}>{report.centerCode}</span>],
+    ['Center Code', report.centerCode, 'accent'],
     ['Center Name', report.centerName],
     ['Project Name', report.projectName || '-'],
     ['ZM Name', report.zmName || '-'],
@@ -141,20 +168,20 @@ const CenterInfoGrid = ({ report, score, stColor, stBg, auditSt }) => {
     ['Area Manager', report.areaManager || report.areaClusterManager || '-'],
     ['Cluster Manager', report.clusterManager || '-'],
     ['Center Head', report.centerHeadName || report.chName || '-'],
-    ['Center Type', <CenterTypeBadge type={report.centerType} />],
+    ['Center Type', report.centerType, 'badge'],
     ['Location', report.location || '-'],
     ['Audited By', report.auditedBy || '-'],
     ['Audit Period', report.auditPeriod || '-'],
-    ['Financial Year', <span style={{ color: '#1565c0', fontWeight: '700' }}>{report.financialYear}</span>],
+    ['Financial Year', report.financialYear, 'accent'],
   ];
   return (
     <div style={{ background: 'linear-gradient(135deg,#e3f2fd,#e8f5e9)', border: '1px solid #b0bec5', borderRadius: '10px', padding: '16px 20px', marginBottom: '18px' }}>
       <h4 style={{ margin: '0 0 12px', color: '#1565c0', fontSize: '15px', fontWeight: '700', textAlign: 'center' }}>📋 Center Information</h4>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px 20px' }}>
-        {fields.map(([l, v]) => (
+        {fields.map(([l, v, kind]) => (
           <div key={l} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
             <span style={{ fontSize: '12px', color: '#555', fontWeight: '600', minWidth: '105px' }}>{l}:</span>
-            <span style={{ fontSize: '13px', color: '#222' }}>{v || '-'}</span>
+            <span style={{ fontSize: '13px', color: '#222' }}><InfoValue kind={kind} value={v} /></span>
           </div>
         ))}
       </div>
@@ -214,6 +241,12 @@ const AreaSection = ({ area, report, tdS, tdL }) => (
   </tbody>
 );
 
+const headerMinWidth = i => {
+  if (i === 1) return '240px';
+  if (i >= 8) return '150px';
+  return 'auto';
+};
+
 const CheckpointTable = ({ areas, report, score, stColor, auditSt }) => {
   const thS = { padding: '9px 8px', background: '#555', color: 'white', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', border: '1px solid #888', whiteSpace: 'nowrap' };
   const tdS = { padding: '7px 6px', fontSize: '12px', color: '#333', border: '1px solid #e0e0e0', textAlign: 'center', verticalAlign: 'middle' };
@@ -225,7 +258,7 @@ const CheckpointTable = ({ areas, report, score, stColor, auditSt }) => {
         <thead>
           <tr>
             {headers.map((h, i) => (
-              <th key={h} style={{ ...thS, textAlign: i === 1 || i >= 8 ? 'left' : 'center', minWidth: i === 1 ? '240px' : i >= 8 ? '150px' : 'auto' }}>{h}</th>
+              <th key={h} style={{ ...thS, textAlign: i === 1 || i >= 8 ? 'left' : 'center', minWidth: headerMinWidth(i) }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -265,9 +298,9 @@ const RemarksSection = ({ report }) => {
 const ReportDetailModal = ({ report, onClose, loading }) => {
   if (!report && !loading) return null;
   const score = parseFloat(report?.grandTotal) || 0;
-  const stColor = score >= 80 ? '#2e7d32' : score >= 65 ? '#e65100' : '#c62828';
-  const stBg = score >= 80 ? '#e8f5e9' : score >= 65 ? '#fff3e0' : '#fce4ec';
-  const auditSt = score >= 80 ? 'Compliant' : score >= 65 ? 'Amber' : 'Non-Compliant';
+  const stColor = bandPick(score, 80, 65, '#2e7d32', '#e65100', '#c62828');
+  const stBg = bandPick(score, 80, 65, '#e8f5e9', '#fff3e0', '#fce4ec');
+  const auditSt = bandPick(score, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
 
   const areas = report ? [
     { num: 1, name: 'Front Office', keys: ['FO1', 'FO2', 'FO3', 'FO4', 'FO5'], totalScore: report.frontOfficeScore, max: 30 },
@@ -277,7 +310,7 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
   ] : [];
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()}
+    <div role="presentation" onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
       <div style={{ background: 'white', borderRadius: '14px', width: '100%', maxWidth: '1100px', maxHeight: '93vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
 
@@ -287,7 +320,7 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
             <h3 style={{ margin: 0, fontSize: '19px', fontWeight: '800', color: 'white' }}>📊 Complete Audit Report</h3>
             {report && <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>{report.centerName} ({report.centerCode})</span>}
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.5)', color: 'white', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          <button type="button" onClick={onClose} style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.5)', color: 'white', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
 
         {/* Loading */}
@@ -306,7 +339,7 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
 
         {/* Footer */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid #e0e0e0', display: 'flex', justifyContent: 'flex-end', flexShrink: 0, background: '#fafafa' }}>
-          <button onClick={onClose} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>✓ Close</button>
+          <button type="button" onClick={onClose} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>✓ Close</button>
         </div>
       </div>
     </div>
@@ -316,8 +349,9 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
 // ── Dashboard sub-pieces ────────────────────────────────────────────
 const StatCard = ({ icon, label, value, sub, color, filterKey, activeFilter, onFilter }) => {
   const active = activeFilter === filterKey;
-  return (
-    <div onClick={() => filterKey && onFilter(filterKey)} style={{ background: active ? `${color}08` : 'white', borderRadius: 14, padding: '18px 20px', boxShadow: active ? `0 4px 20px ${color}25` : '0 2px 12px rgba(0,0,0,0.07)', border: `2px solid ${active ? color : color + '20'}`, display: 'flex', alignItems: 'center', gap: 14, cursor: filterKey ? 'pointer' : 'default', transition: 'all 0.2s', transform: active ? 'translateY(-3px)' : 'none' }}>
+  const cardStyle = { background: active ? `${color}08` : 'white', borderRadius: 14, padding: '18px 20px', boxShadow: active ? `0 4px 20px ${color}25` : '0 2px 12px rgba(0,0,0,0.07)', border: `2px solid ${active ? color : color + '20'}`, display: 'flex', alignItems: 'center', gap: 14, cursor: filterKey ? 'pointer' : 'default', transition: 'all 0.2s', transform: active ? 'translateY(-3px)' : 'none' };
+  const content = (
+    <>
       <div style={{ width: 48, height: 48, borderRadius: 12, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 26, fontWeight: '800', color, lineHeight: 1 }}>{value}</div>
@@ -325,6 +359,13 @@ const StatCard = ({ icon, label, value, sub, color, filterKey, activeFilter, onF
         {sub && <div style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{sub}</div>}
       </div>
       {filterKey && <div style={{ fontSize: 14, color: active ? color : '#ccc', fontWeight: '900' }}>{active ? 'v' : '>'}</div>}
+    </>
+  );
+  // Only cards with a filter are interactive; the rest are plain display cards
+  if (!filterKey) return <div style={cardStyle}>{content}</div>;
+  return (
+    <div role="button" tabIndex={0} onClick={() => onFilter(filterKey)} onKeyDown={onActivateKey(() => onFilter(filterKey))} style={cardStyle}>
+      {content}
     </div>
   );
 };
@@ -347,7 +388,7 @@ const ComplianceStatusCard = ({ compliancePie, activeFilter, onFilter }) => (
       <PieChart data={compliancePie} size={140} activeFilter={activeFilter} onSliceClick={onFilter} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {compliancePie.map(d => (
-          <div key={d.label} onClick={() => onFilter(d.filterKey)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, background: activeFilter === d.filterKey ? `${d.color}15` : 'transparent', border: `1px solid ${activeFilter === d.filterKey ? d.color + '50' : 'transparent'}`, transition: 'all 0.2s' }}>
+          <div key={d.label} role="button" tabIndex={0} onClick={() => onFilter(d.filterKey)} onKeyDown={onActivateKey(() => onFilter(d.filterKey))} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, background: activeFilter === d.filterKey ? `${d.color}15` : 'transparent', border: `1px solid ${activeFilter === d.filterKey ? d.color + '50' : 'transparent'}`, transition: 'all 0.2s' }}>
             <div style={{ width: 11, height: 11, borderRadius: '50%', background: d.color }} />
             <span style={{ fontSize: 13, color: '#444' }}>{d.label}</span>
             <span style={{ fontSize: 13, fontWeight: '800', color: d.color, marginLeft: 'auto' }}>{d.value}</span>
@@ -417,19 +458,19 @@ const SectionBreakdownRow = ({ row, i, activeFilter, onFilter }) => (
     </td>
     <td style={{ padding: '10px 14px', textAlign: 'center', color: '#555', fontWeight: '600' }}>{row.max}</td>
     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-      <span onClick={() => onFilter(`${row.prefix}_compliant`)} style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_compliant` ? '#2e7d32' : '#e8f5e9', color: activeFilter === `${row.prefix}_compliant` ? 'white' : '#2e7d32', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
+      <button type="button" onClick={() => onFilter(`${row.prefix}_compliant`)} style={{ border: 'none', fontFamily: 'inherit', lineHeight: 'inherit', display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_compliant` ? '#2e7d32' : '#e8f5e9', color: activeFilter === `${row.prefix}_compliant` ? 'white' : '#2e7d32', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
         {row.d?.compliant || 0}
-      </span>
+      </button>
     </td>
     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-      <span onClick={() => onFilter(`${row.prefix}_amber`)} style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_amber` ? '#e65100' : '#fff3e0', color: activeFilter === `${row.prefix}_amber` ? 'white' : '#e65100', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
+      <button type="button" onClick={() => onFilter(`${row.prefix}_amber`)} style={{ border: 'none', fontFamily: 'inherit', lineHeight: 'inherit', display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_amber` ? '#e65100' : '#fff3e0', color: activeFilter === `${row.prefix}_amber` ? 'white' : '#e65100', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
         {row.d?.amber || 0}
-      </span>
+      </button>
     </td>
     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-      <span onClick={() => onFilter(`${row.prefix}_nc`)} style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_nc` ? '#c62828' : '#ffebee', color: activeFilter === `${row.prefix}_nc` ? 'white' : '#c62828', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
+      <button type="button" onClick={() => onFilter(`${row.prefix}_nc`)} style={{ border: 'none', fontFamily: 'inherit', lineHeight: 'inherit', display: 'inline-block', padding: '4px 14px', borderRadius: 20, background: activeFilter === `${row.prefix}_nc` ? '#c62828' : '#ffebee', color: activeFilter === `${row.prefix}_nc` ? 'white' : '#c62828', fontWeight: '700', fontSize: 13, cursor: 'pointer', transition: 'all 0.2s' }}>
         {row.d?.nonCompliant || 0}
-      </span>
+      </button>
     </td>
   </tr>
 );
@@ -506,7 +547,7 @@ const ReportRow = ({ r, i, openReport }) => {
   const color = gc(r.grandTotal);
   const label = gl(r.grandTotal);
   return (
-    <div onClick={() => openReport(r.centerCode)}
+    <div role="button" tabIndex={0} onClick={() => openReport(r.centerCode)} onKeyDown={onActivateKey(() => openReport(r.centerCode))}
       style={{ display: 'grid', gridTemplateColumns: '88px 1fr 90px 100px 100px 120px', gap: 8, padding: '10px 12px', background: i % 2 === 0 ? '#f8faff' : 'white', borderRadius: 8, border: '1px solid #e8eaf6', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s' }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(102,126,234,0.18)'; e.currentTarget.style.borderColor = '#c5cae9'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e8eaf6'; }}
@@ -531,8 +572,8 @@ const ReportsListCard = ({ displayed, all, activeFilter, reportView, setReportVi
       </div>
       {!activeFilter && (
         <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
-          <button onClick={() => setReportView('recent')} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: 12, background: reportView === 'recent' ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'transparent', color: reportView === 'recent' ? 'white' : '#555', transition: 'all 0.2s' }}>Recent 5</button>
-          <button onClick={() => setReportView('all')} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: 12, background: reportView === 'all' ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'transparent', color: reportView === 'all' ? 'white' : '#555', transition: 'all 0.2s' }}>All ({all.length})</button>
+          <button type="button" onClick={() => setReportView('recent')} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: 12, background: reportView === 'recent' ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'transparent', color: reportView === 'recent' ? 'white' : '#555', transition: 'all 0.2s' }}>Recent 5</button>
+          <button type="button" onClick={() => setReportView('all')} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: 12, background: reportView === 'all' ? 'linear-gradient(135deg,#667eea,#764ba2)' : 'transparent', color: reportView === 'all' ? 'white' : '#555', transition: 'all 0.2s' }}>All ({all.length})</button>
         </div>
       )}
     </div>
@@ -543,7 +584,7 @@ const ReportsListCard = ({ displayed, all, activeFilter, reportView, setReportVi
         <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr 90px 100px 100px 120px', gap: 8, padding: '8px 12px', background: 'linear-gradient(135deg,#1a237e,#3949ab)', borderRadius: 8 }}>
           {['Code', 'Center Name', 'Score', 'Compliance', 'Audit Date', 'Status'].map((h, i) => <div key={h} style={{ fontSize: 11, fontWeight: '700', color: 'white', textAlign: i === 1 ? 'left' : 'center' }}>{h}</div>)}
         </div>
-        {displayed.map((r, i) => <ReportRow key={i} r={r} i={i} openReport={openReport} />)}
+        {displayed.map((r, i) => <ReportRow key={r._id || `${r.centerCode}-${r.auditDateString || ''}-${r.currentStatus}`} r={r} i={i} openReport={openReport} />)}
       </div>
     )}
   </Card>
@@ -556,7 +597,7 @@ const TopBar = ({ role, firstname, onLogout }) => (
     <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#333' }}>
       🏛️ {role} Dashboard - Welcome, {firstname}
     </h1>
-    <button onClick={onLogout} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+    <button type="button" onClick={onLogout} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
       Logout
     </button>
   </header>
@@ -569,8 +610,8 @@ const DashboardHeader = ({ role, lastRefresh, activeFilter, onClearFilter, onRef
       <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>Last refreshed: {lastRefresh}</div>
     </div>
     <div style={{ display: 'flex', gap: 10 }}>
-      {activeFilter && <button onClick={onClearFilter} style={{ padding: '9px 16px', background: '#fee2e2', color: '#c62828', border: '2px solid #fca5a5', borderRadius: 10, cursor: 'pointer', fontWeight: '700', fontSize: 13 }}>X Clear Filter</button>}
-      <button onClick={onRefresh} style={{ padding: '9px 18px', background: 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: '700', fontSize: 13 }}>Refresh</button>
+      {activeFilter && <button type="button" onClick={onClearFilter} style={{ padding: '9px 16px', background: '#fee2e2', color: '#c62828', border: '2px solid #fca5a5', borderRadius: 10, cursor: 'pointer', fontWeight: '700', fontSize: 13 }}>X Clear Filter</button>}
+      <button type="button" onClick={onRefresh} style={{ padding: '9px 18px', background: 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: '700', fontSize: 13 }}>Refresh</button>
     </div>
   </div>
 );

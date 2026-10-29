@@ -3,7 +3,7 @@ import { API_URL } from '../config';
 
 // One of the 3 top tab buttons (Center Users / Centers / Reopen Requests)
 const SectionToggleButton = ({ label, count, isActive, onClick, activeGradient }) => (
-  <button
+  <button type="button"
     onClick={onClick}
     style={{
       padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
@@ -96,11 +96,11 @@ const PendingUserCard = ({ u, handleApprove, handleReject }) => (
         </div>
       </div>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <button
+        <button type="button"
           onClick={() => handleApprove('user', u._id)}
           style={{ padding: '10px 22px', background: 'linear-gradient(135deg, #4caf50, #8bc34a)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
         >✅ Approve</button>
-        <button
+        <button type="button"
           onClick={() => handleReject('user', u._id)}
           style={{ padding: '10px 22px', background: 'linear-gradient(135deg, #f44336, #e91e63)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
         >❌ Reject</button>
@@ -177,11 +177,11 @@ const PendingCenterCard = ({ c, handleApprove, handleReject }) => {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button
+          <button type="button"
             onClick={() => handleApprove('center', c._id)}
             style={{ padding: '10px 22px', background: 'linear-gradient(135deg, #4caf50, #8bc34a)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
           >✅ Approve</button>
-          <button
+          <button type="button"
             onClick={() => handleReject('center', c._id)}
             style={{ padding: '10px 22px', background: 'linear-gradient(135deg, #f44336, #e91e63)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
           >❌ Reject</button>
@@ -228,11 +228,11 @@ const ReopenRequestCard = ({ r, loadPending, onUpdate }) => {
           )}
         </div>
         <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
-          <button
+          <button type="button"
             onClick={handleApproveReopen}
             style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#4caf50,#8bc34a)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
           >✅ Approve & Reopen</button>
-          <button
+          <button type="button"
             onClick={handleRejectReopen}
             style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#f44336,#e91e63)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
           >❌ Reject</button>

@@ -148,7 +148,9 @@ const generateEmailHTML = (reportData, customMessage = '') => {
 
 const generateEmailSubject = (reportData) => {
   const gt = Number.parseFloat(reportData.grandTotal) || 0;
-  const status = gt >= 80 ? 'Compliant' : gt >= 65 ? 'Amber' : 'Non-Compliant';
+  let status = 'Non-Compliant';
+  if (gt >= 80) status = 'Compliant';
+  else if (gt >= 65) status = 'Amber';
   return `Audit Report - ${reportData.centerName} - Score: ${gt.toFixed(2)}/100 - ${status}`;
 };
 

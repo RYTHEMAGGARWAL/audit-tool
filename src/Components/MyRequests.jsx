@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
+const getStatusBadge = (status) => {
+  if (status === 'pending') return { text: '⏳ Pending', color: '#856404', bg: '#fff3cd', border: '#ffc107' };
+  if (status === 'approved') return { text: '✅ Approved', color: '#155724', bg: '#d4edda', border: '#28a745' };
+  if (status === 'rejected') return { text: '❌ Rejected', color: '#721c24', bg: '#f8d7da', border: '#dc3545' };
+  return { text: '✅ Active', color: '#155724', bg: '#d4edda', border: '#28a745' };
+};
+
 const MyRequests = ({ createdBy }) => {
   const [userRequests, setUserRequests] = useState([]);
   const [centerRequests, setCenterRequests] = useState([]);
@@ -29,13 +36,6 @@ const MyRequests = ({ createdBy }) => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    if (status === 'pending') return { text: '⏳ Pending', color: '#856404', bg: '#fff3cd', border: '#ffc107' };
-    if (status === 'approved') return { text: '✅ Approved', color: '#155724', bg: '#d4edda', border: '#28a745' };
-    if (status === 'rejected') return { text: '❌ Rejected', color: '#721c24', bg: '#f8d7da', border: '#dc3545' };
-    return { text: '✅ Active', color: '#155724', bg: '#d4edda', border: '#28a745' };
-  };
-
   const totalPending = [
     ...userRequests.filter(u => u.approvalStatus === 'pending'),
     ...centerRequests.filter(c => c.approvalStatus === 'pending' || c.editApprovalStatus === 'pending')
@@ -52,14 +52,14 @@ const MyRequests = ({ createdBy }) => {
             {totalPending} Pending
           </span>
         )}
-        <button onClick={loadMyRequests} style={{ marginLeft: 'auto', padding: '8px 16px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
+        <button type="button" onClick={loadMyRequests} style={{ marginLeft: 'auto', padding: '8px 16px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
           🔄 Refresh
         </button>
       </div>
 
       {/* Section Toggle */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-        <button
+        <button type="button"
           onClick={() => setActiveSection('users')}
           style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
             background: activeSection === 'users' ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f1f5f9',
@@ -68,7 +68,7 @@ const MyRequests = ({ createdBy }) => {
         >
           👤 Center User Requests {userRequests.length > 0 && `(${userRequests.length})`}
         </button>
-        <button
+        <button type="button"
           onClick={() => setActiveSection('centers')}
           style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
             background: activeSection === 'centers' ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f1f5f9',

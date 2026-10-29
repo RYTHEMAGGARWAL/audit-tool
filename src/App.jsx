@@ -9,7 +9,7 @@ import CenterDashboard from './Components/CenterDashboard';
 import HierarchyDashboard from './Components/HierarchyDashboard';
 import RoleDashboard from './Components/RoleDashboard';
 import NationalHeadDashboard from './Components/NationalHeadDashboard';
-import './App.css';
+
 
 function App() {
   return (

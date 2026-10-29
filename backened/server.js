@@ -16,6 +16,7 @@ const { generateEmailHTML, generateEmailSubject } = require('./emailTemplate');
 require('dotenv').config();
 
 const app = express();
+app.disable('x-powered-by'); // don't advertise Express in response headers
 const PORT = process.env.PORT || 3001;
 
 // ========================================
@@ -35,7 +36,7 @@ const validatePassword = (password) => {
   if (!/[A-Z]/.test(password)) errors.push('At least one uppercase letter (A-Z)');
   if (!/[a-z]/.test(password)) errors.push('At least one lowercase letter (a-z)');
   if (!/[0-9]/.test(password)) errors.push('At least one number (0-9)');
-  if (!/[@$!%*?&#^()_+\-=\[\]{}|;:,.<>]/.test(password)) errors.push('At least one special character (@$!%*?& etc)');
+  if (!/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) errors.push('At least one special character (@$!%*?& etc)');
   return errors;
 };
 
@@ -70,6 +71,12 @@ const requireAuth = (req, res, next) => {
   }
 };
 
+
+// Mongoose subdocument -> plain object ({} when missing)
+const toPlainObject = (doc) => {
+  if (!doc) return {};
+  return doc.toObject ? doc.toObject() : { ...doc };
+};
 
 // ========================================
 // NODEMAILER EMAIL CONFIGURATION
@@ -323,10 +330,14 @@ const AuditReport = mongoose.model('AuditReport', auditReportSchema);
 // ========================================
 // MIDDLEWARE
 // ========================================
+// Local dev origins (plain http) are only allowed outside production
+const DEV_ORIGINS = process.env.NODE_ENV === 'production'
+  ? []
+  : ['http://localhost:5173', 'http://localhost:3000'];
+
 app.use(cors({
   origin: [
-    'http://localhost:5173',
-    'http://localhost:3000',
+    ...DEV_ORIGINS,
     'https://audit-tool-liard.vercel.app',  // ✅ ADD THIS!
     process.env.FRONTEND_URL
   ].filter(Boolean),
@@ -1315,7 +1326,6 @@ app.post('/api/save-audit-reports', async (req, res) => {
 // Submit for approval
 app.post('/api/audit-reports/:id/submit', async (req, res) => {
   try {
-    const { userName } = req.body;
     const report = await AuditReport.findById(req.params.id);
     if (!report) {
       return res.status(404).json({ error: 'Report not found' });
@@ -1355,7 +1365,7 @@ app.post('/api/audit-reports/:id/approve', async (req, res) => {
 // Reject report
 app.post('/api/audit-reports/:id/reject', async (req, res) => {
   try {
-    const { adminName, remarks } = req.body;
+    const { remarks } = req.body;
     const report = await AuditReport.findById(req.params.id);
     if (!report) {
       return res.status(404).json({ error: 'Report not found' });
@@ -1738,12 +1748,11 @@ async function sendReminderEmail(report, daysLeft) {
     const loginUrl = 'https://audit-tool-liard.vercel.app';
     const chName = report.centerHeadName || centerUser.firstname || 'Sir/Madam';
 
-    let subject, message, urgencyColor, urgencyEmoji;
+    let subject, message, urgencyEmoji;
 
     if (daysLeft === 'closed') {
       // After Day 7 - Closed notice
       subject = `📋 Audit Remarks Window Closed - ${report.centerName}`;
-      urgencyColor = '#6c757d';
       urgencyEmoji = '🔒';
       message = `
         <div style="background:#f8f9fa; border-left:4px solid #6c757d; padding:20px; border-radius:8px; margin:20px 0;">
@@ -1764,7 +1773,6 @@ async function sendReminderEmail(report, daysLeft) {
     } else if (daysLeft <= 0) {
       // Day 7 - Last day
       subject = `🚨 TODAY IS THE LAST DAY - Submit Remarks Now | ${report.centerName}`;
-      urgencyColor = '#dc3545';
       urgencyEmoji = '🚨';
       message = `
         <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0; animation:pulse 1s infinite;">
@@ -1778,7 +1786,6 @@ async function sendReminderEmail(report, daysLeft) {
     } else if (daysLeft === 1) {
       // Day 6 - Final warning
       subject = `🚨 FINAL WARNING: Only 1 Day Left to Submit Remarks | ${report.centerName}`;
-      urgencyColor = '#dc3545';
       urgencyEmoji = '🚨';
       message = `
         <div style="background:#ffebee; border-left:4px solid #dc3545; padding:20px; border-radius:8px; margin:20px 0;">
@@ -1792,7 +1799,6 @@ async function sendReminderEmail(report, daysLeft) {
     } else if (daysLeft === 2) {
       // Day 5 - Urgent
       subject = `⚠️ URGENT: Only 2 Days Left to Submit Remarks | ${report.centerName}`;
-      urgencyColor = '#e65100';
       urgencyEmoji = '⚠️';
       message = `
         <div style="background:#fff3e0; border-left:4px solid #ff9800; padding:20px; border-radius:8px; margin:20px 0;">
@@ -1805,7 +1811,6 @@ async function sendReminderEmail(report, daysLeft) {
     } else {
       // Day 3 onwards - First reminder
       subject = `📋 Reminder: ${daysLeft} Days Left to Submit Audit Remarks | ${report.centerName}`;
-      urgencyColor = '#1976d2';
       urgencyEmoji = '📋';
       message = `
         <div style="background:#e3f2fd; border-left:4px solid #2196f3; padding:20px; border-radius:8px; margin:20px 0;">
@@ -2163,92 +2168,6 @@ app.post('/api/send-audit-email', async (req, res) => {
 });
 
 
-// ========================================
-// GET HIERARCHY EMAILS by name matching
-// POST /api/hierarchy-emails
-// body: { zmName, regionHeadName, areaClusterManager }
-// ========================================
-app.post('/api/hierarchy-emails', async (req, res) => {
-  try {
-    const {
-      zmName, regionHeadName, areaManager, clusterManager,
-      areaClusterManager, seniorManagerPlacement, nationalHeadPlacement,
-      placementCoordinator, includePlacement
-    } = req.body;
-    const emails = [];
-
-    const findEmail = async (name, Role, strictRole = false) => {
-      if (!name || name.trim() === '' || name === '-') return;
-      // Skip short prefixes like "Md.", "Mr."
-      const parts = name.trim().split(' ').filter(p => p.length > 1 && !/^(md|mr|ms|dr)\.?$/i.test(p));
-      if (!parts.length) return;
-      const orConds = parts.flatMap(p => [
-        { firstname: new RegExp('^' + escapeRegex(p) + '$', 'i') },
-        { username:  new RegExp('^' + escapeRegex(p) + '$', 'i') }
-      ]);
-      // Try 1: role + name match
-      let user = await User.findOne({ role: Role, isActive: true, $or: orConds });
-      // Try 2: name-only fallback (not for PP Coordinator — strict)
-      if (!user && !strictRole) {
-        user = await User.findOne({ isActive: true, $or: orConds });
-      }
-      if (user && user.email) {
-        emails.push(user.email);
-        console.log('✅ Found ' + Role + ' (' + name + ') [actual: ' + user.role + ']: ' + user.email);
-      } else {
-        console.log('⚠️ No email found for ' + Role + ': ' + name);
-      }
-    };
-
-    await findEmail(zmName,                            'Zonal Manager');
-    await findEmail(regionHeadName,                    'Region Head');
-    await findEmail(areaManager || areaClusterManager, 'Area Manager');
-    await findEmail(clusterManager,                    'Cluster Manager');
-    await findEmail(seniorManagerPlacement,            'Senior Manager Placement');
-    await findEmail(nationalHeadPlacement,             'National Head Placement');
-    if (includePlacement) {
-      await findEmail(placementCoordinator,            'Placement Coordinator', true); // strict — role must match
-    }
-
-    res.json({ success: true, emails: [...new Set(emails)] });
-  } catch (err) {
-    console.error('❌ Hierarchy emails error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ========================================
-// CENTERS ROUTES
-// ========================================
-
-// GET all centers
-// Get MY requests (for Audit User - includes pending/inactive)
-app.get('/api/my-requests/:createdBy', async (req, res) => {
-  try {
-    const name = req.params.createdBy;
-    
-    // My center requests (new + edit)
-    const centers = await Center.find({
-      $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
-        { editRequestBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
-      ]
-    }).sort({ createdAt: -1 });
-
-    // My user requests (new + modify)
-    const users = await User.find({
-      $or: [
-        { approvalRequestedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
-        { modifiedBy: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
-      ]
-    }).sort({ createdAt: -1 });
-
-    res.json({ centers, users });
-  } catch(err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Duplicate endpoints removed
 
 // ========================================
@@ -2389,8 +2308,8 @@ app.get('/api/fix-audit-report-types', async (req, res) => {
           report.centerHeadName = centerData.centerHeadName || '';
           report.location = centerData.location || '';
           report.zonalHeadName = centerData.zonalHeadName || '';
-         if (!report.auditedBy) report.auditedBy = centerData.auditedBy || '';
-if (!report.auditPeriod) report.auditPeriod = centerData.auditPeriod || '';
+          if (!report.auditedBy) { report.auditedBy = centerData.auditedBy || ''; }
+          if (!report.auditPeriod) { report.auditPeriod = centerData.auditPeriod || ''; }
           
           await report.save();
           
@@ -2815,7 +2734,6 @@ app.post('/api/audit-reports/:id/close-report', async (req, res) => {
     });
 
     if (centerUser?.email) {
-      const loginUrl = 'https://audit-tool-liard.vercel.app';
       const chName = report.centerHeadName || centerUser.firstname || 'Sir/Madam';
 
       const html = `
@@ -3320,7 +3238,7 @@ app.put('/api/audit-reports/:id/placement-remarks', async (req, res) => {
     // Save PP remarks
     ['PP1','PP2','PP3','PP4'].forEach(ppId => {
       if (placementRemarks?.[ppId] !== undefined) {
-        const ex = report[ppId] ? (report[ppId].toObject ? report[ppId].toObject() : {...report[ppId]}) : {};
+        const ex = toPlainObject(report[ppId]);
         report[ppId] = { ...ex, centerHeadRemarks: placementRemarks[ppId] };
         report.markModified(ppId);
       }
@@ -3389,7 +3307,6 @@ app.post('/api/audit-reports/:id/request-placement-edit', async (req, res) => {
 // POST /api/audit-reports/:id/approve-placement-edit
 app.post('/api/audit-reports/:id/approve-placement-edit', async (req, res) => {
   try {
-    const { adminName } = req.body;
     const report = await AuditReport.findById(req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
 

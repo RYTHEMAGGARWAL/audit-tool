@@ -33,6 +33,14 @@ const cpConfig = {
   MP6:{name:'Log book for Genset & Vehicle',              w:'10%', m:1.5},
   MP7:{name:'Availability and requirement of Biometric',  w:'10%', m:1.5},
 };
+// Run `handler` when Enter or Space is pressed (keyboard access for clickable non-button elements)
+const onActivateKey = handler => e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    handler();
+  }
+};
+
 const getCpName = (k) => cpConfig[k]?.name || k;
 const getCpW    = (k) => cpConfig[k]?.w || '-';
 const getCpM    = (k) => cpConfig[k]?.m ?? '-';
@@ -49,9 +57,16 @@ const CenterTypeBadge = ({ type }) => {
 };
 
 // ── ReportModal sub-pieces ──────────────────────────────
+// Renders one value of the center info grid (plain text, highlighted text or the type badge)
+const InfoValue = ({ kind, value }) => {
+  if (kind === 'accent') return <span style={{ color: '#1565c0', fontWeight: '700' }}>{value}</span>;
+  if (kind === 'badge') return <CenterTypeBadge type={value} />;
+  return value || '-';
+};
+
 const CenterInfoGrid = ({ report }) => {
   const fields = [
-    ['Center Code', <span style={{ color: '#1565c0', fontWeight: '700' }}>{report.centerCode}</span>],
+    ['Center Code', report.centerCode, 'accent'],
     ['Center Name', report.centerName],
     ['Project Name', report.projectName],
     ['ZM Name', report.zmName],
@@ -59,11 +74,11 @@ const CenterInfoGrid = ({ report }) => {
     ['Area Manager', report.areaManager || report.areaClusterManager || '-'],
     ['Cluster Manager', report.clusterManager || '-'],
     ['Center Head', report.centerHeadName || report.chName || '-'],
-    ['Center Type', <CenterTypeBadge type={report.centerType} />],
+    ['Center Type', report.centerType, 'badge'],
     ['Location', report.location],
     ['Audited By', report.auditedBy],
     ['Audit Period', report.auditPeriod],
-    ['Financial Year', <span style={{ color: '#1565c0', fontWeight: '700' }}>{report.financialYear}</span>],
+    ['Financial Year', report.financialYear, 'accent'],
     ...(report.placementApplicable === 'yes' ? [
       ['Placement Coord.', report.placementCoordinator || '-'],
       ['Sr. Mgr Placement', report.seniorManagerPlacement || '-'],
@@ -72,14 +87,23 @@ const CenterInfoGrid = ({ report }) => {
   ];
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 20px' }}>
-      {fields.map(([lbl, val]) => (
+      {fields.map(([lbl, val, kind]) => (
         <div key={lbl} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
           <span style={{ fontSize: '12px', color: '#555', fontWeight: '600', minWidth: '100px' }}>{lbl}:</span>
-          <span style={{ fontSize: '13px', color: '#222' }}>{val || '-'}</span>
+          <span style={{ fontSize: '13px', color: '#222' }}><InfoValue kind={kind} value={val} /></span>
         </div>
       ))}
     </div>
   );
+};
+
+// Format with toFixed when the value is a number, otherwise show it as it is
+const fmtFixed = (v, digits) => (v.toFixed ? v.toFixed(digits) : v);
+
+const bandPick = (v, hi, mid, top, middle, bottom) => {
+  if (v >= hi) return top;
+  if (v >= mid) return middle;
+  return bottom;
 };
 
 const CheckpointRow = ({ k, i, cp, tdStyle, tdLeftStyle }) => (
@@ -91,10 +115,10 @@ const CheckpointRow = ({ k, i, cp, tdStyle, tdLeftStyle }) => (
     <td style={tdStyle}>{cp.totalSamples || '-'}</td>
     <td style={tdStyle}>{cp.samplesCompliant || '-'}</td>
     <td style={{ ...tdStyle, color: (cp.compliantPercent || 0) >= 80 ? '#1565c0' : '#c62828', fontWeight: '700' }}>
-      {cp.compliantPercent != null ? `${cp.compliantPercent.toFixed ? cp.compliantPercent.toFixed(2) : cp.compliantPercent}%` : '-'}
+      {cp.compliantPercent != null ? `${fmtFixed(cp.compliantPercent, 2)}%` : '-'}
     </td>
     <td style={{ ...tdStyle, fontWeight: '800', color: (cp.score || 0) > 0 ? '#1565c0' : '#333' }}>
-      {cp.score != null ? (cp.score.toFixed ? cp.score.toFixed(0) : cp.score) : '0'}
+      {cp.score != null ? fmtFixed(cp.score, 0) : '0'}
     </td>
     <td style={{ ...tdLeftStyle, color: '#444' }}>{cp.remarks || '-'}</td>
     <td style={{ ...tdLeftStyle, background: cp.centerHeadRemarks ? '#f1fff4' : '#fafafa', color: cp.centerHeadRemarks ? '#2e7d32' : '#aaa', fontStyle: cp.centerHeadRemarks ? 'normal' : 'italic' }}>
@@ -197,8 +221,8 @@ const RemarksSection = ({ report }) => {
 const ReportModal = ({ report, onClose }) => {
   if (!report) return null;
   const score = parseFloat(report.grandTotal) || 0;
-  const auditStatus = score >= 80 ? 'Compliant' : score >= 65 ? 'Amber' : 'Non-Compliant';
-  const statusColor = score >= 80 ? '#4caf50' : score >= 65 ? '#ff9800' : '#f44336';
+  const auditStatus = bandPick(score, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
+  const statusColor = bandPick(score, 80, 65, '#4caf50', '#ff9800', '#f44336');
 
   const areas = [
     { num: 1, name: 'Front Office', keys: ['FO1','FO2','FO3','FO4','FO5'], totalScore: report.frontOfficeScore, max: 30 },
@@ -208,7 +232,7 @@ const ReportModal = ({ report, onClose }) => {
   ];
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()}
+    <div role="presentation" onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
       <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '1100px', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
 
@@ -222,7 +246,7 @@ const ReportModal = ({ report, onClose }) => {
               {report.centerName} ({report.centerCode})
             </span>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.5)', color: 'white', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          <button type="button" onClick={onClose} style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.5)', color: 'white', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
 
         {/* ── SCROLLABLE BODY ── */}
@@ -237,7 +261,7 @@ const ReportModal = ({ report, onClose }) => {
               <div><span style={{ fontSize: '12px', color: '#555', fontWeight: '600' }}>Audit Date: </span><span style={{ fontSize: '13px', fontWeight: '600' }}>{report.auditDateString || '-'}</span></div>
               <div><span style={{ fontSize: '12px', color: '#555', fontWeight: '600' }}>Grand Total: </span><span style={{ fontSize: '15px', fontWeight: '800', color: statusColor }}>{score.toFixed(2)}/100</span></div>
               <div><span style={{ fontSize: '12px', color: '#555', fontWeight: '600' }}>Status: </span>
-                <span style={{ background: score>=80?'#e8f5e9':score>=65?'#fff3e0':'#fce4ec', color: statusColor, padding: '2px 10px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', border: `1px solid ${statusColor}` }}>
+                <span style={{ background: bandPick(score, 80, 65, '#e8f5e9', '#fff3e0', '#fce4ec'), color: statusColor, padding: '2px 10px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', border: `1px solid ${statusColor}` }}>
                   {auditStatus}
                 </span>
               </div>
@@ -253,7 +277,7 @@ const ReportModal = ({ report, onClose }) => {
 
         {/* ── FOOTER ── */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid #e0e0e0', display: 'flex', justifyContent: 'flex-end', flexShrink: 0, background: '#fafafa' }}>
-          <button onClick={onClose} style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+          <button type="button" onClick={onClose} style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
             ✓ Close
           </button>
         </div>
@@ -282,9 +306,9 @@ const getStatusBadge = (status) => {
   return <span style={{background:bg,color,padding:'3px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'600',whiteSpace:'nowrap'}}>{label}</span>;
 };
 
-const getAuditLabel = (score) => score >= 80 ? 'Compliant' : score >= 65 ? 'Amber' : 'Non-Compliant';
+const getAuditLabel = (score) => bandPick(score, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
 
-const AUDIT_LABEL_COLORS = (s) => s>=80 ? ['#e8f5e9','#2e7d32'] : s>=65 ? ['#fff3e0','#e65100'] : ['#fce4ec','#c62828'];
+const AUDIT_LABEL_COLORS = (s) => bandPick(s, 80, 65, ['#e8f5e9','#2e7d32'], ['#fff3e0','#e65100'], ['#fce4ec','#c62828']);
 
 const getScoreBadge = (score) => {
   const s = score||0;
@@ -343,7 +367,7 @@ const ReportRow = ({ r, idx, columns, onView }) => {
       <td>{getStatusBadge(r.currentStatus)}</td>
       <td><RemarksStatusBadge report={r} /></td>
       <td>
-        <button onClick={() => onView(r)}
+        <button type="button" onClick={() => onView(r)}
           style={{background:'linear-gradient(135deg,#11998e,#38ef7d)',color:'white',border:'none',padding:'6px 14px',borderRadius:'6px',cursor:'pointer',fontSize:'12px',fontWeight:'700',whiteSpace:'nowrap'}}>
           👁️ View
         </button>
@@ -351,6 +375,26 @@ const ReportRow = ({ r, idx, columns, onView }) => {
     </tr>
   );
 };
+
+// Headline counts for the stat cards
+const computeStats = (data) => {
+  const total = data.length;
+  const compliant = data.filter(r => (r.grandTotal||0) >= 80).length;
+  const amber = data.filter(r => (r.grandTotal||0) >= 65 && (r.grandTotal||0) < 80).length;
+  const nonCompliant = data.filter(r => (r.grandTotal||0) < 65).length;
+  const avgScore = total > 0 ? (data.reduce((s,r) => s+(r.grandTotal||0),0)/total).toFixed(1) : 0;
+  return { total, compliant, amber, nonCompliant, avgScore };
+};
+
+// Search box + audit-status chip filter applied on top of the server-side filters
+const matchesSearch = (r, q) => (
+  r.centerCode?.toLowerCase().includes(q) || r.centerName?.toLowerCase().includes(q) || r.location?.toLowerCase().includes(q)
+);
+const filterReports = (reports, searchCenter, filterAuditStatus) => reports.filter(r => {
+  if (searchCenter && !matchesSearch(r, searchCenter.toLowerCase())) return false;
+  if (filterAuditStatus !== 'All' && getAuditLabel(r.grandTotal||0) !== filterAuditStatus) return false;
+  return true;
+});
 
 // ── MAIN DASHBOARD ──────────────────────────────────────
 const HierarchyDashboard = () => {
@@ -391,26 +435,15 @@ const HierarchyDashboard = () => {
       if (!res.ok) throw new Error();
       const data = await res.json();
       setReports(data);
-      const total = data.length;
-      const compliant = data.filter(r => (r.grandTotal||0) >= 80).length;
-      const amber = data.filter(r => (r.grandTotal||0) >= 65 && (r.grandTotal||0) < 80).length;
-      const nonCompliant = data.filter(r => (r.grandTotal||0) < 65).length;
-      const avgScore = total > 0 ? (data.reduce((s,r) => s+(r.grandTotal||0),0)/total).toFixed(1) : 0;
-      setStats({ total, compliant, amber, nonCompliant, avgScore });
+      setStats(computeStats(data));
     } catch { setError('Failed to load reports.'); }
     finally { setLoading(false); }
   };
 
-  const filteredReports = reports.filter(r => {
-    if (searchCenter) {
-      const q = searchCenter.toLowerCase();
-      if (!r.centerCode?.toLowerCase().includes(q) && !r.centerName?.toLowerCase().includes(q) && !r.location?.toLowerCase().includes(q)) return false;
-    }
-    if (filterAuditStatus !== 'All' && getAuditLabel(r.grandTotal||0) !== filterAuditStatus) return false;
-    return true;
-  });
+  const filteredReports = filterReports(reports, searchCenter, filterAuditStatus);
 
   const columns = getVisibleColumns(role);
+  const toggleAuditFilter = (key) => setFilterAuditStatus(prev => prev === key ? 'All' : key);
 
   return (
     <div className="hierarchy-container">
@@ -423,7 +456,7 @@ const HierarchyDashboard = () => {
         </div>
         <div className="header-right">
           <span className="welcome-text">👋 Welcome, {loggedUser.firstname}</span>
-          <button className="logout-btn" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>🚪 Logout</button>
+          <button type="button" className="logout-btn" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>🚪 Logout</button>
         </div>
       </header>
 
@@ -435,7 +468,7 @@ const HierarchyDashboard = () => {
           { key: 'Amber', num: stats.amber, label: '🟡 Amber', cls: 'amber' },
           { key: 'Non-Compliant', num: stats.nonCompliant, label: '❌ Non-Compliant', cls: 'non-compliant' },
         ].map(s => (
-          <div key={s.key} onClick={() => setFilterAuditStatus(prev => prev === s.key ? 'All' : s.key)}
+          <div key={s.key} role="button" tabIndex={0} onClick={() => toggleAuditFilter(s.key)} onKeyDown={onActivateKey(() => toggleAuditFilter(s.key))}
             className={`stat-card ${s.cls} ${filterAuditStatus === s.key ? 'active-card' : ''}`}
             style={{ cursor: 'pointer' }}>
             <div className="stat-number">{s.num}</div>
@@ -448,32 +481,34 @@ const HierarchyDashboard = () => {
 
       {/* FILTERS */}
       <div className="filters-bar">
-        <div className="filter-group"><label>📅 Financial Year</label>
-          <select value={filterFY} onChange={e => setFilterFY(e.target.value)}>{FY_OPTIONS.map(f => <option key={f}>{f}</option>)}</select></div>
-        <div className="filter-group"><label>📋 Status</label>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></div>
-        <div className="filter-group"><label>🏢 Center Type</label>
-          <select value={filterCenterType} onChange={e => setFilterCenterType(e.target.value)}>{CENTER_TYPE_OPTIONS.map(c => <option key={c}>{c}</option>)}</select></div>
-        <div className="filter-group search-group"><label>🔍 Search Center</label>
-          <input type="text" placeholder="Code, name or location..." value={searchCenter} onChange={e => setSearchCenter(e.target.value)} /></div>
-        <button className="refresh-btn" onClick={loadReports} disabled={loading}>{loading ? '⏳' : '🔄 Refresh'}</button>
+        <div className="filter-group"><label htmlFor="hier-filter-fy">📅 Financial Year</label>
+          <select id="hier-filter-fy" value={filterFY} onChange={e => setFilterFY(e.target.value)}>{FY_OPTIONS.map(f => <option key={f}>{f}</option>)}</select></div>
+        <div className="filter-group"><label htmlFor="hier-filter-status">📋 Status</label>
+          <select id="hier-filter-status" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>{STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></div>
+        <div className="filter-group"><label htmlFor="hier-filter-type">🏢 Center Type</label>
+          <select id="hier-filter-type" value={filterCenterType} onChange={e => setFilterCenterType(e.target.value)}>{CENTER_TYPE_OPTIONS.map(c => <option key={c}>{c}</option>)}</select></div>
+        <div className="filter-group search-group"><label htmlFor="hier-search-center">🔍 Search Center</label>
+          <input id="hier-search-center" type="text" placeholder="Code, name or location..." value={searchCenter} onChange={e => setSearchCenter(e.target.value)} /></div>
+        <button type="button" className="refresh-btn" onClick={loadReports} disabled={loading}>{loading ? '⏳' : '🔄 Refresh'}</button>
       </div>
 
       {filterAuditStatus !== 'All' && (
         <div style={{ padding: '0 28px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ background: '#e8eaf6', color: '#3949ab', padding: '4px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '600' }}>Showing: {filterAuditStatus}</span>
-          <button onClick={() => setFilterAuditStatus('All')} style={{ background: 'none', border: '1px solid #ccc', borderRadius: '20px', padding: '3px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>✕ Clear</button>
+          <button type="button" onClick={() => setFilterAuditStatus('All')} style={{ background: 'none', border: '1px solid #ccc', borderRadius: '20px', padding: '3px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>✕ Clear</button>
         </div>
       )}
 
       {error && <div className="error-banner">{error}</div>}
 
       <div className="table-wrapper">
-        {loading ? (
+        {loading && (
           <div className="loading-state"><div className="spinner"></div><p>Loading reports...</p></div>
-        ) : filteredReports.length === 0 ? (
+        )}
+        {!loading && filteredReports.length === 0 && (
           <div className="empty-state"><p>📭 No reports found.</p><small>Try changing filters.</small></div>
-        ) : (
+        )}
+        {!loading && filteredReports.length > 0 && (
           <table className="reports-table">
             <thead>
               <tr style={{ background: 'linear-gradient(135deg, #1a237e, #3949ab)' }}>

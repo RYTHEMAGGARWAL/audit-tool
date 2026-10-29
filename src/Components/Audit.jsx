@@ -160,14 +160,13 @@ const EmailChipInput = ({
 
   return (
     <div style={{ marginBottom: '20px' }}>
-      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '14px' }}>
+      <label htmlFor={inputId} style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '14px' }}>
         {label} {required && <span style={{ color: '#dc3545' }}>*</span>}
         {hint && <span style={{ fontWeight: '400', color: '#888', fontSize: '12px', marginLeft: `${hintMarginLeft}px` }}>{hint}</span>}
       </label>
       <div style={{ border: '2px solid #ddd', borderRadius: '8px', padding: '8px 10px', minHeight: '50px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', cursor: 'text', position: 'relative', background: 'white' }}
-        role="button" tabIndex={0}
-        onClick={() => document.getElementById(inputId).focus()}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { document.getElementById(inputId).focus(); } }}>
+        role="presentation"
+        onClick={() => document.getElementById(inputId).focus()}>
         {list.map((e, i) => (
           <span key={e} style={{ background: (firstChipHighlight && i === 0) ? 'linear-gradient(135deg,#11998e,#38ef7d)' : 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', padding: '5px 12px', borderRadius: '20px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
             {firstChipHighlight && i === 0 && '🏢 '}{e}
@@ -182,9 +181,9 @@ const EmailChipInput = ({
           onBlur={() => setTimeout(() => { if (input.trim()) { addEmail(input); } setShowSug(false); }, 180)}
           style={{ border: 'none', outline: 'none', fontSize: '14px', flex: '1', minWidth: '160px', padding: '4px 2px' }} />
         {showSug && sug.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'white', border: '2px solid #667eea', borderRadius: '8px', zIndex: 9999, boxShadow: '0 8px 24px rgba(102,126,234,.25)', maxHeight: '180px', overflowY: 'auto' }}>
+          <div role="listbox" aria-label="Saved emails" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'white', border: '2px solid #667eea', borderRadius: '8px', zIndex: 9999, boxShadow: '0 8px 24px rgba(102,126,234,.25)', maxHeight: '180px', overflowY: 'auto' }}>
             <div style={{ padding: '6px 14px', fontSize: '11px', color: '#667eea', fontWeight: '700', borderBottom: '1px solid #eee' }}>📧 Saved Emails</div>
-            {sug.map((s, i) => (<div key={s} onMouseDown={() => addEmail(s)} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #f5f5f5' }} onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>📧 {s}</div>))}
+            {sug.map((s, i) => (<div key={s} role="option" aria-selected={false} tabIndex={-1} onMouseDown={() => addEmail(s)} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #f5f5f5' }} onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>📧 {s}</div>))}
           </div>
         )}
       </div>
@@ -755,7 +754,7 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
 }}>
   {/* SEARCH BAR */}
   <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
-    <label style={{ 
+    <label htmlFor="audit-search-input" style={{ 
       fontSize: '16px', 
       fontWeight: 'bold', 
       color: '#1976d2',
@@ -764,6 +763,7 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
       🔍 Search:
     </label>
     <input
+      id="audit-search-input"
       type="text"
       placeholder="Search by Center, Code, Year, CH Name, Status..."
       value={searchQuery}
@@ -809,18 +809,19 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
     borderRadius: '10px',
     border: '2px solid #2196f3'
   }}>
-    <label style={{ 
+    <span style={{ 
       fontSize: '16px', 
       fontWeight: 'bold', 
       color: '#1976d2',
       whiteSpace: 'nowrap'
     }}>
       📅 Date Range:
-    </label>
+    </span>
     
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
+      <label htmlFor="audit-start-date-a" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
       <input
+        id="audit-start-date-a"
         type="date"
         value={startDate}
         onChange={(e) => setStartDate(e.target.value)}
@@ -836,8 +837,9 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
     </div>
     
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
+      <label htmlFor="audit-end-date-a" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
       <input
+        id="audit-end-date-a"
         type="date"
         value={endDate}
         onChange={(e) => setEndDate(e.target.value)}
@@ -1106,7 +1108,7 @@ const SearchSuggestionsDropdown = ({ savedReports, searchQuery, setSearchQuery, 
   if (unique.length === 0) return null;
 
   return (
-    <div style={{
+    <div role="listbox" aria-label="Search suggestions" style={{
       position: 'absolute',
       top: '110%',
       left: 0,
@@ -1124,6 +1126,9 @@ const SearchSuggestionsDropdown = ({ savedReports, searchQuery, setSearchQuery, 
       {unique.map((s, i) => (
         <div
           key={`${s.label}-${s.type}`}
+          role="option"
+          aria-selected={false}
+          tabIndex={-1}
           onMouseDown={() => { setSearchQuery(s.label); setShowSuggestions(false); }}
           style={{
             padding: '10px 16px',
@@ -1245,13 +1250,29 @@ const CenterBasicInfoGrid = ({ selectedCenter, setSelectedCenter, placementAppli
   </>
 );
 
+// 'yes' / 'no' pick a style; anything else is "not set"
+const PLACEMENT_CARD_STYLES = {
+  yes: { border: '2px solid #4caf50', background: '#f1fff4' },
+  no: { border: '2px solid #f44336', background: '#fff5f5' },
+  unset: { border: '2px solid #e0e0e0', background: '#f9f9f9' },
+};
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+const PlacementApplicableLabel = ({ placementApplicable }) => {
+  if (placementApplicable === 'yes') return <span style={{ color: '#2e7d32', fontWeight: '700' }}>✅ Applicable</span>;
+  if (placementApplicable === 'no') return <span style={{ color: '#c62828', fontWeight: '700' }}>❌ Not Applicable</span>;
+  return <span style={{ color: '#999', fontStyle: 'italic' }}>Not set in center</span>;
+};
+
+// react-select option background: selected > focused > default
+const selectOptionBackground = (state) => {
+  if (state.isSelected) return '#667eea';
+  return state.isFocused ? '#e3f2fd' : 'white';
+};
+
 // Placement applicable/not/unset card, with coordinator/manager names when applicable
 const PlacementInfoCard = ({ placementApplicable, placementCoordinator, seniorManagerPlacement, nationalHeadPlacement }) => {
-  const style = placementApplicable === 'yes'
-    ? { border: '2px solid #4caf50', background: '#f1fff4' }
-    : placementApplicable === 'no'
-    ? { border: '2px solid #f44336', background: '#fff5f5' }
-    : { border: '2px solid #e0e0e0', background: '#f9f9f9' };
+  const style = PLACEMENT_CARD_STYLES[hasOwn(PLACEMENT_CARD_STYLES, placementApplicable) ? placementApplicable : 'unset'];
 
   return (
     <div style={{
@@ -1264,13 +1285,7 @@ const PlacementInfoCard = ({ placementApplicable, placementCoordinator, seniorMa
     }}>
       <div>
         <span style={{ fontSize: '13px', fontWeight: '700', color: '#555' }}>📋 Placement:</span>{' '}
-        {placementApplicable === 'yes' ? (
-          <span style={{ color: '#2e7d32', fontWeight: '700' }}>✅ Applicable</span>
-        ) : placementApplicable === 'no' ? (
-          <span style={{ color: '#c62828', fontWeight: '700' }}>❌ Not Applicable</span>
-        ) : (
-          <span style={{ color: '#999', fontStyle: 'italic' }}>Not set in center</span>
-        )}
+        <PlacementApplicableLabel placementApplicable={placementApplicable} />
       </div>
       {placementApplicable === 'yes' && (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '13px', color: '#444' }}>
@@ -1306,11 +1321,12 @@ const AuditDateStep = ({ selectedCenter, setSelectedCenter, fyDateRange, auditPe
       padding: '20px',
       marginBottom: '16px'
     }}>
-      <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
+      <label htmlFor="audit-date-input" style={{ fontSize: '15px', fontWeight: 'bold', color: '#11998e', display: 'block', marginBottom: '10px' }}>
         🗓️ Audit Date <span style={{ color: 'red' }}>*</span>
       </label>
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
         <input
+          id="audit-date-input"
           type="date"
           value={selectedCenter.auditDate || ''}
           min={fyDateRange.min}
@@ -1390,10 +1406,11 @@ const CenterSetupForm = ({
                 padding: '20px',
                 marginBottom: '16px'
               }}>
-                <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#1976d2', display: 'block', marginBottom: '10px' }}>
+                <label htmlFor="audit-financial-year" style={{ fontSize: '15px', fontWeight: 'bold', color: '#1976d2', display: 'block', marginBottom: '10px' }}>
                   📅 Select Financial Year <span style={{color: 'red'}}>*</span>
                 </label>
                 <select
+                  id="audit-financial-year"
                   value={selectedFinancialYear}
                   onChange={(e) => {
                     const fy = e.target.value;
@@ -1456,16 +1473,17 @@ const CenterSetupForm = ({
                   padding: '20px',
                   marginBottom: '16px'
                 }}>
-                  <label style={{ fontSize: '15px', fontWeight: 'bold', color: '#667eea', display: 'block', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#667eea', display: 'block', marginBottom: '4px' }}>
                     📅 Audit Period
-                  </label>
+                  </span>
                   <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#888' }}>
                     FY Range: {fyDateRange.min ? new Date(fyDateRange.min).toLocaleDateString('en-GB') : ''} → {selectedCenter.auditDate ? new Date(selectedCenter.auditDate).toLocaleDateString('en-GB') : ''}
                   </p>
                   <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
+                      <label htmlFor="audit-period-from" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>From</label>
                       <input
+                        id="audit-period-from"
                         type="date"
                         value={auditPeriodFrom}
                         min={fyDateRange.min}
@@ -1483,8 +1501,9 @@ const CenterSetupForm = ({
                     </div>
                     <span style={{ color: '#667eea', fontWeight: 'bold', fontSize: '20px', paddingBottom: '6px' }}>→</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>To</label>
+                      <label htmlFor="audit-period-to" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>To</label>
                       <input
+                        id="audit-period-to"
                         type="date"
                         value={auditPeriodTo}
                         min={auditPeriodFrom || fyDateRange.min}
@@ -1588,8 +1607,8 @@ const EditableChecklistTable = ({ isEditingExisting, auditAreas, auditData, hand
                     </tr>
                   </thead>
                   <tbody>
-                    {auditAreas.map((area, areaIdx) => (
-                      <React.Fragment key={areaIdx}>
+                    {auditAreas.map((area) => (
+                      <React.Fragment key={area.areaNumber}>
                         <tr style={{ 
                           background: area.isNA 
                             ? 'linear-gradient(135deg, #9e9e9e 0%, #757575 100%)' 
@@ -1779,7 +1798,7 @@ const EmailFormModal = ({
               {/* Hierarchy auto-added to CC silently */}
 
               <div style={{ marginBottom: '20px' }}>
-                <label style={{
+                <label htmlFor="audit-email-subject" style={{
                   display: 'block',
                   marginBottom: '8px',
                   fontWeight: '600',
@@ -1789,6 +1808,7 @@ const EmailFormModal = ({
                   Subject:
                 </label>
                 <input
+                  id="audit-email-subject"
                   type="text"
                   value={emailData.subject}
                   onChange={(e) => setEmailData(prev => ({ ...prev, subject: e.target.value }))}
@@ -1807,7 +1827,7 @@ const EmailFormModal = ({
               </div>
 
               <div style={{ marginBottom: '25px' }}>
-                <label style={{
+                <label htmlFor="audit-email-message" style={{
                   display: 'block',
                   marginBottom: '8px',
                   fontWeight: '600',
@@ -1817,6 +1837,7 @@ const EmailFormModal = ({
                   Message:
                 </label>
                 <textarea
+                  id="audit-email-message"
                   value={emailData.message}
                   onChange={(e) => setEmailData(prev => ({ ...prev, message: e.target.value }))}
                   rows={10}
@@ -2190,11 +2211,12 @@ const ViewReportsTabView = ({
   {/* SEARCH BAR */}
   {/* SMART SEARCH BAR WITH SUGGESTIONS */}
 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px', position: 'relative' }}>
-  <label style={{ fontSize: '16px', fontWeight: 'bold', color: '#1976d2', minWidth: '80px' }}>
+  <label htmlFor="audit-reports-search" style={{ fontSize: '16px', fontWeight: 'bold', color: '#1976d2', minWidth: '80px' }}>
     🔍 Search:
   </label>
   <div style={{ flex: 1, position: 'relative' }}>
     <input
+      id="audit-reports-search"
       type="text"
       placeholder="Search by Center, Code, Type, FY, Audited By, Status..."
       value={searchQuery}
@@ -2246,18 +2268,19 @@ const ViewReportsTabView = ({
     borderRadius: '10px',
     border: '2px solid #2196f3'
   }}>
-    <label style={{ 
+    <span style={{ 
       fontSize: '16px', 
       fontWeight: 'bold', 
       color: '#1976d2',
       whiteSpace: 'nowrap'
     }}>
       📅 Date Range:
-    </label>
+    </span>
     
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
+      <label htmlFor="audit-start-date-b" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>Start Date</label>
       <input
+        id="audit-start-date-b"
         type="date"
         value={startDate}
         onChange={(e) => setStartDate(e.target.value)}
@@ -2273,8 +2296,9 @@ const ViewReportsTabView = ({
     </div>
     
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
+      <label htmlFor="audit-end-date-b" style={{ fontSize: '12px', color: '#666', fontWeight: 'bold' }}>End Date</label>
       <input
+        id="audit-end-date-b"
         type="date"
         value={endDate}
         onChange={(e) => setEndDate(e.target.value)}
@@ -2414,7 +2438,7 @@ const ViewReportsTabView = ({
 
                     return (
                       <ReportRow
-                        key={index}
+                        key={report._id || `${report.centerCode}-${report.financialYear}-${report.auditDateString || report.auditDate}`}
                         report={report}
                         index={index}
                         canSubmit={canSubmit}
@@ -3688,8 +3712,9 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
           <h3>📝 Create New Audit Report</h3>
 
           <div className="select-user" style={{ marginBottom: '25px' }}>
-  <label><strong>Select Center:</strong></label>
+  <label htmlFor="audit-center-select"><strong>Select Center:</strong></label>
   <Select
+    inputId="audit-center-select"
     value={selectedCenter ? {
       value: selectedCenter.centerCode,
       label: `${selectedCenter.centerCode} - ${selectedCenter.centerName}`
@@ -3713,7 +3738,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
       }),
       option: (base, state) => ({
         ...base,
-        backgroundColor: state.isSelected ? '#667eea' : state.isFocused ? '#e3f2fd' : 'white',
+        backgroundColor: selectOptionBackground(state),
         color: state.isSelected ? 'white' : '#333',
         padding: '12px',
         cursor: 'pointer'

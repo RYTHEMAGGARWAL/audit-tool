@@ -220,7 +220,7 @@
 }
 
 .empty-state small {
-  color: #999;
+  color: #666;
   font-size: 13px;
 }
 
@@ -286,7 +286,7 @@
 
 .type-cdc { background: #e3f2fd; color: #1565c0; }
 .type-sdc { background: #f3e5f5; color: #6a1b9a; }
-.type-dtv { background: #e8f5e9; color: #2e7d32; }
+.type-dtv { background: #e8f5e9; color: #1b5e20; }
 
 /* ── TABLE FOOTER ── */
 .table-footer {
@@ -328,7 +328,7 @@
 
 .active-hint {
   font-size: 11px;
-  color: #888;
+  color: #666;
   margin-top: 4px;
   font-weight: 600;
 }

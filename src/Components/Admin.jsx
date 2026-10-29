@@ -17,7 +17,7 @@ import './Admin.css';
 const DropPanel = ({ items, activeKey, onSelect }) => (
   <div className="tab-dropdown-panel">
     {items.map(item => (
-      <button key={item.key}
+      <button type="button" key={item.key}
         className={`tab-dropdown-item ${activeKey === item.key ? 'tab-dropdown-item--active' : ''}`}
         style={{ '--dd-color': item.color }}
         onClick={() => onSelect(item.key)}
@@ -38,7 +38,7 @@ const DropdownTab = ({ label, icon, tabKey, activeTab, setActiveTab, isOpen, set
   const isActive = activeTab === tabKey;
   return (
     <div className="tab-dropdown-wrap" ref={tabRef}>
-      <button className={`tab-dropdown-btn ${isActive ? 'active' : ''}`}
+      <button type="button" className={`tab-dropdown-btn ${isActive ? 'active' : ''}`}
         onClick={() => {
           if (activeTab !== tabKey) setSubOption('');
           setActiveTab(tabKey);
@@ -68,7 +68,7 @@ const AdminTabs = ({
   totalReqCount, pendingCount, editRequestCount, approvalCount, refreshAllCounts
 }) => (
   <>
-    <button className={activeTab==='Dashboard' ? 'active' : ''} onClick={() => { setActiveTab('Dashboard'); closeAll(); }}>
+    <button type="button" className={activeTab==='Dashboard' ? 'active' : ''} onClick={() => { setActiveTab('Dashboard'); closeAll(); }}>
       📊 Dashboard
     </button>
 
@@ -118,7 +118,7 @@ const AdminTabs = ({
       label="Requests" icon="📨" tabKey="Requests"
       activeTab={activeTab} setActiveTab={setActiveTab}
       isOpen={reqDropOpen} setIsOpen={setReqDropOpen}
-      subOption={reqSubOption} setSubOption={(k) => { if (k === '') refreshAllCounts(); setReqSubOption(k); }}
+      subOption={reqSubOption} setSubOption={(k) => { if (k === '') { refreshAllCounts(); } setReqSubOption(k); }}
       closeOthers={() => { setUmDropOpen(false); setAuditDropOpen(false); }}
       tabRef={reqRef}
       badge={totalReqCount}
@@ -139,7 +139,7 @@ const AuditUserTabs = ({
   auUserDropOpen, setAuUserDropOpen, auUserSubOption, setAuUserSubOption, auUserRef
 }) => (
   <>
-    <button className={activeTab==='Dashboard' ? 'active' : ''} onClick={() => { setActiveTab('Dashboard'); closeAll(); }}>
+    <button type="button" className={activeTab==='Dashboard' ? 'active' : ''} onClick={() => { setActiveTab('Dashboard'); closeAll(); }}>
       📊 Dashboard
     </button>
 
@@ -185,7 +185,7 @@ const AuditUserTabs = ({
       ]}
     />
 
-    <button className={activeTab==='My Requests' ? 'active' : ''} onClick={() => { setActiveTab('My Requests'); closeAll(); }}>
+    <button type="button" className={activeTab==='My Requests' ? 'active' : ''} onClick={() => { setActiveTab('My Requests'); closeAll(); }}>
       📨 My Requests
     </button>
   </>
@@ -226,8 +226,14 @@ const Admin = () => {
   const isAuditUser  = loggedUser.Role === 'Audit User';
   const isLegacyUser = loggedUser.Role === 'User';
 
+  const headerTitle = (() => {
+    if (isAdmin) return 'Admin Dashboard';
+    if (isAuditUser) return 'Audit Dashboard';
+    return 'User Dashboard';
+  })();
+
   const [activeTab, setActiveTab] = useState(
-    isAdmin ? 'Dashboard' : isAuditUser ? 'Dashboard' : 'Audit'
+    isAdmin || isAuditUser ? 'Dashboard' : 'Audit'
   );
 
   // ── Admin dropdowns ──
@@ -301,9 +307,9 @@ const Admin = () => {
     <div className="admin-container">
       <header className="admin-header">
         <h1>
-          {isAdmin ? 'Admin Dashboard' : isAuditUser ? 'Audit Dashboard' : 'User Dashboard'} - Welcome, {loggedUser.firstname}
+          {headerTitle} - Welcome, {loggedUser.firstname}
         </h1>
-        <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+        <button type="button" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
       </header>
 
       <div className="tabs">
@@ -330,7 +336,7 @@ const Admin = () => {
           />
         )}
 
-        {isLegacyUser && <button className="active">📋 Audit Management</button>}
+        {isLegacyUser && <button type="button" className="active">📋 Audit Management</button>}
       </div>
 
       <main className="admin-content">

@@ -25,7 +25,7 @@
 
 /* Status Bar */
 .status-bar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
   color: white;
   padding: 18px 25px;
   margin-bottom: 25px;
@@ -44,7 +44,7 @@
 }
 
 .status-bar button {
-  background: rgba(255, 255, 255, 0.2);
+  background: #5d4aa6;
   color: white;
   border: 2px solid white;
   padding: 10px 24px;
@@ -58,7 +58,7 @@
 
 .status-bar button:hover {
   background: white;
-  color: #667eea;
+  color: #4f5fd6;
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(255, 255, 255, 0.4);
 }
@@ -109,7 +109,7 @@
 }
 
 .options button.active {
-  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
   color: white;
   box-shadow: 0 8px 25px rgba(33, 150, 243, 0.4);
 }
@@ -295,7 +295,7 @@
 
 .btn.add,
 .btn.update {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  background: linear-gradient(135deg, #0b7a6f 0%, #15803d 100%);
   color: white;
 }
 
@@ -305,12 +305,12 @@
 }
 
 .btn.save {
-  background: linear-gradient(135deg, #FF9800 0%, #FF5722 100%);
+  background: linear-gradient(135deg, #bf360c 0%, #9c2b09 100%);
   color: white;
 }
 
 .btn.delete {
-  background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+  background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
   color: white;
 }
 
@@ -319,12 +319,12 @@
 }
 
 .btn.cancel {
-  background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
+  background: linear-gradient(135deg, #5f6c6d 0%, #4b5658 100%);
   color: white;
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
   color: white;
 }
 
@@ -341,7 +341,9 @@
 
 /* Table Styling */
 .editable-table {
-  margin-top: 30px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .table-header {
@@ -372,8 +374,8 @@ table {
 }
 
 thead {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: rgb(61, 59, 59);
+  background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
+  color: white;
 }
 
 thead th {
@@ -448,7 +450,7 @@ tbody td input[disabled] {
 
 /* Username Badge */
 .username-badge {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
   color: white;
   padding: 8px 16px;
   border-radius: 8px;
@@ -471,12 +473,12 @@ tbody td input[disabled] {
 }
 
 .role-badge.admin {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #c2185b 0%, #ad1457 100%);
   color: white;
 }
 
 .role-badge.user {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #1565c0 0%, #0277bd 100%);
   color: white;
 }
 
@@ -492,13 +494,13 @@ tbody td input[disabled] {
 .note-box.info {
   background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
   border-color: #ff9800;
-  color: #d84315;
+  color: #7f2704;
 }
 
 .note-box.warning {
   background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
   border-color: #ff5722;
-  color: #d84315;
+  color: #7f2704;
 }
 
 .note-box p {
@@ -588,19 +590,19 @@ tbody td input[disabled] {
 }
 
 .message.success {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  background: linear-gradient(135deg, #0b7a6f 0%, #15803d 100%);
 }
 
 .message.error {
-  background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+  background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
 }
 
 .message.warning {
-  background: linear-gradient(135deg, #FF9800 0%, #FF5722 100%);
+  background: linear-gradient(135deg, #bf360c 0%, #9c2b09 100%);
 }
 
 .message.info {
-  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
 }
 
 /* Animations */
@@ -864,7 +866,7 @@ select:focus-visible {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #999;
+  color: #6b6b6b;
   background: #f8f9fc;
   border-bottom: 1px solid #eee;
 }
@@ -951,12 +953,6 @@ select:focus-visible {
 }
 
 /* ── EDITABLE AUDIT TABLE - Better sizing ── */
-.editable-table {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}
-
 .editable-table .table-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

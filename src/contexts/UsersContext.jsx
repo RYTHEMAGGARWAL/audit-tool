@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { API_URL } from '../config';
 
 const UsersContext = createContext();
@@ -15,7 +15,7 @@ export const UsersProvider = ({ children }) => {
   // ========================================
   // FETCH ALL USERS
   // ========================================
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/users`);
@@ -34,12 +34,12 @@ export const UsersProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // ========================================
   // ADD USER
   // ========================================
-  const addUser = async (userData) => {
+  const addUser = useCallback(async (userData) => {
     try {
       const response = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
@@ -58,12 +58,12 @@ export const UsersProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, [fetchUsers]);
 
   // ========================================
   // UPDATE USER
   // ========================================
-  const updateUser = async (userId, userData) => {
+  const updateUser = useCallback(async (userId, userData) => {
     try {
       const response = await fetch(`${API_URL}/api/users/${userId}`, {
         method: 'PUT',
@@ -82,12 +82,12 @@ export const UsersProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, [fetchUsers]);
 
   // ========================================
   // DELETE USER
   // ========================================
-  const deleteUser = async (userId) => {
+  const deleteUser = useCallback(async (userId) => {
     try {
       const response = await fetch(`${API_URL}/api/users/${userId}`, {
         method: 'DELETE'
@@ -102,12 +102,12 @@ export const UsersProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, [fetchUsers]);
 
   // ========================================
   // BULK UPDATE (backward compatibility)
   // ========================================
-  const saveAllUsers = async (usersArray) => {
+  const saveAllUsers = useCallback(async (usersArray) => {
     try {
       const response = await fetch(`${API_URL}/api/update-users`, {
         method: 'POST',
@@ -124,28 +124,32 @@ export const UsersProvider = ({ children }) => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  };
+  }, [fetchUsers]);
 
   // ========================================
   // ADD USERS FROM EXCEL (backward compatibility)
   // ========================================
-  const addUsersFromExcel = (newUsers) => {
+  const addUsersFromExcel = useCallback((newUsers) => {
     setUsers(prev => [...prev, ...newUsers]);
     console.log('Users updated from upload:', newUsers.length);
-  };
+  }, []);
+
+  // Same value object as before, but only re-created when something it contains changes,
+  // so consumers don't re-render on every provider render.
+  const value = useMemo(() => ({
+    users,
+    setUsers,
+    loading,
+    fetchUsers,
+    addUser,
+    updateUser,
+    deleteUser,
+    saveAllUsers,
+    addUsersFromExcel
+  }), [users, loading, fetchUsers, addUser, updateUser, deleteUser, saveAllUsers, addUsersFromExcel]);
 
   return (
-    <UsersContext.Provider value={{ 
-      users, 
-      setUsers, 
-      loading,
-      fetchUsers,
-      addUser,
-      updateUser,
-      deleteUser,
-      saveAllUsers,
-      addUsersFromExcel
-    }}>
+    <UsersContext.Provider value={value}>
       {children}
     </UsersContext.Provider>
   );

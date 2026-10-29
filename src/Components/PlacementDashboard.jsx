@@ -138,7 +138,7 @@ const CheckpointRemarksCell = ({ isEditable, isPlacementArea, cpId, cp, ppRemark
     );
   }
   if (isPlacementArea) {
-    const text = ppRemarks[cpId] || (cp.centerHeadRemarks ? cp.centerHeadRemarks : (isLocked ? '🔒 Locked' : 'No remarks'));
+    const text = ppRemarks[cpId] || cp.centerHeadRemarks || (isLocked ? '🔒 Locked' : 'No remarks');
     return <span style={{ color: isLocked ? '#c62828' : '#999', fontSize: '12px', fontStyle: 'italic' }}>{text}</span>;
   }
   return <span style={{ color: '#bbb', fontSize: '11px', fontStyle: 'italic' }}>Read only</span>;
@@ -280,7 +280,7 @@ const PlacementReportRow = ({ r, idx, getScore, getStatusColor, getStatusLabel, 
                               <RemarksStatusBadge r={r} ppSubmitted={ppSubmitted} chLocked={chLocked} ppEdited={ppEdited} getEditWindowBadge={getEditWindowBadge} />
                             </td>
                             <td style={{ padding: '12px 14px' }}>
-                              <button
+                              <button type="button"
                                 onClick={() => handleViewReport(r)}
                                 style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
                                 👁️ View
@@ -322,7 +322,7 @@ const RequestEditAction = ({ remarksDate, getEditWindowBadge, handleRequestEdit 
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-      <button onClick={handleRequestEdit}
+      <button type="button" onClick={handleRequestEdit}
         style={{ padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
         ✏️ Request Edit Permission
       </button>
@@ -389,26 +389,52 @@ const ActionButtonsArea = ({ chSubmitted, editedOnce, locked, requestPending, re
     return <RequestEditAction remarksDate={remarksDate} getEditWindowBadge={getEditWindowBadge} handleRequestEdit={handleRequestEdit} />;
   }
   return (
-    <button onClick={handleSave} disabled={saving}
+    <button type="button" onClick={handleSave} disabled={saving}
       style={{ padding: '12px 28px', background: saving ? '#ccc' : 'linear-gradient(135deg, #11998e, #38ef7d)', color: 'white', border: 'none', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '15px' }}>
       {saving ? '⏳ Saving...' : '✅ Submit Placement Remarks'}
     </button>
   );
 };
 
+// ========================================
+// VALIDATION (required before using any
+// server-sourced data to construct a URL)
+// ========================================
+// MongoDB ObjectIds are exactly 24 hex characters — anything else is rejected
+// before it can be interpolated into a request path.
+const isValidObjectId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
+
+// Restrict a name used in a query string to letters, spaces, apostrophes,
+// hyphens and dots — strips anything else before it's encoded/sent.
+const sanitizeNameForUrl = (name) => String(name || '').replace(/[^\p{L}\s'.-]/gu, '').trim();
+
+const bandPick = (v, hi, mid, top, middle, bottom) => {
+  if (v >= hi) return top;
+  if (v >= mid) return middle;
+  return bottom;
+};
+
+const getScore = (r) => parseFloat(r.grandTotal || 0);
+const getStatusColor = (s) => bandPick(s, 80, 65, '#2e7d32', '#e65100', '#c62828');
+const getStatusLabel = (s) => bandPick(s, 80, 65, 'Compliant', 'Amber', 'Non-Compliant');
+
+// Turns the placement-status API response into the component's state values
+const parsePlacementStatus = (data) => {
+  const ppRemarks = {};
+  PP_IDS.forEach(id => { if (data[id]?.centerHeadRemarks) ppRemarks[id] = data[id].centerHeadRemarks; });
+  return {
+    ppRemarks,
+    submitted: data.placementRemarksSubmitted || false,
+    locked: data.placementRemarksLocked || false,
+    editedOnce: data.placementRemarksEditedOnce || false,
+    centerHeadLocked: data.centerHeadRemarksLocked || false,
+    requestPending: data.placementEditRequest || false,
+    remarksDate: data.placementRemarksDate || '',
+    chSubmitted: !!data.centerRemarksDate && (data.centerHeadRemarksLocked || false),
+  };
+};
+
 const PlacementDashboard = () => {
-  // ========================================
-  // VALIDATION (required before using any
-  // server-sourced data to construct a URL)
-  // ========================================
-  // MongoDB ObjectIds are exactly 24 hex characters — anything else is rejected
-  // before it can be interpolated into a request path.
-  const isValidObjectId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
-
-  // Restrict a name used in a query string to letters, spaces, apostrophes,
-  // hyphens and dots — strips anything else before it's encoded/sent.
-  const sanitizeNameForUrl = (name) => String(name || '').replace(/[^\p{L}\s'.-]/gu, '').trim();
-
   const navigate = useNavigate();
   const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
   const [reports, setReports] = useState([]);
@@ -458,16 +484,15 @@ const PlacementDashboard = () => {
       const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/placement-status`);
       if (res.ok) {
         const data = await res.json();
-        const existingRemarks = {};
-        PP_IDS.forEach(id => { if (data[id]?.centerHeadRemarks) existingRemarks[id] = data[id].centerHeadRemarks; });
-        setPpRemarks(existingRemarks);
-        setSubmitted(data.placementRemarksSubmitted || false);
-        setLocked(data.placementRemarksLocked || false);
-        setEditedOnce(data.placementRemarksEditedOnce || false);
-        setCenterHeadLocked(data.centerHeadRemarksLocked || false);
-        setRequestPending(data.placementEditRequest || false);
-        setRemarksDate(data.placementRemarksDate || '');
-        setChSubmitted(!!data.centerRemarksDate && (data.centerHeadRemarksLocked || false)); // CH submitted AND locked
+        const st = parsePlacementStatus(data);
+        setPpRemarks(st.ppRemarks);
+        setSubmitted(st.submitted);
+        setLocked(st.locked);
+        setEditedOnce(st.editedOnce);
+        setCenterHeadLocked(st.centerHeadLocked);
+        setRequestPending(st.requestPending);
+        setRemarksDate(st.remarksDate);
+        setChSubmitted(st.chSubmitted); // CH submitted AND locked
       }
     } catch (e) { setPpRemarks({}); }
   };
@@ -550,9 +575,6 @@ const PlacementDashboard = () => {
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
-  const getScore = (r) => parseFloat(r.grandTotal || 0);
-  const getStatusColor = (s) => s >= 80 ? '#2e7d32' : s >= 65 ? '#e65100' : '#c62828';
-  const getStatusLabel = (s) => s >= 80 ? 'Compliant' : s >= 65 ? 'Amber' : 'Non-Compliant';
   const isLocked = (chSubmitted && centerHeadLocked) || editedOnce || requestPending;
 
   const thStyle = { padding: '10px 12px', background: 'linear-gradient(135deg, #1a237e, #3949ab)', color: 'white', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' };
@@ -568,7 +590,7 @@ const PlacementDashboard = () => {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span style={{ fontSize: '14px', opacity: 0.9 }}>👋 Welcome, {loggedUser.firstname}</span>
-          <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}
+          <button type="button" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}
             style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', padding: '7px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
             🚪 Logout
           </button>
@@ -592,7 +614,7 @@ const PlacementDashboard = () => {
                 <h2 style={{ margin: 0, color: '#1a237e', fontSize: '20px' }}>📋 Complete Audit Report</h2>
                 <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>{selectedReport.centerName} ({selectedReport.centerCode}) — {selectedReport.financialYear}</p>
               </div>
-              <button onClick={() => setSelectedReport(null)}
+              <button type="button" onClick={() => setSelectedReport(null)}
                 style={{ background: '#f5f5f5', border: 'none', padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>
                 ← Back
               </button>
@@ -666,7 +688,7 @@ const PlacementDashboard = () => {
 
             {/* ── Action Buttons — priority order ── */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button onClick={() => setSelectedReport(null)}
+              <button type="button" onClick={() => setSelectedReport(null)}
                 style={{ padding: '12px 24px', background: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>
                 ← Back
               </button>
@@ -689,18 +711,20 @@ const PlacementDashboard = () => {
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, color: '#1a237e' }}>📊 My Center Reports</h2>
-              <button onClick={loadReports} style={{ padding: '9px 20px', background: '#3949ab', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>🔄 Refresh</button>
+              <button type="button" onClick={loadReports} style={{ padding: '9px 20px', background: '#3949ab', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>🔄 Refresh</button>
             </div>
 
-            {loading ? (
+            {loading && (
               <div style={{ textAlign: 'center', padding: '60px', color: '#666' }}>⏳ Loading reports...</div>
-            ) : reports.length === 0 ? (
+            )}
+            {!loading && reports.length === 0 && (
               <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '12px', color: '#999' }}>
                 <div style={{ fontSize: '48px', marginBottom: '15px' }}>📭</div>
                 <p style={{ fontSize: '16px', fontWeight: '500' }}>No reports found for your centers.</p>
                 <small>Make sure your name is correctly set in center records.</small>
               </div>
-            ) : (
+            )}
+            {!loading && reports.length > 0 && (
               <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
@@ -736,4 +760,4 @@ const PlacementDashboard = () => {
   );
 };
 
-export default PlacementDashboard;  
+export default PlacementDashboard;

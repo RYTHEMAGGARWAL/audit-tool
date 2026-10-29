@@ -157,7 +157,8 @@ function cellTxt(doc, text, x, y, w, { sz = 7.5, color = C.dark, bold = false, a
 function scoreColor(s, m) {
   if (!m) return C.gray;
   const p = s / m;
-  return p >= 0.8 ? C.greenText : p > 0 ? C.amberText : C.redText;
+  if (p >= 0.8) return C.greenText;
+  return p > 0 ? C.amberText : C.redText;
 }
 
 // ── COLUMN LAYOUT ─────────────────────────────────────────────
@@ -417,8 +418,8 @@ function drawFooters(doc, reportData) {
   }
 }
 
-async function generatePDF(reportData) {
-  return new Promise(async (resolve, reject) => {
+function generatePDF(reportData) {
+  return new Promise((resolve, reject) => {
     try {
       const logoBuffer = loadLogoBuffer();
 
