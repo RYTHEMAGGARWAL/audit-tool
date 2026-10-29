@@ -374,7 +374,7 @@ const Login = () => {
         setLoading(false);
       }
     };
-    fetchUsers();
+    void fetchUsers();
   }, [setUsers]);
 
   // ========================================

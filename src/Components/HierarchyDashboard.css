@@ -63,7 +63,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: background 0.2s, transform 0.2s;
 }
 
 .logout-btn:hover {
@@ -79,6 +79,13 @@
   flex-wrap: wrap;
 }
 
+/* stat cards are real <button>s: neutralise button defaults (zero specificity so the class rules still win) */
+:where(button.stat-card) {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
 .stat-card {
   flex: 1;
   min-width: 130px;
@@ -88,7 +95,6 @@
   text-align: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   border-top: 4px solid #ccc;
-  transition: transform 0.2s;
 }
 
 .stat-card:hover { transform: translateY(-2px); }
@@ -170,7 +176,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: background 0.2s, transform 0.2s, opacity 0.2s;
   align-self: flex-end;
   margin-bottom: 1px;
 }
@@ -331,4 +337,11 @@
   color: #666;
   margin-top: 4px;
   font-weight: 600;
+}
+
+/* Motion only for users who have not asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .stat-card {
+    transition: transform 0.2s;
+  }
 }

@@ -340,7 +340,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
   };
 
   useEffect(() => {
-    loadEditRequests();
+    void loadEditRequests();
     const interval = setInterval(loadEditRequests, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -356,7 +356,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
 
         if (response.ok) {
           alert('✅ Edit request approved!\n\nCenter Head can now edit remarks once.');
-          loadEditRequests();
+          void loadEditRequests();
         } else {
           alert('❌ Failed to approve request');
         }
@@ -376,7 +376,7 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
         });
         if (res.ok) {
           alert('✅ Placement edit approved!');
-          loadEditRequests();
+          void loadEditRequests();
         } else {
           const err = await res.json().catch(() => ({}));
           alert('❌ ' + (err.error || 'Failed'));
@@ -543,8 +543,8 @@ const EditRequestsApproval = ({ onApprovalUpdate }) => {
         <EditRequestDetailModal
           report={selectedReport}
           onClose={closeModal}
-          onApprove={() => { handleApprove(selectedReport._id, selectedReport.centerCode); closeModal(); }}
-          onApprovePlacement={() => { handleApprovePlacement(selectedReport._id, selectedReport.centerCode); closeModal(); }}
+          onApprove={() => { void handleApprove(selectedReport._id, selectedReport.centerCode); closeModal(); }}
+          onApprovePlacement={() => { void handleApprovePlacement(selectedReport._id, selectedReport.centerCode); closeModal(); }}
         />
       )}
 

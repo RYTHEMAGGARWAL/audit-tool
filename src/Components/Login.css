@@ -27,7 +27,6 @@
   border-radius: 50%;
   top: -200px;
   right: -200px;
-  animation: float 20s infinite ease-in-out;
 }
 
 .login-container::after {
@@ -39,7 +38,6 @@
   border-radius: 50%;
   bottom: -150px;
   left: -150px;
-  animation: float 25s infinite ease-in-out reverse;
 }
 
 @keyframes float {
@@ -62,7 +60,6 @@
   text-align: center;
   position: relative;
   z-index: 10;
-  animation: slideIn 0.6s ease-out;
 }
 
 @keyframes slideIn {
@@ -123,7 +120,7 @@
   border: 2px solid #e0e0e0;
   border-radius: 10px;
   font-size: 15px;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   background: #f8f9fa;
   font-family: inherit;
 }
@@ -151,7 +148,7 @@
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
@@ -168,7 +165,6 @@
   width: 100%;
   height: 100%;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-  transition: left 0.5s ease;
 }
 
 .login-btn:hover::before {
@@ -202,7 +198,6 @@
   margin: 15px 0;
   font-size: 14px;
   font-weight: 500;
-  animation: shake 0.5s ease;
   box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
   text-align: center;
 }
@@ -241,7 +236,7 @@
   margin-top: 20px;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease;
 }
 
 .forgot-link:hover {
@@ -302,7 +297,7 @@
   justify-content: center;
   font-weight: bold;
   font-size: 18px;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .step.active span {
@@ -376,4 +371,23 @@
   color: #95a5a6;
   font-size: 12px;
   font-weight: 400;
+}
+
+/* Motion only for users who have not asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .login-container::before {
+    animation: float 20s infinite ease-in-out;
+  }
+  .login-container::after {
+    animation: float 25s infinite ease-in-out reverse;
+  }
+  .login-box {
+    animation: slideIn 0.6s ease-out;
+  }
+  .login-btn::before {
+    transition: left 0.5s ease;
+  }
+  .error-message {
+    animation: shake 0.5s ease;
+  }
 }

@@ -197,14 +197,14 @@ const ReopenRequestCard = ({ r, loadPending, onUpdate }) => {
     if (!window.confirm('Approve reopen for ' + r.centerName + '?\nCenter + Placement dono unlock honge.')) return;
     const res = await fetch(`${API_URL}/api/audit-reports/${r._id}/reopen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reopenedBy: 'Admin' }) });
     const d = await res.json();
-    if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); loadPending(); if (onUpdate) onUpdate(); }
+    if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); void loadPending(); if (onUpdate) onUpdate(); }
     else alert('❌ ' + (d.error || 'Failed'));
   };
 
   const handleRejectReopen = async () => {
     if (!window.confirm('Reject reopen request for ' + r.centerName + '?')) return;
     const res = await fetch(`${API_URL}/api/audit-reports/${r._id}/reject-reopen`, { method: 'POST' });
-    if (res.ok) { alert('❌ Request rejected.'); loadPending(); if (onUpdate) onUpdate(); }
+    if (res.ok) { alert('❌ Request rejected.'); void loadPending(); if (onUpdate) onUpdate(); }
     else alert('Failed');
   };
 
@@ -250,7 +250,7 @@ const ApprovalRequests = ({ onUpdate }) => {
   const [reopenRequests, setReopenRequests] = useState([]);
 
   useEffect(() => {
-    loadPending();
+    void loadPending();
   }, []);
 
   const loadPending = async () => {
@@ -277,7 +277,7 @@ const ApprovalRequests = ({ onUpdate }) => {
       const res = await fetch(`${API_URL}/api/pending-approvals/${type}/${id}/approve`, { method: 'POST' });
       if (res.ok) {
         alert(`✅ ${type === 'user' ? 'User' : 'Center'} approved! They can now access the system.`);
-        loadPending();
+        void loadPending();
         if (onUpdate) onUpdate();
       }
     } catch(e) { alert('Error: ' + e.message); }
@@ -294,7 +294,7 @@ const ApprovalRequests = ({ onUpdate }) => {
       });
       if (res.ok) {
         alert(`❌ ${type === 'user' ? 'User' : 'Center'} rejected.`);
-        loadPending();
+        void loadPending();
         if (onUpdate) onUpdate();
       }
     } catch(e) { alert('Error: ' + e.message); }

@@ -33,13 +33,8 @@ const cpConfig = {
   MP6:{name:'Log book for Genset & Vehicle',              w:'10%', m:1.5},
   MP7:{name:'Availability and requirement of Biometric',  w:'10%', m:1.5},
 };
-// Run `handler` when Enter or Space is pressed (keyboard access for clickable non-button elements)
-const onActivateKey = handler => e => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    handler();
-  }
-};
+// Full-cover transparent button behind a modal: clicking the backdrop closes it
+const BACKDROP_BTN = { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 'none', background: 'transparent', cursor: 'default' };
 
 const getCpName = (k) => cpConfig[k]?.name || k;
 const getCpW    = (k) => cpConfig[k]?.w || '-';
@@ -232,9 +227,10 @@ const ReportModal = ({ report, onClose }) => {
   ];
 
   return (
-    <div role="presentation" onClick={e => e.target === e.currentTarget && onClose()}
+    <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
-      <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '1100px', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => onClose()} style={BACKDROP_BTN} />
+      <div style={{ position: 'relative', background: 'white', borderRadius: '12px', width: '100%', maxWidth: '1100px', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
 
         {/* ── GREEN HEADER exactly like Image 2 ── */}
         <div style={{ background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
@@ -422,10 +418,10 @@ const HierarchyDashboard = () => {
     if (!loggedUser?.username) { alert('Unauthorized!'); navigate('/'); return; }
     const allowed = ['Zonal Manager', 'Region Head', 'Area Manager', 'Cluster Manager', 'Operation Head', 'Placement Coordinator', 'Senior Manager Placement', 'National Head Placement'];
     if (!allowed.includes(role)) { alert('Unauthorized!'); navigate('/'); return; }
-    loadReports();
+    void loadReports();
   }, []);
 
-  useEffect(() => { loadReports(); }, [filterFY, filterStatus, filterCenterType]);
+  useEffect(() => { void loadReports(); }, [filterFY, filterStatus, filterCenterType]);
 
   const loadReports = async () => {
     try {
@@ -468,13 +464,13 @@ const HierarchyDashboard = () => {
           { key: 'Amber', num: stats.amber, label: '🟡 Amber', cls: 'amber' },
           { key: 'Non-Compliant', num: stats.nonCompliant, label: '❌ Non-Compliant', cls: 'non-compliant' },
         ].map(s => (
-          <div key={s.key} role="button" tabIndex={0} onClick={() => toggleAuditFilter(s.key)} onKeyDown={onActivateKey(() => toggleAuditFilter(s.key))}
+          <button key={s.key} type="button" onClick={() => toggleAuditFilter(s.key)}
             className={`stat-card ${s.cls} ${filterAuditStatus === s.key ? 'active-card' : ''}`}
             style={{ cursor: 'pointer' }}>
             <div className="stat-number">{s.num}</div>
             <div className="stat-label">{s.label}</div>
             {filterAuditStatus === s.key && s.key !== 'All' && <div className="active-hint">● Filtered</div>}
-          </div>
+          </button>
         ))}
 
       </div>

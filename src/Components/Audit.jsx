@@ -160,13 +160,11 @@ const EmailChipInput = ({
 
   return (
     <div style={{ marginBottom: '20px' }}>
-      <label htmlFor={inputId} style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '14px' }}>
+      <label id={`${inputId}-label`} htmlFor={inputId} style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '14px' }}>
         {label} {required && <span style={{ color: '#dc3545' }}>*</span>}
         {hint && <span style={{ fontWeight: '400', color: '#888', fontSize: '12px', marginLeft: `${hintMarginLeft}px` }}>{hint}</span>}
       </label>
-      <div style={{ border: '2px solid #ddd', borderRadius: '8px', padding: '8px 10px', minHeight: '50px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', cursor: 'text', position: 'relative', background: 'white' }}
-        role="presentation"
-        onClick={() => document.getElementById(inputId).focus()}>
+      <label htmlFor={inputId} style={{ border: '2px solid #ddd', borderRadius: '8px', padding: '8px 10px', minHeight: '50px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', cursor: 'text', position: 'relative', background: 'white' }}>
         {list.map((e, i) => (
           <span key={e} style={{ background: (firstChipHighlight && i === 0) ? 'linear-gradient(135deg,#11998e,#38ef7d)' : 'linear-gradient(135deg,#667eea,#764ba2)', color: 'white', padding: '5px 12px', borderRadius: '20px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
             {firstChipHighlight && i === 0 && '🏢 '}{e}
@@ -174,7 +172,7 @@ const EmailChipInput = ({
               style={{ cursor: 'pointer', fontSize: '16px', lineHeight: '1', opacity: .85, fontWeight: 'bold', background: 'none', border: 'none', color: 'inherit', padding: 0 }}>×</button>
           </span>
         ))}
-        <input id={inputId} type="text" value={input} placeholder={list.length === 0 ? placeholderEmpty : placeholderMore}
+        <input id={inputId} aria-labelledby={`${inputId}-label`} type="text" value={input} placeholder={list.length === 0 ? placeholderEmpty : placeholderMore}
           onChange={e => { setInput(e.target.value); setShowSug(true); }}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addEmail(input); } if (e.key === 'Backspace' && !input && list.length > 0) setList(p => p.slice(0, -1)); }}
           onFocus={() => setShowSug(true)}
@@ -186,7 +184,7 @@ const EmailChipInput = ({
             {sug.map((s, i) => (<div key={s} role="option" aria-selected={false} tabIndex={-1} onMouseDown={() => addEmail(s)} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #f5f5f5' }} onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>📧 {s}</div>))}
           </div>
         )}
-      </div>
+      </label>
       {footerNote && list.length > 0 && <div style={{ fontSize: '11px', color: '#11998e', marginTop: '4px', fontWeight: '600' }}>{footerNote}</div>}
     </div>
   );
@@ -423,7 +421,7 @@ const ReopenControl = ({ report, isAdmin, loggedUser, loadSavedReports }) => {
       if (window.confirm('Reopen report for ' + report.centerName + '?\nCenter + Placement dono unlock honge.\n7 working days milenge.')) {
         const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/reopen`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reopenedBy: loggedUser.firstname }) });
         const d = await res.json();
-        if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); loadSavedReports(); }
+        if (res.ok) { alert('🔓 Reopened! Deadline: ' + d.newDeadline); void loadSavedReports(); }
         else alert('❌ ' + (d.error || 'Failed'));
       }
     };
@@ -441,7 +439,7 @@ const ReopenControl = ({ report, isAdmin, loggedUser, loadSavedReports }) => {
     if (reason === null) return;
     const res = await fetch(`${API_URL}/api/audit-reports/${report._id}/reopen-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestedBy: loggedUser.firstname, reason }) });
     const d = await res.json();
-    if (res.ok) { alert('✅ Request sent to Admin!'); loadSavedReports(); }
+    if (res.ok) { alert('✅ Request sent to Admin!'); void loadSavedReports(); }
     else alert('❌ ' + (d.error || 'Failed'));
   };
   return (
@@ -473,7 +471,7 @@ const CloseReportButton = ({ report, loggedUser, loadSavedReports }) => {
         });
         if (res.ok) {
           alert('✅ Report closed successfully! Closed email sent to center.');
-          loadSavedReports();
+          void loadSavedReports();
         } else {
           alert('❌ Failed to close report');
         }
@@ -596,7 +594,7 @@ const ReportRow = ({
                             }}
                             onBlur={() => {
                               if (editableRemarks[report.centerCode] !== report.remarksText) {
-                                handleSaveRemarks(report.centerCode);
+                                void handleSaveRemarks(report.centerCode);
                               }
                             }}
                             disabled={!canSubmit}
@@ -1572,7 +1570,7 @@ const CenterSetupForm = ({
                     }
                     
                     console.log('✅ FY + AuditDate check passed, calling handleCenterSelect...');
-                    handleCenterSelect(selectedCenter);
+                    void handleCenterSelect(selectedCenter);
                     console.log('✅ handleCenterSelect called!');
                   }}
                   style={{ marginTop: '20px' }}
@@ -2780,10 +2778,10 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     setSearchQuery('');
     
     if (option === 'create') {
-      loadCenters();
-      loadAuditors();
+      void loadCenters();
+      void loadAuditors();
     } else if (option === 'view' || option === 'history') {
-      loadSavedReports();
+      void loadSavedReports();
     }
   };
 
@@ -3465,7 +3463,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
       if (response.data.success) {
         alert('✅ Email sent successfully with PDF attachment!');
         handleCloseEmailForm();
-        loadSavedReports();
+        void loadSavedReports();
       } else {
         alert('❌ Failed to send email: ' + (response.data.error || 'Unknown error'));
       }
@@ -3613,7 +3611,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
 
   useEffect(() => {
     if (activeOption === 'view') {
-      checkDeadlines().then(() => loadSavedReports());
+      void checkDeadlines().then(() => loadSavedReports());
     }
   }, [activeOption]);
 

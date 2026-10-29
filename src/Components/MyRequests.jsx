@@ -15,7 +15,7 @@ const MyRequests = ({ createdBy }) => {
   const [activeSection, setActiveSection] = useState('users');
 
   useEffect(() => {
-    loadMyRequests();
+    void loadMyRequests();
   }, []);
 
   const loadMyRequests = async () => {

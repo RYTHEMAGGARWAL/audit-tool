@@ -9,13 +9,11 @@ const bandPick = (v, hi, mid, top, middle, bottom) => {
   return bottom;
 };
 
-// Run `handler` when Enter or Space is pressed (keyboard access for clickable non-button elements)
-const onActivateKey = handler => e => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    handler();
-  }
-};
+// Reset so a real <button> looks like the block it replaces
+const BTN_RESET = { font: 'inherit', color: 'inherit', textAlign: 'inherit', margin: 0, width: '100%', boxSizing: 'border-box' };
+
+// Full-cover transparent button behind a modal: clicking the backdrop closes it
+const BACKDROP_BTN = { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 'none', background: 'transparent', cursor: 'default' };
 
 const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -310,9 +308,10 @@ const ReportDetailModal = ({ report, onClose, loading }) => {
   ] : [];
 
   return (
-    <div role="presentation" onClick={e => e.target === e.currentTarget && onClose()}
+    <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
-      <div style={{ background: 'white', borderRadius: '14px', width: '100%', maxWidth: '1100px', maxHeight: '93vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
+      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => onClose()} style={BACKDROP_BTN} />
+      <div style={{ position: 'relative', background: 'white', borderRadius: '14px', width: '100%', maxWidth: '1100px', maxHeight: '93vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
 
         {/* Header */}
         <div style={{ background: 'linear-gradient(135deg,#11998e,#38ef7d)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
@@ -364,9 +363,9 @@ const StatCard = ({ icon, label, value, sub, color, filterKey, activeFilter, onF
   // Only cards with a filter are interactive; the rest are plain display cards
   if (!filterKey) return <div style={cardStyle}>{content}</div>;
   return (
-    <div role="button" tabIndex={0} onClick={() => onFilter(filterKey)} onKeyDown={onActivateKey(() => onFilter(filterKey))} style={cardStyle}>
+    <button type="button" onClick={() => onFilter(filterKey)} style={{ ...BTN_RESET, ...cardStyle }}>
       {content}
-    </div>
+    </button>
   );
 };
 
@@ -388,11 +387,11 @@ const ComplianceStatusCard = ({ compliancePie, activeFilter, onFilter }) => (
       <PieChart data={compliancePie} size={140} activeFilter={activeFilter} onSliceClick={onFilter} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {compliancePie.map(d => (
-          <div key={d.label} role="button" tabIndex={0} onClick={() => onFilter(d.filterKey)} onKeyDown={onActivateKey(() => onFilter(d.filterKey))} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, background: activeFilter === d.filterKey ? `${d.color}15` : 'transparent', border: `1px solid ${activeFilter === d.filterKey ? d.color + '50' : 'transparent'}`, transition: 'all 0.2s' }}>
+          <button key={d.label} type="button" onClick={() => onFilter(d.filterKey)} style={{ ...BTN_RESET, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, background: activeFilter === d.filterKey ? `${d.color}15` : 'transparent', border: `1px solid ${activeFilter === d.filterKey ? d.color + '50' : 'transparent'}`, transition: 'all 0.2s' }}>
             <div style={{ width: 11, height: 11, borderRadius: '50%', background: d.color }} />
             <span style={{ fontSize: 13, color: '#444' }}>{d.label}</span>
             <span style={{ fontSize: 13, fontWeight: '800', color: d.color, marginLeft: 'auto' }}>{d.value}</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -547,8 +546,8 @@ const ReportRow = ({ r, i, openReport }) => {
   const color = gc(r.grandTotal);
   const label = gl(r.grandTotal);
   return (
-    <div role="button" tabIndex={0} onClick={() => openReport(r.centerCode)} onKeyDown={onActivateKey(() => openReport(r.centerCode))}
-      style={{ display: 'grid', gridTemplateColumns: '88px 1fr 90px 100px 100px 120px', gap: 8, padding: '10px 12px', background: i % 2 === 0 ? '#f8faff' : 'white', borderRadius: 8, border: '1px solid #e8eaf6', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s' }}
+    <button type="button" onClick={() => openReport(r.centerCode)}
+      style={{ ...BTN_RESET, display: 'grid', gridTemplateColumns: '88px 1fr 90px 100px 100px 120px', gap: 8, padding: '10px 12px', background: i % 2 === 0 ? '#f8faff' : 'white', borderRadius: 8, border: '1px solid #e8eaf6', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s' }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(102,126,234,0.18)'; e.currentTarget.style.borderColor = '#c5cae9'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e8eaf6'; }}
     >
@@ -558,7 +557,7 @@ const ReportRow = ({ r, i, openReport }) => {
       <div style={{ textAlign: 'center' }}><span style={{ padding: '3px 8px', borderRadius: 20, background: `${color}15`, color, fontWeight: '600', fontSize: 11 }}>{label}</span></div>
       <div style={{ textAlign: 'center', fontSize: 11, color: '#888' }}>{r.auditDateString || '-'}</div>
       <div style={{ textAlign: 'center' }}><span style={{ padding: '3px 8px', borderRadius: 20, background: '#e8eaf6', color: '#3949ab', fontWeight: '600', fontSize: 11 }}>{r.currentStatus}</span></div>
-    </div>
+    </button>
   );
 };
 
@@ -654,7 +653,7 @@ export default function NationalHeadDashboard() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, []);
 
   const handleFilter = (key) => {
     if (activeFilter === key) { setActiveFilter(null); setReportView('recent'); return; }

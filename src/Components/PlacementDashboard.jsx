@@ -455,7 +455,7 @@ const PlacementDashboard = () => {
     if (loggedUser?.Role !== 'Placement Coordinator') {
       alert('Unauthorized!'); navigate('/'); return;
     }
-    loadReports();
+    void loadReports();
   }, []);
 
   const loadReports = async () => {
@@ -527,12 +527,12 @@ const PlacementDashboard = () => {
         // Update remarksDate so next submit detected as 2nd
         setRemarksDate(new Date().toLocaleString('en-GB'));
         showMsg('✅ Placement remarks submitted successfully!', 'success');
-        loadReports();
+        void loadReports();
       } else {
         const err = await res.json().catch(() => ({}));
         showMsg(getSaveErrorMessage(err), 'error');
         // Refresh state from server
-        handleViewReport(selectedReport);
+        void handleViewReport(selectedReport);
       }
     } catch (e) { showMsg('❌ Error saving', 'error'); }
     setSaving(false);

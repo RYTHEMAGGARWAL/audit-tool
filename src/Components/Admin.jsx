@@ -282,13 +282,13 @@ const Admin = () => {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) { loadPendingCount(); loadEditRequestCount(); loadApprovalCount(); }
+    if (isAdmin) { void loadPendingCount(); void loadEditRequestCount(); void loadApprovalCount(); }
   }, []);
 
   const loadApprovalCount    = async () => { try { const r=await fetch(`${API_URL}/api/pending-approvals/count`); if(r.ok){const d=await r.json();setApprovalCount(d.count||0);} } catch(e){} };
   const loadEditRequestCount = async () => { try { const r=await fetch(`${API_URL}/api/audit-reports/edit-requests/pending`); if(r.ok){const d=await r.json();setEditRequestCount(d.length||0);} } catch(e){} };
   const loadPendingCount     = async () => { try { const r=await fetch(`${API_URL}/api/audit-reports/pending/count`); if(r.ok){const d=await r.json();setPendingCount(d.count||0);} } catch(e){setPendingCount(0);} };
-  const refreshAllCounts = () => { loadPendingCount(); loadEditRequestCount(); loadApprovalCount(); };
+  const refreshAllCounts = () => { void loadPendingCount(); void loadEditRequestCount(); void loadApprovalCount(); };
 
   useEffect(() => {
     if (!loggedUser?.username) { alert('Unauthorized! Please login first.'); navigate('/'); return; }

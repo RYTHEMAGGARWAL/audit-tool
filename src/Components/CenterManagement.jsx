@@ -115,20 +115,20 @@ const CenterActionsCell = ({ editing, auditUserMode, onSave, onCancel, onEdit, o
   <td style={{ padding: '12px', textAlign: 'center' }}>
     {editing ? (
       <>
-        <button onClick={onSave} style={{ padding: '6px 12px', background: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
+        <button type="button" onClick={onSave} style={{ padding: '6px 12px', background: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
           {auditUserMode ? '📤 Submit for Approval' : '✔ Save'}
         </button>
-        <button onClick={onCancel} style={{ padding: '6px 12px', background: '#999', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+        <button type="button" onClick={onCancel} style={{ padding: '6px 12px', background: '#999', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
           ✕ Cancel
         </button>
       </>
     ) : (
       <>
-        <button onClick={onEdit} style={{ padding: '6px 12px', background: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
+        <button type="button" onClick={onEdit} style={{ padding: '6px 12px', background: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>
           ✏️ Edit
         </button>
         {!auditUserMode && (
-          <button onClick={onDelete} style={{ padding: '6px 12px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          <button type="button" onClick={onDelete} style={{ padding: '6px 12px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             🗑️ Delete
           </button>
         )}
@@ -165,7 +165,7 @@ const CenterRow = ({ center, editingId, centers, setCenters, auditUserMode, hand
   const cancelEdit = () => {
     setEditingId(null);
     setOriginalCenter(null);
-    loadCenters();
+    void loadCenters();
   };
 
   return (
@@ -217,6 +217,49 @@ const CenterRow = ({ center, editingId, centers, setCenters, auditUserMode, hand
       />
     </tr>
   );
+};
+
+const TRACK_FIELDS = ['centerName', 'projectName', 'zmName', 'regionHeadName',
+  'areaManager', 'clusterManager', 'centerHeadName', 'centerType', 'location'];
+
+// Ensure all fields are included (including new ones that may be missing from old data)
+const withAllFields = (center) => ({
+  ...center,
+  areaManager: center.areaManager !== undefined ? center.areaManager : (center.areaClusterManager || ''),
+  clusterManager: center.clusterManager !== undefined ? center.clusterManager : '',
+  placementApplicable: center.placementApplicable || '',
+  placementCoordinator: center.placementCoordinator || '',
+  seniorManagerPlacement: center.seniorManagerPlacement || '',
+  nationalHeadPlacement: center.nationalHeadPlacement || '',
+});
+
+// Find what actually changed between the original and the edited center
+const buildChangedFields = (center, original) => {
+  const changedFields = {};
+  TRACK_FIELDS.forEach(field => {
+    if (center[field] !== original[field]) {
+      changedFields[field] = { old: original[field], new: center[field] };
+    }
+  });
+  return changedFields;
+};
+
+const buildEditRequest = (center, createdBy, changedFields) => ({
+  ...center,
+  editRequestBy: createdBy,
+  editRequestDate: new Date().toLocaleDateString('en-GB'),
+  editApprovalStatus: 'pending',
+  changedFields
+});
+
+// Returns the payload for the PUT call, or null when an audit user submitted without any change
+const buildUpdateData = (center, originalCenter, auditUserMode, createdBy) => {
+  if (!auditUserMode) return withAllFields(center);
+  // originalCenter missing - still submit as pending without diff
+  if (!originalCenter) return buildEditRequest(center, createdBy, {});
+  const changedFields = buildChangedFields(center, originalCenter);
+  if (Object.keys(changedFields).length === 0) return null;
+  return buildEditRequest(center, createdBy, changedFields);
 };
 
 const CenterManagement = ({ auditUserMode = false, createdBy = '', defaultOption = '' }) => {
@@ -309,7 +352,7 @@ const CenterManagement = ({ auditUserMode = false, createdBy = '', defaultOption
       const data = await res.json();
       if (res.ok) {
         setBulkResult(data.results);
-        loadCenters();
+        void loadCenters();
       } else {
         alert('Error: ' + (data.error || 'Upload failed'));
       }
@@ -324,7 +367,7 @@ const CenterManagement = ({ auditUserMode = false, createdBy = '', defaultOption
   const [originalCenter, setOriginalCenter] = useState(null); // Track original before edit
 
   useEffect(() => {
-    loadCenters();
+    void loadCenters();
   }, []);
 
   const loadCenters = async () => {
@@ -399,7 +442,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
           centerType: '',
           location: '',
         });
-        loadCenters();
+        void loadCenters();
       } else {
         alert('Failed to add center');
       }
@@ -448,7 +491,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
 
       if (response.ok) {
         alert('✅ Center deleted successfully!');
-        loadCenters();
+        void loadCenters();
       } else {
         const errorMsg = responseData?.error || responseData?.message || 'Unknown error';
         console.error('Delete failed:', errorMsg);
@@ -465,55 +508,17 @@ const code = newCenter.centerCode.trim().toUpperCase();
       console.log('📝 Updating center:', center);
       console.log('🎯 Center Type being sent:', center.centerType);
 
-      // Audit User ke liye - sirf changed fields track karo
-      // Ensure all fields are included (including new ones that may be missing from old data)
-      const centerWithAllFields = {
-        ...center,
-        areaManager: center.areaManager !== undefined ? center.areaManager : (center.areaClusterManager || ''),
-        clusterManager: center.clusterManager !== undefined ? center.clusterManager : '',
-        placementApplicable: center.placementApplicable || '',
-        placementCoordinator: center.placementCoordinator || '',
-        seniorManagerPlacement: center.seniorManagerPlacement || '',
-        nationalHeadPlacement: center.nationalHeadPlacement || '',
-      };
-      let updateData = centerWithAllFields;
+      // Audit User ke liye - sirf changed fields track karo (see buildUpdateData)
       console.log('🔍 Original center:', originalCenter);
-      console.log('🔍 Updated center:', centerWithAllFields);
-      if (auditUserMode && originalCenter) {
-        // Find what actually changed
-        const changedFields = {};
-        const trackFields = ['centerName', 'projectName', 'zmName', 'regionHeadName', 
-                             'areaManager', 'clusterManager', 'centerHeadName', 'centerType', 'location'];
-        trackFields.forEach(field => {
-          if (center[field] !== originalCenter[field]) {
-            changedFields[field] = { old: originalCenter[field], new: center[field] };
-          }
-        });
+      console.log('🔍 Updated center:', withAllFields(center));
+      const updateData = buildUpdateData(center, originalCenter, auditUserMode, createdBy);
 
-        // If no changes detected, warn user
-        if (Object.keys(changedFields).length === 0) {
-          alert('⚠️ No changes detected! Please modify at least one field before submitting.');
-          return;
-        }
-
-        updateData = {
-          ...center,
-          editRequestBy: createdBy,
-          editRequestDate: new Date().toLocaleDateString('en-GB'),
-          editApprovalStatus: 'pending',
-          changedFields: changedFields
-        };
-      } else if (auditUserMode && !originalCenter) {
-        // originalCenter missing - still submit as pending without diff
-        updateData = {
-          ...center,
-          editRequestBy: createdBy,
-          editRequestDate: new Date().toLocaleDateString('en-GB'),
-          editApprovalStatus: 'pending',
-          changedFields: {}
-        };
+      // If no changes detected, warn user
+      if (updateData === null) {
+        alert('⚠️ No changes detected! Please modify at least one field before submitting.');
+        return;
       }
-      
+
       const response = await fetch(`${API_URL}/api/centers/${center._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -529,7 +534,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
           alert('✅ Center updated successfully!');
         }
         setEditingId(null);
-        loadCenters();
+        void loadCenters();
       } else {
         alert('Failed to update center');
       }
@@ -656,7 +661,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
         
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
+          <button type="button"
             onClick={handleAdd}
             style={{
               marginTop: '5px',
@@ -676,7 +681,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
           {/* Bulk Upload from Excel */}
           <div style={{ marginTop: '5px' }}>
             <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
-            <button
+            <button type="button"
               onClick={() => fileInputRef.current && fileInputRef.current.click()}
               disabled={bulkLoading}
               style={{
@@ -721,7 +726,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
                 <strong>Errors:</strong> {bulkResult.errors.map(e => `${e.code}: ${e.reason}`).join(', ')}
               </div>
             )}
-            <button onClick={() => setBulkResult(null)} style={{ marginTop: '10px', padding: '4px 12px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+            <button type="button" onClick={() => setBulkResult(null)} style={{ marginTop: '10px', padding: '4px 12px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
               Dismiss
             </button>
           </div>
@@ -739,7 +744,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
               onChange={e => setCenterSearch(e.target.value)}
               style={{width: '100%', padding: '10px 36px 10px 14px', border: '2px solid #667eea', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box'}} />
             {centerSearch && (
-              <button onClick={() => setCenterSearch('')}
+              <button type="button" onClick={() => setCenterSearch('')}
                 style={{position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#999'}}>✕</button>
             )}
           </div>

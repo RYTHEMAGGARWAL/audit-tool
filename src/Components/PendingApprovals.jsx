@@ -144,7 +144,7 @@ const PendingReportRow = ({ report, index, onViewRemarks }) => {
       </td>
       <td style={{ textAlign: 'center', fontSize: '13px' }}>{report.submittedDate || '-'}</td>
       <td style={{ textAlign: 'center', padding: '10px' }}>
-        <button
+        <button type="button"
           onClick={() => onViewRemarks(report)}
           style={{
             background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
@@ -317,7 +317,7 @@ const RemarksDetailModal = ({ r, loading, onClose, onApprove, onReject }) => (
           <h3 style={{ margin: 0, fontSize: '20px' }}>📊 Complete Audit Report - Detailed View</h3>
           <p style={{ margin: '5px 0 0', fontSize: '14px', opacity: 0.9 }}>{r.centerName} ({r.centerCode})</p>
         </div>
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+        <button type="button" onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
       </div>
 
       <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', overflowX: 'auto' }}>
@@ -332,18 +332,18 @@ const RemarksDetailModal = ({ r, loading, onClose, onApprove, onReject }) => (
       </div>
 
       <div style={{ padding: '15px 25px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={onClose} style={{ background: '#999', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+        <button type="button" onClick={onClose} style={{ background: '#999', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
           ← Back
         </button>
         <div style={{ display: 'flex', gap: '15px' }}>
-          <button
+          <button type="button"
             onClick={onReject}
             disabled={loading}
             style={{ background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)', color: 'white', border: 'none', padding: '12px 35px', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '15px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(244, 67, 54, 0.3)', opacity: loading ? 0.6 : 1 }}
           >
             ✕ Reject Report
           </button>
-          <button
+          <button type="button"
             onClick={onApprove}
             disabled={loading}
             style={{ background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)', color: 'white', border: 'none', padding: '12px 35px', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '15px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)', opacity: loading ? 0.6 : 1 }}
@@ -355,6 +355,62 @@ const RemarksDetailModal = ({ r, loading, onClose, onApprove, onReject }) => (
     </div>
   </div>
 );
+
+// Fetch live center data to get latest fields (areaManager, placementCoordinator etc.)
+const fetchCenterInfo = async (centerCode) => {
+  try {
+    const cRes = await fetch(`${API_URL}/api/centers`);
+    if (!cRes.ok) return {};
+    const centers = await cRes.json();
+    return centers.find(c => c.centerCode === centerCode) || {};
+  } catch (e) {
+    console.log('Center fetch failed, using report data');
+    return {};
+  }
+};
+
+const CHECKPOINT_IDS = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
+
+// For MongoDB, checkpoint data is directly in report object
+const collectCheckpointData = (report) => {
+  const data = {};
+  CHECKPOINT_IDS.forEach(id => {
+    if (report[id]) data[id] = report[id];
+  });
+  return data;
+};
+
+// Prefer the live center value, fall back to the report's own value, then to a default
+const pickField = (centerInfo, report, key, fallback = '') => centerInfo[key] || report[key] || fallback;
+
+const buildRemarksData = (report, centerInfo) => ({
+  ...report,
+  centerName: report.centerName,
+  centerCode: report.centerCode,
+  centerType: report.centerType || 'CDC',
+  projectName: pickField(centerInfo, report, 'projectName'),
+  zmName: pickField(centerInfo, report, 'zmName'),
+  regionHeadName: pickField(centerInfo, report, 'regionHeadName'),
+  areaClusterManager: pickField(centerInfo, report, 'areaClusterManager'),
+  areaManager: centerInfo.areaManager || report.areaManager || centerInfo.areaClusterManager || report.areaClusterManager || '',
+  clusterManager: pickField(centerInfo, report, 'clusterManager'),
+  placementCoordinator: pickField(centerInfo, report, 'placementCoordinator'),
+  seniorManagerPlacement: pickField(centerInfo, report, 'seniorManagerPlacement'),
+  nationalHeadPlacement: pickField(centerInfo, report, 'nationalHeadPlacement'),
+  placementApplicable: pickField(centerInfo, report, 'placementApplicable', 'yes'),
+  centerHeadName: pickField(centerInfo, report, 'centerHeadName'),
+  location: pickField(centerInfo, report, 'location'),
+  auditedBy: report.auditedBy || '',
+  auditPeriod: report.auditPeriod || '',
+  financialYear: report.financialYear || 'FY26',
+  auditDate: report.auditDateString || report.auditDate || '',
+  grandTotal: report.grandTotal || '0',
+  data: collectCheckpointData(report),
+  customRemarks: report.remarksText || '',
+  overallRemarks: report.remarksText || '',
+  centerRemarksBy: report.centerRemarksBy || '',
+  centerRemarksDate: report.centerRemarksDate || ''
+});
 
 const PendingApprovals = ({ onApprovalUpdate }) => {
   const [pendingReports, setPendingReports] = useState([]);
@@ -407,55 +463,8 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
   const handleViewRemarks = async (report) => {
     try {
       console.log('\n📋 ========== VIEW REMARKS CLICKED ==========');
-
-      // Fetch live center data to get latest fields (areaManager, placementCoordinator etc.)
-      let centerInfo = {};
-      try {
-        const cRes = await fetch(`${API_URL}/api/centers`);
-        if (cRes.ok) {
-          const centers = await cRes.json();
-          const found = centers.find(c => c.centerCode === report.centerCode);
-          if (found) centerInfo = found;
-        }
-      } catch(e) { console.log('Center fetch failed, using report data'); }
-
-      // For MongoDB, checkpoint data is directly in report object
-      const checkpointIds = ['FO1','FO2','FO3','FO4','FO5','DP1','DP2','DP3','DP4','DP5','DP6','DP7','DP8','DP9','DP10','DP11','PP1','PP2','PP3','PP4','MP1','MP2','MP3','MP4','MP5','MP6','MP7'];
-      const data = {};
-      checkpointIds.forEach(id => {
-        if (report[id]) data[id] = report[id];
-      });
-
-      const remarksData = {
-        ...report,
-        centerName: report.centerName,
-        centerCode: report.centerCode,
-        centerType: report.centerType || 'CDC',
-        projectName: centerInfo.projectName || report.projectName || '',
-        zmName: centerInfo.zmName || report.zmName || '',
-        regionHeadName: centerInfo.regionHeadName || report.regionHeadName || '',
-        areaClusterManager: centerInfo.areaClusterManager || report.areaClusterManager || '',
-        areaManager: centerInfo.areaManager || report.areaManager || centerInfo.areaClusterManager || report.areaClusterManager || '',
-        clusterManager: centerInfo.clusterManager || report.clusterManager || '',
-        placementCoordinator: centerInfo.placementCoordinator || report.placementCoordinator || '',
-        seniorManagerPlacement: centerInfo.seniorManagerPlacement || report.seniorManagerPlacement || '',
-        nationalHeadPlacement: centerInfo.nationalHeadPlacement || report.nationalHeadPlacement || '',
-        placementApplicable: centerInfo.placementApplicable || report.placementApplicable || 'yes',
-        centerHeadName: centerInfo.centerHeadName || report.centerHeadName || '',
-        location: centerInfo.location || report.location || '',
-        auditedBy: report.auditedBy || '',
-        auditPeriod: report.auditPeriod || '',
-        financialYear: report.financialYear || 'FY26',
-        auditDate: report.auditDateString || report.auditDate || '',
-        grandTotal: report.grandTotal || '0',
-        data: data,
-        customRemarks: report.remarksText || '',
-        overallRemarks: report.remarksText || '',
-        centerRemarksBy: report.centerRemarksBy || '',
-        centerRemarksDate: report.centerRemarksDate || ''
-      };
-
-      setSelectedRemarks(remarksData);
+      const centerInfo = await fetchCenterInfo(report.centerCode);
+      setSelectedRemarks(buildRemarksData(report, centerInfo));
       setShowRemarksModal(true);
     } catch (e) {
       console.error('❌ Error in handleViewRemarks:', e);
@@ -550,7 +559,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
   };
 
   useEffect(() => {
-    loadPendingReports();
+    void loadPendingReports();
   }, []);
 
   return (
@@ -561,17 +570,18 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
         <span>
           📊 Pending Reports: {pendingReports.length}
         </span>
-        <button onClick={loadPendingReports} style={{ padding: '8px 16px' }}>
+        <button type="button" onClick={loadPendingReports} style={{ padding: '8px 16px' }}>
           🔄 Refresh
         </button>
       </div>
 
       <div className="view-user">
-        {loading ? (
+        {loading && (
           <p style={{ textAlign: 'center', padding: '40px', color: '#667eea' }}>
             Loading pending reports...
           </p>
-        ) : pendingReports.length === 0 ? null : (
+        )}
+        {!loading && pendingReports.length > 0 && (
           <div className="table-wrapper" style={{ marginTop: '20px', overflowX: 'auto', overflowY: 'auto', maxHeight: '75vh' }}>
             <table style={{ minWidth: '1600px' }}>
               <thead>
@@ -594,7 +604,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
               </thead>
               <tbody>
                 {pendingReports.map((report, index) => (
-                  <PendingReportRow key={index} report={report} index={index} onViewRemarks={handleViewRemarks} />
+                  <PendingReportRow key={report._id || report.centerCode} report={report} index={index} onViewRemarks={handleViewRemarks} />
                 ))}
               </tbody>
             </table>

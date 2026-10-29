@@ -34,7 +34,6 @@
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-  animation: slideInDown 0.5s ease;
 }
 
 .status-bar span {
@@ -52,7 +51,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   backdrop-filter: blur(10px);
 }
 
@@ -80,7 +79,7 @@
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   position: relative;
   overflow: hidden;
 }
@@ -95,7 +94,6 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.3);
   transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
 }
 
 .options button:hover::before {
@@ -122,7 +120,6 @@
   padding: 20px 15px;
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-  animation: fadeInUp 0.5s ease;
   width: 100%;
   box-sizing: border-box;
 }
@@ -187,7 +184,7 @@
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   background: white;
 }
 
@@ -205,7 +202,6 @@
 
 .form-grid input.error {
   border-color: #f44336;
-  animation: shake 0.3s ease;
 }
 
 .form-grid small {
@@ -260,7 +256,7 @@
   cursor: pointer;
   font-size: 15px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -276,7 +272,6 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.4);
   transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
 }
 
 .btn:hover::after {
@@ -394,7 +389,7 @@ thead th:last-child {
 
 tbody tr {
   border-bottom: 1px solid #e0e0e0;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 tbody tr:nth-child(even) {
@@ -430,7 +425,7 @@ tbody td select {
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
 tbody td input:focus,
@@ -536,7 +531,7 @@ tbody td input[disabled] {
   font-size: 14px;
   cursor: pointer;
   background: white;
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .select-user select:focus {
@@ -585,7 +580,6 @@ tbody td input[disabled] {
   font-weight: 600;
   font-size: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-  animation: slideInRight 0.4s ease;
   max-width: 400px;
 }
 
@@ -850,7 +844,6 @@ select:focus-visible {
   border-radius: 0 8px 8px 8px;
   box-shadow: 0 8px 32px rgba(102,126,234,0.18), 0 2px 8px rgba(0,0,0,0.1);
   overflow: hidden;
-  animation: dropDown 0.18s ease;
   z-index: 9999;
 }
 
@@ -1032,4 +1025,29 @@ select:focus-visible {
   border-color: #667eea;
   outline: none;
   background: #f0f4ff;
+}
+
+/* Motion only for users who have not asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .status-bar {
+    animation: slideInDown 0.5s ease;
+  }
+  .options button::before {
+    transition: width 0.6s, height 0.6s;
+  }
+  .modify-user {
+    animation: fadeInUp 0.5s ease;
+  }
+  .form-grid input.error {
+    animation: shake 0.3s ease;
+  }
+  .btn::after {
+    transition: width 0.6s, height 0.6s;
+  }
+  .message {
+    animation: slideInRight 0.4s ease;
+  }
+  .audit-excel-dropdown {
+    animation: dropDown 0.18s ease;
+  }
 }

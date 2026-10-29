@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
 import './RoleDashboard.css';
 
+// Full-cover transparent button behind a modal: clicking the backdrop closes it
+const BACKDROP_BTN = { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 'none', background: 'transparent', cursor: 'default' };
+
 const ALLOWED_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster Manager','Senior Manager Placement','National Head Placement'];
 const ROLE_META = {
   'Zonal Manager':            { icon:'🗺️', color:'#1a237e' },
@@ -141,8 +144,9 @@ const ReportModal = ({ report, onClose }) => {
   const tdS={padding:'7px 6px',fontSize:'12px',color:'#333',border:'1px solid #e0e0e0',textAlign:'center',verticalAlign:'middle'};
   const tdL={...tdS,textAlign:'left'};
   return (
-    <div role="presentation" onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
-      <div style={{background:'white',borderRadius:'12px',width:'100%',maxWidth:'1100px',maxHeight:'92vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
+      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => onClose()} style={BACKDROP_BTN} />
+      <div style={{position:'relative',background:'white',borderRadius:'12px',width:'100%',maxWidth:'1100px',maxHeight:'92vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
         <div style={{background:'linear-gradient(135deg,#11998e,#38ef7d)',padding:'14px 22px',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
           <div>
             <h3 style={{margin:0,fontSize:'19px',fontWeight:'700',color:'white'}}>📊 Complete Audit Report</h3>
@@ -222,11 +226,9 @@ const DashboardFiltersBar = ({ filterFY, setFilterFY, filterStatus, setFilterSta
 const StatCardsGrid = ({ cards, filterAudit, onCardClick }) => (
   <div className="rdb-stat-grid">
     {cards.map((s)=>(
-      <div key={s.label}
-        role="button" tabIndex={0}
+      <button key={s.label} type="button"
         className={`rdb-stat-card ${s.cls}${filterAudit===s.auditKey&&s.auditKey&&s.auditKey!=='All'?' rdb-stat-active':''}`}
         onClick={()=>onCardClick(s.auditKey)}
-        onKeyDown={e=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); onCardClick(s.auditKey); } }}
         style={{cursor:'pointer'}}>
         <div className="rdb-stat-icon-wrap">{s.icon}</div>
         <div className="rdb-stat-content">
@@ -238,7 +240,7 @@ const StatCardsGrid = ({ cards, filterAudit, onCardClick }) => (
           </div>
         </div>
         <div className="rdb-stat-arrow">›</div>
-      </div>
+      </button>
     ))}
   </div>
 );
@@ -561,10 +563,10 @@ const RoleDashboard = () => {
   useEffect(() => {
     if (!loggedUser?.username) { alert('Unauthorized!'); navigate('/'); return; }
     if (!ALLOWED_ROLES.includes(role)) { alert('Unauthorized!'); navigate('/'); return; }
-    loadReports();
+    void loadReports();
   }, []);
 
-  useEffect(() => { loadReports(); }, [filterFY, filterStatus, filterCT]);
+  useEffect(() => { void loadReports(); }, [filterFY, filterStatus, filterCT]);
 
   const loadReports = async () => {
     try {

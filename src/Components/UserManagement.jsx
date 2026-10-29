@@ -1272,19 +1272,20 @@ const UserPickerRow = ({ user: u, selected, onSelect }) => {
   const roleColor = getRoleColor(role);
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={() => onSelect(u)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect(u);
-        }
-      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        font: 'inherit',
+        color: 'inherit',
+        textAlign: 'inherit',
+        margin: 0,
+        width: '100%',
+        boxSizing: 'border-box',
+        borderTop: 'none',
+        borderRight: 'none',
         padding: '12px 16px',
         cursor: 'pointer',
         borderBottom: '1px solid #f0f0f0',
@@ -1352,7 +1353,7 @@ const UserPickerRow = ({ user: u, selected, onSelect }) => {
         </span>
       )}
       {selected && <span style={{ color: '#667eea', fontSize: '18px', flexShrink: 0 }}>✓</span>}
-    </div>
+    </button>
   );
 };
 
@@ -1537,10 +1538,10 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   const [resetTarget, setResetTarget] = useState(null);
 
   useEffect(() => {
-    loadCenters();
+    void loadCenters();
   }, []);
   useEffect(() => {
-    loadUsersData();
+    void loadUsersData();
   }, []);
   useDefaultOption(defaultOption, setActiveOption, loadUsersData);
 

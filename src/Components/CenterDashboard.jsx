@@ -4,6 +4,279 @@ import { API_URL } from '../config';
 import './Admin.css';
 
 
+// Pure score/status helpers (no component state) — kept at module scope
+const getGrandTotalColor = (report) => {
+  const status = getAuditStatus(report);
+  if (status === 'Compliant') return '#28a745';
+  if (status === 'Amber') return '#ffc107';
+  return '#dc3545';
+};
+
+const getAuditStatus = (report) => {
+  const foMax = report.placementApplicable === 'no' ? 35 : 30;
+  const dpMax = report.placementApplicable === 'no' ? 45 : 40;
+  const ppMax = 15;
+  const mpMax = report.placementApplicable === 'no' ? 20 : 15;
+  
+  const foPercent = (Number.parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
+  const dpPercent = (Number.parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
+  const ppPercent = report.placementApplicable === 'no' ? null : (Number.parseFloat(report.placementScore || 0) / ppMax) * 100;
+  const mpPercent = (Number.parseFloat(report.managementScore || 0) / mpMax) * 100;
+  
+  const areas = [
+    { name: 'FO', percent: foPercent },
+    { name: 'DP', percent: dpPercent },
+    ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
+    { name: 'MP', percent: mpPercent }
+  ].filter(Boolean);
+  
+  const red = areas.filter(a => a.percent < 65).length;
+  const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
+  const green = areas.filter(a => a.percent >= 80).length;
+  
+  if (red > 0) return 'Non-Compliant';
+  if (amber >= 3) return 'Non-Compliant';
+  if (amber === 2) return 'Amber';
+  if (green === areas.length) return 'Compliant';
+  if (amber === 1) return 'Compliant';
+  return 'Amber';
+};
+
+const getAreaScoreInfo = (score, maxScore) => {
+  if (score === 'NA') return { status: 'NA', color: '#999' };
+  const numScore = Number.parseFloat(score || 0);
+  const percent = (numScore / maxScore) * 100;
+  
+  if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
+  if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
+  return { status: 'Non-Compliant', color: '#dc3545' };
+};
+
+// Date / deadline / checkpoint helpers (pure, no component state)
+const HOLIDAYS = {
+  2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
+         '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
+  2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
+         '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
+         '2026-11-24','2026-12-25']
+};
+
+const isWorkingDay = (date) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 0 || day === 6) return false;
+  const ds = d.toISOString().split('T')[0];
+  return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+};
+
+const getRemainingWorkingDays = (deadlineDate) => {
+  if (!deadlineDate) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
+  let count = 0; let d = new Date(today);
+  if (today > deadline) {
+    while (d > deadline) { d = new Date(d.setDate(d.getDate() - 1)); if (isWorkingDay(d)) count++; }
+    return -count;
+  }
+  while (d < deadline) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
+  return count;
+};
+
+// Parses "DD/MM/YYYY, HH:MM:SS" style strings into a Date, or null if invalid
+const parseIndianDate = (dateStr) => {
+  if (!dateStr) return null;
+  try {
+    const parts = dateStr.split(',')[0].trim().split('/');
+    if (parts.length !== 3) return null;
+    const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    return isNaN(parsed) ? null : parsed;
+  } catch (e) {
+    return null;
+  }
+};
+
+// Counts working days strictly between two dates (exclusive of start)
+const countWorkingDaysBetween = (startDate, endDate) => {
+  let d = new Date(startDate); d.setHours(0, 0, 0, 0);
+  const end = new Date(endDate); end.setHours(0, 0, 0, 0);
+  let days = 0;
+  while (d < end) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) days++; }
+  return days;
+};
+
+// Overdue / due today / warning / ok countdown badge
+const getCountdownBadge = ({ rem, warnAt, okEmoji, subLabel }) => {
+  if (rem === null) return null;
+  if (rem < 0)      return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+  if (rem === 0)    return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
+  if (rem <= warnAt) return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: subLabel || '' };
+  return               { text: `${okEmoji} ${rem}d left`,           color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: subLabel || '' };
+};
+
+// Green/orange/red style based on how many days something took
+const getSpeedStyle = (days, goodMax, warnMax) => {
+  if (days <= goodMax) return { color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50' };
+  if (days <= warnMax) return { color: '#e65100', bg: '#fff3e0', border: '#ff9800' };
+  return { color: '#dc3545', bg: '#ffebee', border: '#dc3545' };
+};
+
+// Center deadline badge (7 working days from email send)
+const getCenterDeadlineBadge = (report) => {
+  if (!report.emailSent) return null;
+
+  // Agar remarks submit ho gayi — kitne din mein kiya calculate karo
+  if (report.centerHeadRemarksLocked && report.centerRemarksDate && report.emailSentDate) {
+    const emailDate = parseIndianDate(report.emailSentDate);
+    const remarksDate = parseIndianDate(report.centerRemarksDate);
+    if (emailDate && remarksDate) {
+      const days = countWorkingDaysBetween(emailDate, remarksDate);
+      return { text: `✅ Done in ${days}d`, ...getSpeedStyle(days, 5, 7), sub: report.centerRemarksDate?.split(',')[0] || '' };
+    }
+    return { text: '✅ Remarks Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: report.centerRemarksDate?.split(',')[0] || '' };
+  }
+
+  // Remarks not yet submitted — show countdown
+  if (!report.centerDeadline) return null;
+  const rem = getRemainingWorkingDays(report.centerDeadline);
+  return getCountdownBadge({
+    rem,
+    warnAt: 2,
+    okEmoji: '✅',
+    subLabel: `by ${report.centerDeadlineString || ''}`
+  });
+};
+// ========================================
+
+// ========================================
+// Edit request 3 working days validity
+// ========================================
+const getEditRequestDeadline = (report) => {
+  if (!report.centerHeadRemarksLocked || !report.centerRemarksDate) return null;
+  let remarksDate = null;
+  try {
+    const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
+    if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+  } catch(e) {}
+  if (!remarksDate || isNaN(remarksDate)) return null;
+  // Add 3 working days
+  let d = new Date(remarksDate); d.setHours(0,0,0,0);
+  let count = 0;
+  while (count < 3) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
+  return d;
+};
+
+const isEditRequestExpired = (report) => {
+  const dl = getEditRequestDeadline(report);
+  if (!dl) return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return today > dl;
+};
+
+const getEditRequestRemainingDays = (report) => {
+  const dl = getEditRequestDeadline(report);
+  return dl ? getRemainingWorkingDays(dl) : null;
+};
+// ========================================
+
+// Dynamic checkpoint data based on placement applicable AND centerType
+// MP6, MP7 are DTV-only — not shown for CDC/SDC
+const getCheckpointData = (placementApplicable, centerType) => {
+  const isPlacementNA = placementApplicable === 'no';
+  const isDTV = (centerType || '').toUpperCase() === 'DTV';
+  const pick = (cond, whenTrue, whenFalse) => cond ? whenTrue : whenFalse;
+
+  return {
+    'Front Office': [
+      { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: pick(isPlacementNA, 10.5, 9) },
+      { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 7, 6) },
+      { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
+      { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: pick(isPlacementNA, 14, 12) },
+      { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: pick(isPlacementNA, 3.5, 3) }
+    ],
+    'Delivery Process': [
+      { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
+      { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+      { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
+      { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
+      { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+      { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
+      { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+      { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
+      { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+      { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
+      { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) }
+    ],
+    'Placement Process': pick(isPlacementNA, [], [
+      { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
+      { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
+      { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
+      { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
+    ]),
+    'Management Process': [
+      { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
+      { id: 'MP2', name: 'Log book for Genset & Vehicle (Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 5, 3.00) },
+      { id: 'MP3', name: 'TIRM details register', weightage: 30, maxScore: pick(isPlacementNA, 7.5, 4.50) },
+      { id: 'MP4', name: 'Availability and requirement of Biometric as per MOU', weightage: 25, maxScore: pick(isPlacementNA, 6.25, 3.75) },
+      { id: 'MP5', name: 'Physical asset verification', weightage: 10, maxScore: pick(isPlacementNA, 2.5, 1.50) },
+      ...pick(isDTV, [
+        { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
+        { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) }
+      ], [])
+    ]
+  };
+};
+
+// Max scores per area, adjusted when placement is not applicable
+const getReportScoreMax = (report) => {
+  const isNA = report.placementApplicable === 'no';
+  return {
+    foMax: isNA ? 35 : 30,
+    dpMax: isNA ? 45 : 40,
+    ppMax: 15,
+    mpMax: isNA ? 20 : 15,
+  };
+};
+
+// Placement area's status/color, or "NA" when placement isn't applicable
+const getPlacementAreaData = (report, ppMax) => {
+  if (report.placementApplicable === 'no') return { status: 'NA', color: '#999' };
+  return getAreaScoreInfo(report.placementScore, ppMax);
+};
+
+// Center-type chip colors
+const getCenterTypeBadgeStyle = (centerType) => {
+  if (centerType === 'CDC') return { background: '#e3f2fd', color: '#1976d2' };
+  if (centerType === 'SDC') return { background: '#fff3e0', color: '#e65100' };
+  return { background: '#f1f8e9', color: '#2e7d32' };
+};
+
+const GRAND_BADGE_BG = { '#28a745': '#d4edda', '#ffc107': '#fff3cd' };
+
+const REPORT_STATUS_BADGES = {
+  Closed: { bg: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', label: '🔒 Closed' },
+  Approved: { bg: '#d4edda', color: '#28a745', border: '1px solid #28a745', label: '✅ Approved' },
+  'Pending with Supervisor': { bg: '#fff3cd', color: '#e65100', border: '1px solid #ffc107', label: '⏳ Pending' },
+};
+const DEFAULT_STATUS_BADGE = { bg: '#f8f9fa', color: '#999', border: '1px solid #ddd' };
+
+const ReportStatusBadge = ({ status }) => {
+  const known = REPORT_STATUS_BADGES[status];
+  const look = known || DEFAULT_STATUS_BADGE;
+  return (
+    <span style={{
+      padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
+      fontWeight: '600', background: look.bg, color: look.color,
+      border: look.border, display: 'inline-block'
+    }}>{known ? known.label : `📝 ${status || 'Not Submitted'}`}</span>
+  );
+};
+
+const progressBarColor = pct => {
+  if (pct >= 85) return '#dc3545';
+  if (pct >= 60) return '#f59e0b';
+  return '#16a34a';
+};
+
 // One row in the center's "My Reports" table — extracted so the parent's
 // render function doesn't carry all this row's branching in its own complexity.
 const MyReportRow = ({
@@ -49,7 +322,7 @@ const MyReportRow = ({
                             borderRadius: '6px', 
                             fontSize: '12px', 
                             fontWeight: '600', 
-                            background: grandColor === '#28a745' ? '#d4edda' : grandColor === '#ffc107' ? '#fff3cd' : '#f8d7da',
+                            background: GRAND_BADGE_BG[grandColor] || '#f8d7da',
                             color: grandColor
                           }}>
                             {grandStatus}
@@ -58,31 +331,7 @@ const MyReportRow = ({
 
                         {/* REPORT STATUS - workflow based */}
                         <td style={{ padding: '10px', textAlign: 'center', background: '#f8f9ff' }}>
-                          {report.currentStatus === 'Closed' ? (
-                            <span style={{
-                              padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
-                              fontWeight: '600', background: '#f1f5f9', color: '#64748b',
-                              border: '1px solid #cbd5e1', display: 'inline-block'
-                            }}>🔒 Closed</span>
-                          ) : report.currentStatus === 'Approved' ? (
-                            <span style={{
-                              padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
-                              fontWeight: '600', background: '#d4edda', color: '#28a745',
-                              border: '1px solid #28a745', display: 'inline-block'
-                            }}>✅ Approved</span>
-                          ) : report.currentStatus === 'Pending with Supervisor' ? (
-                            <span style={{
-                              padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
-                              fontWeight: '600', background: '#fff3cd', color: '#e65100',
-                              border: '1px solid #ffc107', display: 'inline-block'
-                            }}>⏳ Pending</span>
-                          ) : (
-                            <span style={{
-                              padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
-                              fontWeight: '600', background: '#f8f9fa', color: '#999',
-                              border: '1px solid #ddd', display: 'inline-block'
-                            }}>📝 {report.currentStatus || 'Not Submitted'}</span>
-                          )}
+                          <ReportStatusBadge status={report.currentStatus} />
                         </td>
 
                         {/* ⏰ REMARKS DEADLINE — 7 working days */}
@@ -139,7 +388,7 @@ const MyReportRow = ({
                                     const rem = getRemainingWorkingDays(report.centerDeadline);
                                     const used = Math.max(0, total - (rem || 0));
                                     const pct = Math.min(100, (used / total) * 100);
-                                    const barColor = pct >= 85 ? '#dc3545' : pct >= 60 ? '#f59e0b' : '#16a34a';
+                                    const barColor = progressBarColor(pct);
                                     return (
                                       <div style={{ width: '90px', height: '5px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
                                         <div style={{
@@ -160,7 +409,7 @@ const MyReportRow = ({
 
                         <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexDirection: 'column', alignItems: 'center' }}>
-                            <button onClick={() => handleViewReport(report)} style={{ padding: '8px 16px', background: report.currentStatus === 'Closed' ? '#6c757d' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+                            <button type="button" onClick={() => handleViewReport(report)} style={{ padding: '8px 16px', background: report.currentStatus === 'Closed' ? '#6c757d' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
                               {report.currentStatus === 'Closed' ? '📋 View Report' : 'View Report'}
                             </button>
                             {report.currentStatus !== 'Closed' && report.auditStatus !== 'Closed' && isLocked && !isRequestPending && !editRequestStatus[report._id]?.editedOnce && (() => {
@@ -175,7 +424,7 @@ const MyReportRow = ({
                               }
                               return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
-                                  <button onClick={() => handleRequestEdit(report._id)} style={{ padding: '8px 14px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+                                  <button type="button" onClick={() => handleRequestEdit(report._id)} style={{ padding: '8px 14px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
                                     ✏️ Request Edit
                                   </button>
                                   {remDays !== null && (
@@ -323,8 +572,8 @@ const SubmitObservationsFooter = ({ selectedReport, editRequestStatus, setShowMo
                         <div style={{ fontWeight: '700', color: '#92400e' }}>🔒 Remarks Locked</div>
                         <div style={{ color: '#b45309', fontSize: '12px', marginTop: '3px' }}>You have used 0 of your 1 allowed edit</div>
                       </div>
-                      <button
-                        onClick={() => { setShowModal(false); handleRequestEdit(selectedReport._id); }}
+                      <button type="button"
+                        onClick={() => { setShowModal(false); void handleRequestEdit(selectedReport._id); }}
                         style={{ width: '100%', padding: '16px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '15px' }}
                       >
                         ✏️ Request Edit Permission
@@ -352,7 +601,7 @@ const SubmitObservationsFooter = ({ selectedReport, editRequestStatus, setShowMo
                   );
                 }
                 return (
-                  <button
+                  <button type="button"
                     onClick={handleSubmitObservations}
                     disabled={saving}
                     style={{ width: '100%', padding: '18px', background: saving ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '18px', fontWeight: '700' }}
@@ -380,52 +629,6 @@ const CenterDashboard = () => {
   // RED FLAG STATUS LOGIC
   // ========================================
   
-  const getGrandTotalColor = (report) => {
-    const status = getAuditStatus(report);
-    if (status === 'Compliant') return '#28a745';
-    if (status === 'Amber') return '#ffc107';
-    return '#dc3545';
-  };
-
-  const getAuditStatus = (report) => {
-    const foMax = report.placementApplicable === 'no' ? 35 : 30;
-    const dpMax = report.placementApplicable === 'no' ? 45 : 40;
-    const ppMax = 15;
-    const mpMax = report.placementApplicable === 'no' ? 20 : 15;
-    
-    const foPercent = (Number.parseFloat(report.frontOfficeScore || 0) / foMax) * 100;
-    const dpPercent = (Number.parseFloat(report.deliveryProcessScore || 0) / dpMax) * 100;
-    const ppPercent = report.placementApplicable === 'no' ? null : (Number.parseFloat(report.placementScore || 0) / ppMax) * 100;
-    const mpPercent = (Number.parseFloat(report.managementScore || 0) / mpMax) * 100;
-    
-    const areas = [
-      { name: 'FO', percent: foPercent },
-      { name: 'DP', percent: dpPercent },
-      ppPercent !== null ? { name: 'PP', percent: ppPercent } : null,
-      { name: 'MP', percent: mpPercent }
-    ].filter(Boolean);
-    
-    const red = areas.filter(a => a.percent < 65).length;
-    const amber = areas.filter(a => a.percent >= 65 && a.percent < 80).length;
-    const green = areas.filter(a => a.percent >= 80).length;
-    
-    if (red > 0) return 'Non-Compliant';
-    if (amber >= 3) return 'Non-Compliant';
-    if (amber === 2) return 'Amber';
-    if (green === areas.length) return 'Compliant';
-    if (amber === 1) return 'Compliant';
-    return 'Amber';
-  };
-
-  const getAreaScoreInfo = (score, maxScore) => {
-    if (score === 'NA') return { status: 'NA', color: '#999' };
-    const numScore = Number.parseFloat(score || 0);
-    const percent = (numScore / maxScore) * 100;
-    
-    if (percent >= 80) return { status: 'Compliant', color: '#28a745' };
-    if (percent >= 65) return { status: 'Amber', color: '#ffc107' };
-    return { status: 'Non-Compliant', color: '#dc3545' };
-  };
 
   // ========================================
   // END RED FLAG STATUS LOGIC
@@ -434,203 +637,6 @@ const CenterDashboard = () => {
   // ========================================
   // ⏰ WORKING DAYS & DEADLINE HELPERS
   // ========================================
-  const HOLIDAYS = {
-    2025: ['2025-01-26','2025-03-14','2025-04-14','2025-04-18','2025-05-01',
-           '2025-08-15','2025-08-16','2025-10-02','2025-10-20','2025-11-05','2025-12-25'],
-    2026: ['2026-01-26','2026-03-03','2026-04-03','2026-04-14','2026-05-01',
-           '2026-08-15','2026-09-04','2026-10-02','2026-10-19','2026-11-08',
-           '2026-11-24','2026-12-25']
-  };
-
-  const isWorkingDay = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    if (day === 0 || day === 6) return false;
-    const ds = d.toISOString().split('T')[0];
-    return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
-  };
-
-  const getRemainingWorkingDays = (deadlineDate) => {
-    if (!deadlineDate) return null;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const deadline = new Date(deadlineDate); deadline.setHours(0,0,0,0);
-    let count = 0; let d = new Date(today);
-    if (today > deadline) {
-      while (d > deadline) { d = new Date(d.setDate(d.getDate() - 1)); if (isWorkingDay(d)) count++; }
-      return -count;
-    }
-    while (d < deadline) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
-    return count;
-  };
-
-  // Parses "DD/MM/YYYY, HH:MM:SS" style strings into a Date, or null if invalid
-  const parseIndianDate = (dateStr) => {
-    if (!dateStr) return null;
-    try {
-      const parts = dateStr.split(',')[0].trim().split('/');
-      if (parts.length !== 3) return null;
-      const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-      return isNaN(parsed) ? null : parsed;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  // Counts working days strictly between two dates (exclusive of start)
-  const countWorkingDaysBetween = (startDate, endDate) => {
-    let d = new Date(startDate); d.setHours(0, 0, 0, 0);
-    const end = new Date(endDate); end.setHours(0, 0, 0, 0);
-    let days = 0;
-    while (d < end) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) days++; }
-    return days;
-  };
-
-  // Overdue / due today / warning / ok countdown badge
-  const getCountdownBadge = ({ rem, warnAt, okEmoji, subLabel }) => {
-    if (rem === null) return null;
-    if (rem < 0)      return { text: `⛔ ${Math.abs(rem)}d overdue`, color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
-    if (rem === 0)    return { text: '🚨 Due TODAY',                  color: '#dc3545', bg: '#ffebee', border: '#dc3545', sub: '' };
-    if (rem <= warnAt) return { text: `⚠️ ${rem}d left`,              color: '#e65100', bg: '#fff3e0', border: '#ff9800', sub: subLabel || '' };
-    return               { text: `${okEmoji} ${rem}d left`,           color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: subLabel || '' };
-  };
-
-  // Green/orange/red style based on how many days something took
-  const getSpeedStyle = (days, goodMax, warnMax) => {
-    if (days <= goodMax) return { color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50' };
-    if (days <= warnMax) return { color: '#e65100', bg: '#fff3e0', border: '#ff9800' };
-    return { color: '#dc3545', bg: '#ffebee', border: '#dc3545' };
-  };
-
-  // Center deadline badge (7 working days from email send)
-  const getCenterDeadlineBadge = (report) => {
-    if (!report.emailSent) return null;
-
-    // Agar remarks submit ho gayi — kitne din mein kiya calculate karo
-    if (report.centerHeadRemarksLocked && report.centerRemarksDate && report.emailSentDate) {
-      const emailDate = parseIndianDate(report.emailSentDate);
-      const remarksDate = parseIndianDate(report.centerRemarksDate);
-      if (emailDate && remarksDate) {
-        const days = countWorkingDaysBetween(emailDate, remarksDate);
-        return { text: `✅ Done in ${days}d`, ...getSpeedStyle(days, 5, 7), sub: report.centerRemarksDate?.split(',')[0] || '' };
-      }
-      return { text: '✅ Remarks Submitted', color: '#2e7d32', bg: '#e8f5e9', border: '#4caf50', sub: report.centerRemarksDate?.split(',')[0] || '' };
-    }
-
-    // Remarks not yet submitted — show countdown
-    if (!report.centerDeadline) return null;
-    const rem = getRemainingWorkingDays(report.centerDeadline);
-    return getCountdownBadge({
-      rem,
-      warnAt: 2,
-      okEmoji: '✅',
-      subLabel: `by ${report.centerDeadlineString || ''}`
-    });
-  };
-  // ========================================
-
-  // ========================================
-  // Edit request 3 working days validity
-  // ========================================
-  const getEditRequestDeadline = (report) => {
-    if (!report.centerHeadRemarksLocked || !report.centerRemarksDate) return null;
-    let remarksDate = null;
-    try {
-      const parts = report.centerRemarksDate.split(',')[0].trim().split('/');
-      if (parts.length === 3) remarksDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    } catch(e) {}
-    if (!remarksDate || isNaN(remarksDate)) return null;
-    // Add 3 working days
-    let d = new Date(remarksDate); d.setHours(0,0,0,0);
-    let count = 0;
-    while (count < 3) { d = new Date(d.setDate(d.getDate() + 1)); if (isWorkingDay(d)) count++; }
-    return d;
-  };
-
-  const isEditRequestExpired = (report) => {
-    const dl = getEditRequestDeadline(report);
-    if (!dl) return false;
-    const today = new Date(); today.setHours(0,0,0,0);
-    return today > dl;
-  };
-
-  const getEditRequestRemainingDays = (report) => {
-    const dl = getEditRequestDeadline(report);
-    return dl ? getRemainingWorkingDays(dl) : null;
-  };
-  // ========================================
-
-  // Dynamic checkpoint data based on placement applicable AND centerType
-  // MP6, MP7 are DTV-only — not shown for CDC/SDC
-  const getCheckpointData = (placementApplicable, centerType) => {
-    const isPlacementNA = placementApplicable === 'no';
-    const isDTV = (centerType || '').toUpperCase() === 'DTV';
-    const pick = (cond, whenTrue, whenFalse) => cond ? whenTrue : whenFalse;
-
-    return {
-      'Front Office': [
-        { id: 'FO1', name: 'Enquires Entered in Pulse(Y/N)', weightage: 30, maxScore: pick(isPlacementNA, 10.5, 9) },
-        { id: 'FO2', name: 'Enrolment form available in Pulse(Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 7, 6) },
-        { id: 'FO3', name: 'Pre assessment Available(Y/N)', weightage: 0, maxScore: 0 },
-        { id: 'FO4', name: 'Documents uploaded in Pulse(Y/N)', weightage: 40, maxScore: pick(isPlacementNA, 14, 12) },
-        { id: 'FO5', name: 'Availability of Marketing Material(Y/N)', weightage: 10, maxScore: pick(isPlacementNA, 3.5, 3) }
-      ],
-      'Delivery Process': [
-        { id: 'DP1', name: 'Batch file maintained for all running batches', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
-        { id: 'DP2', name: 'Batch Heath Card available', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
-        { id: 'DP3', name: 'Attendance marked in EDL sheets correctly', weightage: 15, maxScore: pick(isPlacementNA, 6.75, 6) },
-        { id: 'DP4', name: 'BMS maintained with observations', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
-        { id: 'DP5', name: 'FACT Certificate available at Center', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
-        { id: 'DP6', name: 'Post Assessment if applicable', weightage: 0, maxScore: 0 },
-        { id: 'DP7', name: 'Appraisal sheet is maintained', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
-        { id: 'DP8', name: 'Appraisal status updated in Pulse', weightage: 5, maxScore: pick(isPlacementNA, 2.25, 2) },
-        { id: 'DP9', name: 'Certification Status of eligible students', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
-        { id: 'DP10', name: 'Student signature obtained while issuing certificates', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) },
-        { id: 'DP11', name: 'Verification between System vs actual certificate date', weightage: 10, maxScore: pick(isPlacementNA, 4.5, 4) }
-      ],
-      'Placement Process': pick(isPlacementNA, [], [
-        { id: 'PP1', name: 'Student Placement Response', weightage: 15, maxScore: 2.25 },
-        { id: 'PP2', name: 'CGT/Guest Lecture/Industry Visit', weightage: 10, maxScore: 1.50 },
-        { id: 'PP3', name: 'Placement Bank & Aging', weightage: 15, maxScore: 2.25 },
-        { id: 'PP4', name: 'Placement Proof Upload', weightage: 60, maxScore: 9.00 }
-      ]),
-      'Management Process': [
-        { id: 'MP1', name: 'Courseware issue to students done on time/Usage of LMS', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
-        { id: 'MP2', name: 'Log book for Genset & Vehicle (Y/N)', weightage: 20, maxScore: pick(isPlacementNA, 5, 3.00) },
-        { id: 'MP3', name: 'TIRM details register', weightage: 30, maxScore: pick(isPlacementNA, 7.5, 4.50) },
-        { id: 'MP4', name: 'Availability and requirement of Biometric as per MOU', weightage: 25, maxScore: pick(isPlacementNA, 6.25, 3.75) },
-        { id: 'MP5', name: 'Physical asset verification', weightage: 10, maxScore: pick(isPlacementNA, 2.5, 1.50) },
-        ...pick(isDTV, [
-          { id: 'MP6', name: 'Monthly Centre Review Meeting is conducted', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) },
-          { id: 'MP7', name: 'Verification of bill authenticity', weightage: 5, maxScore: pick(isPlacementNA, 1.25, 0.75) }
-        ], [])
-      ]
-    };
-  };
-
-  // Max scores per area, adjusted when placement is not applicable
-  const getReportScoreMax = (report) => {
-    const isNA = report.placementApplicable === 'no';
-    return {
-      foMax: isNA ? 35 : 30,
-      dpMax: isNA ? 45 : 40,
-      ppMax: 15,
-      mpMax: isNA ? 20 : 15,
-    };
-  };
-
-  // Placement area's status/color, or "NA" when placement isn't applicable
-  const getPlacementAreaData = (report, ppMax) => {
-    if (report.placementApplicable === 'no') return { status: 'NA', color: '#999' };
-    return getAreaScoreInfo(report.placementScore, ppMax);
-  };
-
-  // Center-type chip colors
-  const getCenterTypeBadgeStyle = (centerType) => {
-    if (centerType === 'CDC') return { background: '#e3f2fd', color: '#1976d2' };
-    if (centerType === 'SDC') return { background: '#fff3e0', color: '#e65100' };
-    return { background: '#f1f8e9', color: '#2e7d32' };
-  };
-
   useEffect(() => {
     // Check authorization
     if (!loggedUser || loggedUser.Role !== 'Center User') {
@@ -650,8 +656,8 @@ const CenterDashboard = () => {
     console.log('   Username:', loggedUser.username);
     console.log('   Center Code:', loggedUser.centerCode);
     
-    loadMyReports();
-    loadCenterData();
+    void loadMyReports();
+    void loadCenterData();
   }, []);
 
 
@@ -790,11 +796,11 @@ const CenterDashboard = () => {
         
         if (response.ok) {
           alert('✅ Edit request sent to admin! You will be notified once approved.');
-          loadMyReports();
+          void loadMyReports();
         } else {
           const errData = await response.json().catch(() => ({}));
           alert(getRequestEditFailMessage(response.status, errData));
-          loadMyReports();
+          void loadMyReports();
         }
       } catch (err) {
         alert('❌ Error: ' + err.message);
@@ -862,13 +868,13 @@ const CenterDashboard = () => {
         }));
         alert('✅ Observations submitted successfully!\n\nYour remarks are now locked. Contact admin if you need to make changes.');
         setShowModal(false);
-        loadMyReports();
+        void loadMyReports();
       } else {
         const errData = await response.json().catch(() => ({}));
         if (response.status === 403) {
           alert(getLockErrorMessage(errData));
           setShowModal(false);
-          loadMyReports();
+          void loadMyReports();
         } else {
           alert('❌ Failed to submit observations');
         }
@@ -885,7 +891,7 @@ const CenterDashboard = () => {
       <div className="admin-container">
         <header className="admin-header">
           <h1>Center Dashboard - {loggedUser.firstname}</h1>
-          <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+          <button type="button" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
         </header>
         <div style={{ textAlign: 'center', padding: '100px 20px' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
@@ -912,7 +918,7 @@ const CenterDashboard = () => {
       `}</style>
       <header className="admin-header">
         <h1>Center Dashboard - Welcome, {loggedUser.firstname}</h1>
-        <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+        <button type="button" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
       </header>
 
       <main className="admin-content">
@@ -978,7 +984,7 @@ const CenterDashboard = () => {
         <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3 style={{ margin: 0, fontSize: '22px', color: '#2c3e50' }}>📊 My Audit Reports ({myReports.length})</h3>
-            <button 
+            <button type="button" 
               onClick={loadMyReports}
               style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
             >
@@ -1073,7 +1079,7 @@ const CenterDashboard = () => {
                   {selectedReport.centerName} ({selectedReport.centerCode}) | Score: {selectedReport.grandTotal}/100
                 </p>
               </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'transparent', border: '2px solid white', color: 'white', padding: '10px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+              <button type="button" onClick={() => setShowModal(false)} style={{ background: 'transparent', border: '2px solid white', color: 'white', padding: '10px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
                 Close
               </button>
             </div>
@@ -1150,7 +1156,7 @@ const CenterDashboard = () => {
                 <tbody>
                   {Object.entries(getCheckpointData(selectedReport.placementApplicable, selectedReport.centerType)).map(([areaName, checkpoints], areaIdx) => (
                     <RemarksAreaSection
-                      key={areaIdx}
+                      key={areaName}
                       areaName={areaName}
                       areaIdx={areaIdx}
                       checkpoints={checkpoints}

@@ -424,7 +424,6 @@ small {
   box-shadow: 0 8px 24px rgba(0,0,0,0.13);
   z-index: 9999;
   overflow: hidden;
-  animation: tabDdSlide 0.16s ease;
 }
 
 @keyframes tabDdSlide {
@@ -483,3 +482,10 @@ small {
 .tab-dd-icon  { font-size: 16px; }
 .tab-dd-label { flex: 1; }
 .tab-dd-check { font-size: 13px; font-weight: 900; color: var(--dd-color, #4CAF50); }
+
+/* Motion only for users who have not asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .tab-dropdown-panel {
+    animation: tabDdSlide 0.16s ease;
+  }
+}

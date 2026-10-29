@@ -114,7 +114,7 @@ const AuditUserDashboard = () => {
     }
   };
 
-  useEffect(() => { loadReports(); }, []);
+  useEffect(() => { void loadReports(); }, []);
 
   // Stats
   const total       = reports.length;

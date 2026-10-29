@@ -56,7 +56,7 @@
   font-size: 14px;
   font-weight: 500;
   color: #555;
-  transition: all 0.2s;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 .rdb-tabs button:hover { background: #f5f5f5; }
 .rdb-tabs button.active {
@@ -104,7 +104,7 @@
   cursor: pointer;
   font-weight: 700;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: opacity 0.2s, transform 0.2s;
 }
 .rdb-refresh-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 .rdb-refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -118,7 +118,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: background 0.2s, opacity 0.2s;
   white-space: nowrap;
 }
 .rdb-refresh-sm:hover:not(:disabled) { background: #1a237e; }
@@ -175,7 +175,7 @@
   font-weight: 600;
   color: #555;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.2s, color 0.2s;
   white-space: nowrap;
 }
 .rdb-pill:hover { border-color: #3949ab; color: #3949ab; }
@@ -188,6 +188,13 @@
   gap: 14px;
   margin-bottom: 22px;
 }
+/* stat cards are real <button>s: neutralise button defaults (zero specificity so the class rules still win) */
+:where(button.rdb-stat-card) {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
 .rdb-stat-card {
   background: white;
   border-radius: 12px;
@@ -197,7 +204,6 @@
   gap: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   border-top: 4px solid #ccc;
-  transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
   overflow: hidden;
 }
@@ -327,7 +333,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 .rdb-view-all-btn:hover { background: #3949ab; color: white; }
 
@@ -355,7 +361,7 @@
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
-  transition: all 0.2s;
+  transition: box-shadow 0.2s, transform 0.2s;
 }
 .rdb-view-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(17,153,142,0.35); }
 
@@ -399,4 +405,11 @@
   .rdb-tabs { gap: 4px; }
   .rdb-tabs button { padding: 7px 12px; font-size: 12px; }
   .rdb-filter-bar { padding: 14px; gap: 10px; }
+}
+
+/* Motion only for users who have not asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .rdb-stat-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
 }
