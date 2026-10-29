@@ -336,7 +336,7 @@ const AuditReport = mongoose.model('AuditReport', auditReportSchema);
 // Local dev origins (plain http) are only allowed outside production
 const DEV_ORIGINS = process.env.NODE_ENV === 'production'
   ? []
-  : ['http://localhost:5173', 'http://localhost:3000'];
+  : ['http://localhost:5173', 'http://localhost:3000']; // NOSONAR - local dev origins only
 
 app.use(cors({
   origin: [

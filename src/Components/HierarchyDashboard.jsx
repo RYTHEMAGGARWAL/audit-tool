@@ -306,8 +306,7 @@ const getAuditLabel = (score) => bandPick(score, 80, 65, 'Compliant', 'Amber', '
 
 const AUDIT_LABEL_COLORS = (s) => bandPick(s, 80, 65, ['#e8f5e9','#2e7d32'], ['#fff3e0','#e65100'], ['#fce4ec','#c62828']);
 
-const getScoreBadge = (score) => {
-  const s = score||0;
+const getScoreBadge = (s = 0) => {
   if(s>=80) return <span style={{color:'#2e7d32',fontWeight:'700'}}>{s.toFixed(1)} ✅</span>;
   if(s>=65) return <span style={{color:'#e65100',fontWeight:'700'}}>{s.toFixed(1)} 🟡</span>;
   return <span style={{color:'#c62828',fontWeight:'700'}}>{s.toFixed(1)} ❌</span>;

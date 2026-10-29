@@ -179,7 +179,7 @@
   white-space: nowrap;
 }
 .rdb-pill:hover { border-color: #3949ab; color: #3949ab; }
-.rdb-pill-active { border-color: transparent !important; }
+.rdb-pill.rdb-pill-active { border-color: transparent; }
 
 /* ── STAT CARDS GRID — 4 cols like Admin ── */
 .rdb-stat-grid {
@@ -208,9 +208,9 @@
   overflow: hidden;
 }
 .rdb-stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.13); }
-.rdb-stat-active {
-  transform: translateY(-3px) scale(1.02) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18) !important;
+.rdb-stat-card.rdb-stat-active {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }
@@ -304,7 +304,7 @@
 /* Badges */
 .rdb-badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-weight: 700; font-size: 14px; min-width: 36px; text-align: center; }
 .rdb-badge-g { background: #e8f5e9; color: #2e7d32; }
-.rdb-badge-a { background: #fff3e0; color: #e65100; }
+.rdb-badge-a { background: #fff3e0; color: #bf360c; }
 .rdb-badge-r { background: #fce4ec; color: #c62828; }
 
 /* Progress bar */
@@ -342,7 +342,9 @@
 .rdb-mini-table thead tr { background: linear-gradient(135deg, #1a237e, #3949ab); }
 .rdb-mini-table thead th { padding: 11px 12px; color: white; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; text-align: left; }
 .rdb-mini-table tbody td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; color: #333; }
-.rdb-mini-table tbody tr:hover { background: #e8eaf6 !important; }
+.rdb-row-even { background: #fff; }
+.rdb-row-odd { background: #f8f9ff; }
+.rdb-mini-table tbody tr:hover { background: #e8eaf6; }
 
 /* ── TYPE BADGES ── */
 .rdb-type { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
@@ -371,7 +373,7 @@
 .rdb-submitted-ch { background: #ede7f6; color: #4527a0; border: 1px solid #7b1fa2; }
 .rdb-edit-req     { background: #dbeafe; color: #1e40af; border: 1px solid #3b82f6; }
 .rdb-ok           { background: #e8f5e9; color: #2e7d32; border: 1px solid #4caf50; }
-.rdb-pending-r    { background: #fff8e1; color: #f57f17; border: 1px solid #fbc02d; }
+.rdb-pending-r    { background: #fff8e1; color: #b45309; border: 1px solid #fbc02d; }
 
 /* ── FULL TABLE ── */
 .rdb-table-wrap {
@@ -384,7 +386,7 @@
 .rdb-full-table thead tr { background: linear-gradient(135deg, #1a237e, #3949ab); }
 .rdb-full-table thead th { padding: 12px 14px; color: white; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; text-align: left; }
 .rdb-full-table tbody td { padding: 11px 14px; border-bottom: 1px solid #f0f0f0; color: #333; vertical-align: middle; }
-.rdb-full-table tbody tr:hover { background: #e8eaf6 !important; }
+.rdb-full-table tbody tr:hover { background: #e8eaf6; }
 
 .rdb-table-footer { padding: 12px 0 0; font-size: 13px; color: #666; text-align: right; }
 

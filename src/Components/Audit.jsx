@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useReducer } from 'react';
 import axios from 'axios';
 import { API_URL } from '../config';
 import { getCheckpointsByArea } from './checkpointConfig';
@@ -1151,8 +1151,6 @@ const SearchSuggestionsDropdown = ({ savedReports, searchQuery, setSearchQuery, 
           }}
           onMouseOver={e => e.currentTarget.style.background = '#e3f2fd'}
           onMouseOut={e => e.currentTarget.style.background = 'white'}
-          onFocus={e => e.currentTarget.style.background = '#e3f2fd'}
-          onBlur={e => e.currentTarget.style.background = 'white'}
           onFocus={e => e.currentTarget.style.background = '#e3f2fd'}
           onBlur={e => e.currentTarget.style.background = 'white'}
         >
@@ -2501,7 +2499,7 @@ const AuditManagement = ({ defaultOption = '', hideHeader = false }) => {
   const [showAuditTable, setShowAuditTable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savedReports, setSavedReports] = useState([]);
-  const [, setForceUpdate] = useState(0);
+  const [, forceUpdate] = useReducer((n) => n + 1, 0);
   const [editableRemarks, setEditableRemarks] = useState({});
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [selectedReportForEmail, setSelectedReportForEmail] = useState(null);
@@ -2529,7 +2527,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   const [showCcSug, setShowCcSug] = useState(false);
   const [hierarchyEmails, setHierarchyEmails] = useState([]); // ZM/RH/ACM emails
   const [placementEmailList, setPlacementEmailList] = useState([]); // Placement Coordinator emails
-  const [, setHierarchyLoading] = useState(false);
+  const [, setHierarchyLoading] = useReducer((_, value) => value, false);
 
   const getSavedEmails = () => {
     try { return JSON.parse(localStorage.getItem('savedEmailList') || '[]'); }
@@ -2555,7 +2553,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
   // NEW: Placement Applicable state
   const [placementApplicable, setPlacementApplicable] = useState(null);
   const [placementCoordinator, setPlacementCoordinator] = useState('');
-  const [seniorManagerPlacement, setSrmPlacement] = useState('');
+  const [seniorManagerPlacement, setSeniorManagerPlacement] = useState('');
   const [nationalHeadPlacement, setNationalHeadPlacement] = useState('');
   // Financial Year & Search states
   const [selectedFinancialYear, setSelectedFinancialYear] = useState('');
@@ -2732,7 +2730,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
       });
       setEditableRemarks(remarksObj);
       
-      setForceUpdate(prev => prev + 1);
+      forceUpdate();
     } catch (err) {
       console.error('❌ Error loading reports:', err);
       setSavedReports([]);
@@ -2778,7 +2776,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     // Auto-fill placement fields from center data
     setPlacementApplicable(center.placementApplicable || 'yes');
     setPlacementCoordinator(center.placementCoordinator || '');
-    setSrmPlacement(center.seniorManagerPlacement || '');
+    setSeniorManagerPlacement(center.seniorManagerPlacement || '');
     setNationalHeadPlacement(center.nationalHeadPlacement || '');
   };
 
@@ -2789,7 +2787,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     setEditableRemarks({});
     setPlacementApplicable(null);
     setPlacementCoordinator('');
-    setSrmPlacement('');
+    setSeniorManagerPlacement('');
     setNationalHeadPlacement('');
     setSelectedFinancialYear('');
     setSearchQuery('');
@@ -2839,7 +2837,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
 
     if (existingReport.placementApplicable) setPlacementApplicable(existingReport.placementApplicable);
     if (existingReport.placementCoordinator) setPlacementCoordinator(existingReport.placementCoordinator);
-    if (existingReport.seniorManagerPlacement) setSrmPlacement(existingReport.seniorManagerPlacement);
+    if (existingReport.seniorManagerPlacement) setSeniorManagerPlacement(existingReport.seniorManagerPlacement);
     if (existingReport.nationalHeadPlacement) setNationalHeadPlacement(existingReport.nationalHeadPlacement);
   };
 

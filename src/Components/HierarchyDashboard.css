@@ -55,7 +55,7 @@
 }
 
 .logout-btn {
-  background: rgba(255,255,255,0.15);
+  background: rgba(0,0,0,0.2);
   border: 1px solid rgba(255,255,255,0.4);
   color: white;
   padding: 7px 18px;
@@ -67,7 +67,7 @@
 }
 
 .logout-btn:hover {
-  background: rgba(255,255,255,0.28);
+  background: rgba(0,0,0,0.32);
   transform: translateY(-1px);
 }
 
@@ -263,7 +263,7 @@
   text-transform: uppercase;
   letter-spacing: 0.4px;
   white-space: nowrap;
-  color: white !important;
+  color: white;
   background: transparent;
   -webkit-text-fill-color: white;
 }

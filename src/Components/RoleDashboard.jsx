@@ -345,7 +345,7 @@ const AvgScoresRow = ({ avgAreaScores }) => (
 const MiniReportRow = ({ r, i, onView }) => {
   const s = r.grandTotal||0;
   return (
-    <tr style={{background:i%2===0?'#fff':'#f8f9ff'}}>
+    <tr className={i%2===0?'rdb-row-even':'rdb-row-odd'}>
       <td>{i+1}</td>
       <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
       <td>{r.centerName}</td>
@@ -462,7 +462,7 @@ const FullReportRow = ({ r, i, role, onView }) => {
   const s = r.grandTotal||0;
   const showHierarchy = HIERARCHY_ROLES.has(role);
   return (
-    <tr style={{background:i%2===0?'#fff':'#f8f9ff'}}>
+    <tr className={i%2===0?'rdb-row-even':'rdb-row-odd'}>
       <td>{i+1}</td>
       <td><strong style={{color:'#3949ab'}}>{r.centerCode}</strong></td>
       <td>{r.centerName}</td>

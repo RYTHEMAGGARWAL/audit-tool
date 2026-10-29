@@ -159,7 +159,7 @@ const CenterRow = ({ center, editingId, centers, setCenters, auditUserMode, hand
     };
     setCenters(prev => prev.map(ct => ct._id === center._id ? centerWithAllFields : ct));
     setEditingId(center._id);
-    setOriginalCenter(JSON.parse(JSON.stringify(centerWithAllFields)));
+    setOriginalCenter(structuredClone(centerWithAllFields));
   };
 
   const cancelEdit = () => {
@@ -474,7 +474,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
       let responseData = null;
       const contentType = response.headers.get('content-type');
       
-      if (contentType && contentType.includes('application/json')) {
+      if (contentType?.includes('application/json')) {
         try {
           responseData = await response.json();
           console.log('Response data:', responseData);
@@ -682,7 +682,7 @@ const code = newCenter.centerCode.trim().toUpperCase();
           <div style={{ marginTop: '5px' }}>
             <input ref={fileInputRef} type='file' accept='.xlsx,.xls' style={{ display: 'none' }} onChange={handleBulkUpload} />
             <button type="button"
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              onClick={() => fileInputRef.current?.click()}
               disabled={bulkLoading}
               style={{
                 padding: '12px 24px',
