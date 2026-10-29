@@ -19,7 +19,7 @@ const isValidEmail = (email) => {
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-const HIERARCHY_ROLES = [
+const HIERARCHY_ROLES = new Set([
   'Zonal Manager',
   'Region Head',
   'Area Manager',
@@ -27,7 +27,7 @@ const HIERARCHY_ROLES = [
   'Placement Coordinator',
   'Senior Manager Placement',
   'National Head Placement',
-];
+]);
 
 const ROLES = [
   'Audit User',
@@ -44,7 +44,7 @@ const ROLES = [
   'Admin',
 ];
 
-const RELOAD_OPTIONS = ['view', 'modify'];
+const RELOAD_OPTIONS = new Set(['view', 'modify']);
 
 const MENU_ITEMS = [
   { key: 'create', icon: '➕', label: 'Create User', color: '#11998e' },
@@ -200,7 +200,7 @@ const userToEditForm = (user) => ({
 
 const getExpiryBadge = (user) => {
   if (!user.passwordExpiresAt) return null;
-  const daysLeft = Math.ceil((new Date(user.passwordExpiresAt) - new Date()) / MS_PER_DAY);
+  const daysLeft = Math.ceil((new Date(user.passwordExpiresAt) - Date.now()) / MS_PER_DAY);
   if (daysLeft < 0) {
     return <span style={{ ...EXPIRY_BADGE_BASE, background: '#ffebee', color: '#c62828' }}>⏰ Expired</span>;
   }
@@ -330,7 +330,7 @@ const buildCreatePayload = (form, auditUserMode, createdBy) => {
 };
 
 const replaceHierarchyName = async (form, showMessage) => {
-  if (!HIERARCHY_ROLES.includes(form.Role) || !form.replaceOldName?.trim()) return;
+  if (!HIERARCHY_ROLES.has(form.Role) || !form.replaceOldName?.trim()) return;
   try {
     const res = await postJson(`${API_URL}/api/bulk-replace-hierarchy-name`, {
       role: form.Role,
@@ -505,7 +505,7 @@ const useDefaultOption = (defaultOption, setActiveOption, loadUsersData) => {
   useEffect(() => {
     if (!defaultOption) return;
     setActiveOption(defaultOption);
-    if (RELOAD_OPTIONS.includes(defaultOption)) loadUsersData();
+    if (RELOAD_OPTIONS.has(defaultOption)) loadUsersData();
   }, [defaultOption]);
 };
 
@@ -1084,7 +1084,7 @@ const CreateUserForm = ({ centers, loading, showMessage, onCreate, createdBy, au
           />
         )}
 
-        {HIERARCHY_ROLES.includes(form.Role) && (
+        {HIERARCHY_ROLES.has(form.Role) && (
           <ReplaceOldNameField
             id="um-create-replace-old-name"
             role={form.Role}
@@ -1151,7 +1151,7 @@ const CenterCodeBadge = ({ code }) => (
 
 const RoleCell = ({ user }) => (
   <>
-    <span className={`role-badge ${getRole(user).toLowerCase().replace(/ /g, '-')}`}>
+    <span className={`role-badge ${getRole(user).toLowerCase().replaceAll(' ', '-')}`}>
       {getRole(user) || '-'}
     </span>
     {(user.approvalStatus === 'pending' || user.modifyApprovalStatus === 'pending') && (
@@ -1548,7 +1548,7 @@ const UserManagement = ({ auditUserMode = false, createdBy = '', defaultOption =
   const ctx = { users: globalUsers, setLoading, showMessage, reload: loadUsersData, auditUserMode, createdBy };
 
   const selectOption = async (key) => {
-    if (RELOAD_OPTIONS.includes(key)) await loadUsersData();
+    if (RELOAD_OPTIONS.has(key)) await loadUsersData();
     setFormKey((k) => k + 1);
     setActiveOption(key);
   };

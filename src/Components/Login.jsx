@@ -13,7 +13,7 @@ const validatePassword = (password) => {
   if (password.length < 8) errors.push('At least 8 characters');
   if (!/[A-Z]/.test(password)) errors.push('One uppercase letter (A-Z)');
   if (!/[a-z]/.test(password)) errors.push('One lowercase letter (a-z)');
-  if (!/[0-9]/.test(password)) errors.push('One number (0-9)');
+  if (!/\d/.test(password)) errors.push('One number (0-9)');
   if (!/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) errors.push('One special character (@$!%*?& etc)');
   return errors;
 };
@@ -24,7 +24,7 @@ const getPasswordStrength = (password) => {
   if (password.length >= 8) score++;
   if (/[A-Z]/.test(password)) score++;
   if (/[a-z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
   if (/[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password)) score++;
   if (score <= 2) return { label: '❌ Weak', color: '#f44336', width: '30%' };
   if (score === 3) return { label: '⚠️ Medium', color: '#ff9800', width: '55%' };
@@ -51,7 +51,7 @@ const PasswordPolicyChecklist = ({ password, longLabels = false }) => (
       { check: password.length >= 8, text: 'At least 8 characters' },
       { check: /[A-Z]/.test(password), text: longLabels ? 'Uppercase letter (A-Z)' : 'Uppercase letter' },
       { check: /[a-z]/.test(password), text: longLabels ? 'Lowercase letter (a-z)' : 'Lowercase letter' },
-      { check: /[0-9]/.test(password), text: longLabels ? 'Number (0-9)' : 'Number' },
+      { check: /\d/.test(password), text: longLabels ? 'Number (0-9)' : 'Number' },
       { check: /[@$!%*?&#^()_+\-=[\]{}|;:,.<>]/.test(password), text: longLabels ? 'Special character (@$!%*?& etc)' : 'Special character' },
     ].map((item) => (
       <div key={item.text} style={{ fontSize: '12px', color: item.check ? '#4caf50' : '#f44336', marginBottom: '3px' }}>

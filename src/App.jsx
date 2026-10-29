@@ -6,10 +6,8 @@ import Admin from './Components/Admin';
 import UserDashboard from './Components/UserDashboard';
 import PlacementDashboard from './Components/PlacementDashboard';
 import CenterDashboard from './Components/CenterDashboard';
-import HierarchyDashboard from './Components/HierarchyDashboard';
 import RoleDashboard from './Components/RoleDashboard';
 import NationalHeadDashboard from './Components/NationalHeadDashboard';
-
 
 function App() {
   return (

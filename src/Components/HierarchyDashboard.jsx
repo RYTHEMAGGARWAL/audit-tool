@@ -428,7 +428,7 @@ const HierarchyDashboard = () => {
       setLoading(true); setError('');
       const params = new URLSearchParams({ role, name: fullName, firstname: loggedUser.firstname || '', fy: filterFY, status: filterStatus, centerType: filterCenterType });
       const res = await fetch(`${API_URL}/api/hierarchy-reports?${params}`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setReports(data);
       setStats(computeStats(data));

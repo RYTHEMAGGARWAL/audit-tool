@@ -667,7 +667,7 @@ app.put('/api/users/:id', async (req, res) => {
     const updateData = { ...req.body, role: req.body.Role };
 
     // Hash password if admin provided a new one
-    if (req.body.password && req.body.password.trim()) {
+    if (req.body.password?.trim()) {
       const policyErrors = validatePassword(req.body.password);
       if (policyErrors.length > 0) {
         return res.status(400).json({ error: 'Password policy: ' + policyErrors.join('. ') });
@@ -1743,7 +1743,7 @@ async function sendReminderEmail(report, daysLeft) {
       isActive: true
     });
 
-    if (!centerUser || !centerUser.email) {
+    if (!centerUser?.email) {
       console.log(`⚠️ No center user email for ${logSafe(report.centerCode)}`);
       return false;
     }
@@ -1910,7 +1910,7 @@ async function sendAuditorReminderEmail(report, daysLeft) {
       isActive: true
     });
 
-    if (!auditorUser || !auditorUser.email) {
+    if (!auditorUser?.email) {
       console.log(`⚠️ No auditor email found for: ${logSafe(report.auditedBy)}`);
       return false;
     }
@@ -2154,7 +2154,7 @@ app.post('/api/send-audit-email', async (req, res) => {
   try {
     const { to, cc, subject, customMessage, reportData, hierarchyEmails, placementEmail, placementEmails } = req.body;
 
-    const ppEmail = placementEmail || (placementEmails && placementEmails[0]) || null;
+    const ppEmail = placementEmail || placementEmails?.[0] || null;
 
     console.log('\n📧 EMAIL REQUEST:', logSafe(reportData.centerName));
     console.log('   To (CH):', logSafe(to));
@@ -2516,7 +2516,7 @@ const HOLIDAYS_SERVER = {
 // Escapes regex special characters so user input can't break out of a ^...$ pattern
 // or trigger catastrophic backtracking (ReDoS)
 function escapeRegex(str) {
-  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function isWorkingDaySrv(date) {
@@ -2524,7 +2524,7 @@ function isWorkingDaySrv(date) {
   const day = d.getDay();
   if (day === 0 || day === 6) return false;
   const ds = d.toISOString().split('T')[0];
-  return !(HOLIDAYS_SERVER[d.getFullYear()] || []).includes(ds);
+  return !HOLIDAYS_SERVER[d.getFullYear()]?.includes(ds);
 }
 
 function addWorkingDaysSrv(startDate, days) {

@@ -6,7 +6,7 @@ import './RoleDashboard.css';
 // Full-cover transparent button behind a modal: clicking the backdrop closes it
 const BACKDROP_BTN = { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 'none', background: 'transparent', cursor: 'default' };
 
-const ALLOWED_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster Manager','Senior Manager Placement','National Head Placement'];
+const ALLOWED_ROLES = new Set(['Zonal Manager','Region Head','Area Manager','Cluster Manager','Senior Manager Placement','National Head Placement']);
 const ROLE_META = {
   'Zonal Manager':            { icon:'🗺️', color:'#1a237e' },
   'Region Head':              { icon:'📍', color:'#4a148c' },
@@ -22,7 +22,7 @@ const CT_OPTIONS     = ['All','CDC','SDC','DTV'];
 const AUDIT_FILTER   = ['All','Compliant','Amber','Non-Compliant'];
 
 // Roles that get the extra hierarchy columns (ZM/Region/Area/Cluster) in the full table.
-const HIERARCHY_ROLES = ['Zonal Manager','Region Head','Area Manager','Cluster Manager'];
+const HIERARCHY_ROLES = new Set(['Zonal Manager','Region Head','Area Manager','Cluster Manager']);
 
 // Score bands: >= 80 Compliant, >= 65 Amber, otherwise Non-Compliant
 const AUDIT_BANDS = [
@@ -68,7 +68,7 @@ const reportStatusBadge = (r) => {
 const Donut = ({ slices, total, label }) => {
   const R=55,cx=70,cy=70,sw=16,circ=2*Math.PI*R; let off=0;
   return (
-    <svg width="140" height="140" viewBox="0 0 140 140">
+    <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label={label || 'Donut chart'}>
       <circle cx={cx} cy={cy} r={R} fill="none" stroke="#f0f0f0" strokeWidth={sw}/>
       {slices.map((s)=>{const pct=total>0?s.value/total:0,dash=pct*circ;
         const el=<circle key={s.color} cx={cx} cy={cy} r={R} fill="none" stroke={s.color} strokeWidth={sw}
@@ -460,7 +460,7 @@ const TableFilterSummary = ({ tableReports, totalReports, tAudit, hasActiveFilte
 
 const FullReportRow = ({ r, i, role, onView }) => {
   const s = r.grandTotal||0;
-  const showHierarchy = HIERARCHY_ROLES.includes(role);
+  const showHierarchy = HIERARCHY_ROLES.has(role);
   return (
     <tr style={{background:i%2===0?'#fff':'#f8f9ff'}}>
       <td>{i+1}</td>
@@ -493,7 +493,7 @@ const ReportsTable = ({ tableReports, loading, role, onView }) => {
 
   const headers = [
     ...FULL_TABLE_BASE_HEADERS,
-    ...(HIERARCHY_ROLES.includes(role) ? FULL_TABLE_HIERARCHY_HEADERS : []),
+    ...(HIERARCHY_ROLES.has(role) ? FULL_TABLE_HIERARCHY_HEADERS : []),
     ...FULL_TABLE_TAIL_HEADERS,
   ];
 
@@ -562,7 +562,7 @@ const RoleDashboard = () => {
 
   useEffect(() => {
     if (!loggedUser?.username) { alert('Unauthorized!'); navigate('/'); return; }
-    if (!ALLOWED_ROLES.includes(role)) { alert('Unauthorized!'); navigate('/'); return; }
+    if (!ALLOWED_ROLES.has(role)) { alert('Unauthorized!'); navigate('/'); return; }
     void loadReports();
   }, []);
 
@@ -573,7 +573,7 @@ const RoleDashboard = () => {
       setLoading(true); setError('');
       const params = new URLSearchParams({ role, name: fullName, firstname: loggedUser.firstname||'', fy: filterFY, status: filterStatus, centerType: filterCT });
       const res  = await fetch(`${API_URL}/api/hierarchy-reports?${params}`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setReports(data);
       setLastRefreshed(new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
@@ -602,7 +602,6 @@ const RoleDashboard = () => {
   const compliant=dashReports.filter(r=>(r.grandTotal||0)>=80).length;
   const amber=dashReports.filter(r=>(r.grandTotal||0)>=65&&(r.grandTotal||0)<80).length;
   const nonCompliant=dashReports.filter(r=>(r.grandTotal||0)<65).length;
-  const emailPending=dashReports.filter(r=>r.emailSent&&!r.centerHeadRemarksLocked).length;
   const remarksPending=dashReports.filter(r=>r.currentStatus==='Pending with Supervisor').length;
   const closedCount=dashReports.filter(r=>r.currentStatus==='Closed').length;
   const approvedCount=dashReports.filter(r=>r.currentStatus==='Approved').length;

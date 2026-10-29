@@ -17,9 +17,9 @@ const SectionToggleButton = ({ label, count, isActive, onClick, activeGradient }
 
 // Table of before/after values for a pending user's modify request
 const UserChangesTable = ({ user }) => {
-  const skipFields = ['_id','__v','modifiedByRole','modifiedBy','createdAt','updatedAt','approvalStatus','approvalRequestedBy','approvalDate','isActive','resetOTP','resetOTPExpires','modifyApprovalStatus','pendingModifyData'];
+  const skipFields = new Set(['_id','__v','modifiedByRole','modifiedBy','createdAt','updatedAt','approvalStatus','approvalRequestedBy','approvalDate','isActive','resetOTP','resetOTPExpires','modifyApprovalStatus','pendingModifyData']);
   const fieldLabels = { firstname: 'First Name', lastname: 'Last Name', email: 'Email', mobile: 'Mobile', centerCode: 'Center Code', Role: 'Role', role: 'Role', password: 'Password' };
-  const changedEntries = Object.entries(user.pendingModifyData).filter(([k]) => !skipFields.includes(k));
+  const changedEntries = Object.entries(user.pendingModifyData).filter(([k]) => !skipFields.has(k));
   if (changedEntries.length === 0) return null;
 
   const getCurrentValue = (field) => {

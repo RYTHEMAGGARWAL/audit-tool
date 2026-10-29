@@ -63,7 +63,7 @@ function getStatus(r) {
 const Donut = ({ slices, size = 120, label }) => {
   const total = slices.reduce((s, sl) => s + sl.value, 0);
   if (total === 0) return (
-    <svg width={size} height={size} viewBox="0 0 36 36">
+    <svg width={size} height={size} viewBox="0 0 36 36" role="img" aria-label={label || 'Donut chart'}>
       <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e0e0e0" strokeWidth="3.8" />
       <text x="18" y="21" textAnchor="middle" fontSize="7" fontWeight="bold" fill="#999">{label}</text>
     </svg>
@@ -71,7 +71,7 @@ const Donut = ({ slices, size = 120, label }) => {
   let offset = 25;
   const R = 15.9, C = 2 * Math.PI * R;
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+    <svg width={size} height={size} viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }} role="img" aria-label={label || 'Donut chart'}>
       {slices.map((sl) => {
         const pct = (sl.value / total) * 100;
         const dash = (pct / 100) * C;

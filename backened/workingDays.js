@@ -5,7 +5,7 @@
 
 // Indian Public Holidays (add/remove as needed)
 // Format: 'MM-DD' (month-day, year-independent)
-const INDIAN_PUBLIC_HOLIDAYS = [
+const INDIAN_PUBLIC_HOLIDAYS = new Set([
   '01-26', // Republic Day
   '03-17', // Holi (approx - changes yearly)
   '04-14', // Ambedkar Jayanti / Baisakhi
@@ -20,7 +20,7 @@ const INDIAN_PUBLIC_HOLIDAYS = [
   '11-01', // Diwali Padwa (approx)
   '11-05', // Guru Nanak Jayanti (approx)
   '12-25', // Christmas
-];
+]);
 
 // Year-specific holidays (exact dates) - update yearly
 const YEAR_SPECIFIC_HOLIDAYS = {
@@ -69,7 +69,7 @@ const isPublicHoliday = (date) => {
 
   // Fallback: check MM-DD pattern
   const mmdd = dateStr.slice(5); // MM-DD
-  return INDIAN_PUBLIC_HOLIDAYS.includes(mmdd);
+  return INDIAN_PUBLIC_HOLIDAYS.has(mmdd);
 };
 
 /**

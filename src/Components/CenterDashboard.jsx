@@ -66,7 +66,7 @@ const isWorkingDay = (date) => {
   const day = d.getDay();
   if (day === 0 || day === 6) return false;
   const ds = d.toISOString().split('T')[0];
-  return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+  return !HOLIDAYS[d.getFullYear()]?.includes(ds);
 };
 
 const getRemainingWorkingDays = (deadlineDate) => {
@@ -361,7 +361,6 @@ const MyReportRow = ({
                             // Active countdown — animated div
                             if (badge) {
                               const isUrgent = badge.text.includes('⛔') || badge.text.includes('🚨') || badge.text.includes('⚠️');
-                              const pulseColor = isUrgent ? '#dc3545' : '#16a34a';
                               return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                                   {/* Animated badge */}
@@ -639,7 +638,7 @@ const CenterDashboard = () => {
   // ========================================
   useEffect(() => {
     // Check authorization
-    if (!loggedUser || loggedUser.Role !== 'Center User') {
+    if (loggedUser?.Role !== 'Center User') {
       alert('Unauthorized!');
       navigate('/');
       return;

@@ -23,7 +23,7 @@ const PieChart = ({ data, size = 140, activeFilter, onSliceClick }) => {
   const slices = data.map(d => { const a = (d.value / total) * 360; const s = cum; cum += a; return { ...d, s, e: cum }; });
   const toXY = (a, r2) => ({ x: cx + r2 * Math.cos(a * Math.PI / 180), y: cy + r2 * Math.sin(a * Math.PI / 180) });
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Pie chart">
       {slices.map((sl) => {
         const st = toXY(sl.s, r), en = toXY(sl.e, r), large = sl.e - sl.s > 180 ? 1 : 0;
         return <path key={sl.label} d={`M ${cx} ${cy} L ${st.x} ${st.y} A ${r} ${r} 0 ${large} 1 ${en.x} ${en.y} Z`} fill={sl.color} stroke="white" strokeWidth={2} style={{ cursor: sl.filterKey ? 'pointer' : 'default', opacity: activeFilter && activeFilter !== sl.filterKey ? 0.5 : 1, transition: 'opacity 0.2s' }} onClick={() => sl.filterKey && onSliceClick && onSliceClick(sl.filterKey)}><title>{sl.label}: {sl.value}</title></path>;
@@ -42,7 +42,7 @@ const ScoreGauge = ({ score, max, label, color }) => {
   return (
     <div style={{ textAlign: 'center' }}>
       <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 6px' }}>
-        <svg width={80} height={80} viewBox="0 0 80 80">
+        <svg width={80} height={80} viewBox="0 0 80 80" role="img" aria-label="Score gauge">
           <circle cx={40} cy={40} r={32} fill="none" stroke="#e5e7eb" strokeWidth={8} />
           <circle cx={40} cy={40} r={32} fill="none" stroke={c} strokeWidth={8} strokeDasharray={`${(pct / 100) * circ} ${circ}`} strokeDashoffset={circ * 0.25} strokeLinecap="round" style={{ transition: 'stroke-dasharray 1s ease', transform: 'rotate(-90deg)', transformOrigin: 'center' }} />
         </svg>

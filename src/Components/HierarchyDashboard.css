@@ -63,7 +63,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.2s;
 }
 
 .logout-btn:hover {
@@ -176,7 +176,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: background 0.2s, transform 0.2s, opacity 0.2s;
+  transition: background 0.2s, opacity 0.2s;
   align-self: flex-end;
   margin-bottom: 1px;
 }
@@ -343,5 +343,11 @@
 @media (prefers-reduced-motion: no-preference) {
   .stat-card {
     transition: transform 0.2s;
+  }
+  .logout-btn {
+    transition: background 0.2s, transform 0.2s;
+  }
+  .refresh-btn {
+    transition: background 0.2s, transform 0.2s, opacity 0.2s;
   }
 }

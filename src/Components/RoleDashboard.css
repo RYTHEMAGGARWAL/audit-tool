@@ -104,7 +104,7 @@
   cursor: pointer;
   font-weight: 700;
   font-size: 14px;
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity 0.2s;
 }
 .rdb-refresh-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 .rdb-refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -361,7 +361,7 @@
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s;
 }
 .rdb-view-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(17,153,142,0.35); }
 
@@ -411,5 +411,11 @@
 @media (prefers-reduced-motion: no-preference) {
   .rdb-stat-card {
     transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .rdb-refresh-btn {
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .rdb-view-btn {
+    transition: box-shadow 0.2s, transform 0.2s;
   }
 }

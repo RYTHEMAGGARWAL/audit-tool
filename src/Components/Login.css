@@ -120,7 +120,7 @@
   border: 2px solid #e0e0e0;
   border-radius: 10px;
   font-size: 15px;
-  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   background: #f8f9fa;
   font-family: inherit;
 }
@@ -148,7 +148,7 @@
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
-  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #4f5fd6 0%, #764ba2 100%);
@@ -297,7 +297,7 @@
   justify-content: center;
   font-weight: bold;
   font-size: 18px;
-  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .step.active span {
@@ -389,5 +389,14 @@
   }
   .error-message {
     animation: shake 0.5s ease;
+  }
+  .input-group input {
+    transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .login-btn {
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .step span {
+    transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   }
 }

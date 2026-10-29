@@ -3,10 +3,10 @@
 // Full details: logo, center head remarks, all info fields
 // ========================================
 const PDFDocument = require('pdfkit');
-const https = require('https');
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const https = require('node:https');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const PG_W = 595, PG_H = 842, ML = 25, MR = 25, MT = 30;
 const TW = PG_W - ML - MR; // 545
@@ -215,11 +215,11 @@ function drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx) {
   const maxSc  = cpCfg.max || 0;
   const pct    = cp.compliantPercent != null ? `${Number.parseFloat(cp.compliantPercent).toFixed(0)}%` : '-';
   const rem    = safe(cp.remarks);
-  const chrRem = (cp.centerHeadRemarks && cp.centerHeadRemarks.trim()) ? cp.centerHeadRemarks.trim() : '';
+  const chrRem = cp.centerHeadRemarks?.trim() ? cp.centerHeadRemarks.trim() : '';
 
   // Row height = tallest cell
   const cpLines  = Math.ceil((cpCfg.name || '').length / 21);
-  const remLines = Math.ceil(rem.replace(/-/g,'').length / 13);
+  const remLines = Math.ceil(rem.replaceAll('-','').length / 13);
   const chrLines = chrRem ? Math.ceil(chrRem.length / 16) : 1;
   const rowH = Math.max(cpLines, remLines, chrLines, 1) * 10 + 6;
 
@@ -263,7 +263,7 @@ function drawCheckpointRow(doc, cpCfg, i, reportData, y, rowIdx) {
 function drawAreaBlock(doc, area, reportData, y, rowIdx) {
   const isPlacement = area.label === 'Placement Process';
   const na = isPlacement && reportData.placementApplicable === 'no';
-  const aScore = area.keys.reduce((s, k) => s + (Number.parseFloat((reportData[k.id] || {}).score) || 0), 0);
+  const aScore = area.keys.reduce((s, k) => s + (Number.parseFloat(reportData[k.id]?.score) || 0), 0);
 
   // Area sub-header
   y = ensureSpace(doc, y, 16);

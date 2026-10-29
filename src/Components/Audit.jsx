@@ -352,6 +352,8 @@ const SendReportCell = ({ report, handleOpenEmailForm }) => {
       }}
       onMouseOver={(e) => { e.target.style.transform = 'translateY(-2px)'; e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)'; }}
       onMouseOut={(e) => { e.target.style.transform = 'none'; e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)'; }}
+      onFocus={(e) => { e.target.style.transform = 'translateY(-2px)'; e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)'; }}
+      onBlur={(e) => { e.target.style.transform = 'none'; e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)'; }}
     >
       📧 Send
     </button>
@@ -954,6 +956,8 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
                           }}
                           onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'}
                           onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
+                          onFocus={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'}
+                          onBlur={(e) => e.currentTarget.style.boxShadow = 'none'}
                           >
                             <div style={{ flex: 1 }}>
                               <div style={{ 
@@ -1028,6 +1032,14 @@ const HistoryTabView = ({ savedReports, searchQuery, setSearchQuery, startDate, 
                                 e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
                               }}
                               onMouseOut={(e) => {
+                                e.target.style.transform = 'none';
+                                e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                              }}
+                              onFocus={(e) => {
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.boxShadow = '0 6px 16px rgba(102, 126, 234, 0.4)';
+                              }}
+                              onBlur={(e) => {
                                 e.target.style.transform = 'none';
                                 e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
                               }}
@@ -1139,6 +1151,8 @@ const SearchSuggestionsDropdown = ({ savedReports, searchQuery, setSearchQuery, 
           }}
           onMouseOver={e => e.currentTarget.style.background = '#e3f2fd'}
           onMouseOut={e => e.currentTarget.style.background = 'white'}
+          onFocus={e => e.currentTarget.style.background = '#e3f2fd'}
+          onBlur={e => e.currentTarget.style.background = 'white'}
           onFocus={e => e.currentTarget.style.background = '#e3f2fd'}
           onBlur={e => e.currentTarget.style.background = 'white'}
         >
@@ -1254,7 +1268,6 @@ const PLACEMENT_CARD_STYLES = {
   no: { border: '2px solid #f44336', background: '#fff5f5' },
   unset: { border: '2px solid #e0e0e0', background: '#f9f9f9' },
 };
-const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
 const PlacementApplicableLabel = ({ placementApplicable }) => {
   if (placementApplicable === 'yes') return <span style={{ color: '#2e7d32', fontWeight: '700' }}>✅ Applicable</span>;
@@ -1270,7 +1283,7 @@ const selectOptionBackground = (state) => {
 
 // Placement applicable/not/unset card, with coordinator/manager names when applicable
 const PlacementInfoCard = ({ placementApplicable, placementCoordinator, seniorManagerPlacement, nationalHeadPlacement }) => {
-  const style = PLACEMENT_CARD_STYLES[hasOwn(PLACEMENT_CARD_STYLES, placementApplicable) ? placementApplicable : 'unset'];
+  const style = PLACEMENT_CARD_STYLES[Object.hasOwn(PLACEMENT_CARD_STYLES, placementApplicable) ? placementApplicable : 'unset'];
 
   return (
     <div style={{
@@ -1739,6 +1752,8 @@ const EmailFormModal = ({
                 }}
                 onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.3)'}
                 onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+                onFocus={(e) => e.target.style.background = 'rgba(255,255,255,0.3)'}
+                onBlur={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
               >
                 ×
               </button>
@@ -1876,6 +1891,8 @@ const EmailFormModal = ({
                   }}
                   onMouseOver={(e) => e.target.style.background = '#d0d0d0'}
                   onMouseOut={(e) => e.target.style.background = '#e0e0e0'}
+                  onFocus={(e) => e.target.style.background = '#d0d0d0'}
+                  onBlur={(e) => e.target.style.background = '#e0e0e0'}
                 >
                   ❌ Cancel
                 </button>
@@ -2519,7 +2536,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     catch { return []; }
   };
   const saveEmail = (email) => {
-    if (!email || !email.includes('@')) return;
+    if (!email?.includes('@')) return;
     const saved = getSavedEmails();
     if (!saved.includes(email.toLowerCase())) {
       saved.unshift(email.toLowerCase());
@@ -3185,7 +3202,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
       setLoading(true);
       
       const report = savedReports.find(r => r.centerCode === centerCode);
-      if (!report || !report._id) {
+      if (!report?._id) {
         console.error('❌ Report not found for centerCode:', centerCode);
         return;
       }
@@ -3491,7 +3508,7 @@ const [auditPeriodTo, setAuditPeriodTo] = useState('');
     const day = d.getDay();
     if (day === 0 || day === 6) return false;
     const ds = d.toISOString().split('T')[0];
-    return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+    return !HOLIDAYS[d.getFullYear()]?.includes(ds);
   };
 
   const getRemainingWorkingDays = (deadlineDate) => {

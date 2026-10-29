@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import * as ExcelJS from 'exceljs';
-import axios from 'axios';
 import { API_URL } from '../config';
 import { getCheckpointsByArea } from './checkpointConfig';
 import './Audit.css';
@@ -163,6 +161,14 @@ const PendingReportRow = ({ report, index, onViewRemarks }) => {
             e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)';
           }}
           onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)';
+          }}
+          onFocus={(e) => {
+            e.target.style.transform = 'translateY(-2px)';
+            e.target.style.boxShadow = '0 6px 20px rgba(17, 153, 142, 0.4)';
+          }}
+          onBlur={(e) => {
             e.target.style.transform = 'translateY(0)';
             e.target.style.boxShadow = '0 4px 12px rgba(17, 153, 142, 0.3)';
           }}
@@ -480,7 +486,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
       setLoading(true);
 
       const report = pendingReports.find(r => r.centerCode === centerCode);
-      if (!report || !report._id) {
+      if (!report?._id) {
         throw new Error('Report not found');
       }
 
@@ -525,7 +531,7 @@ const PendingApprovals = ({ onApprovalUpdate }) => {
       setLoading(true);
 
       const report = pendingReports.find(r => r.centerCode === centerCode);
-      if (!report || !report._id) {
+      if (!report?._id) {
         throw new Error('Report not found');
       }
 

@@ -51,7 +51,7 @@
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;
-  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
   backdrop-filter: blur(10px);
 }
 
@@ -79,7 +79,7 @@
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
-  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
   position: relative;
   overflow: hidden;
 }
@@ -184,7 +184,7 @@
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
   background: white;
 }
 
@@ -256,7 +256,7 @@
   cursor: pointer;
   font-size: 15px;
   font-weight: 600;
-  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -389,7 +389,7 @@ thead th:last-child {
 
 tbody tr {
   border-bottom: 1px solid #e0e0e0;
-  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 tbody tr:nth-child(even) {
@@ -1049,5 +1049,20 @@ select:focus-visible {
   }
   .audit-excel-dropdown {
     animation: dropDown 0.18s ease;
+  }
+  .status-bar button {
+    transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .options button {
+    transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .form-grid select {
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .btn {
+    transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  tbody tr {
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   }
 }
