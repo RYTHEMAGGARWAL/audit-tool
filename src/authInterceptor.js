@@ -24,7 +24,7 @@ window.fetch = (input, init = {}) => {
     init = {
       ...init,
       headers: {
-        ...(init.headers || {}),
+        ...init.headers,
         Authorization: `Bearer ${token}`,
       },
     };
