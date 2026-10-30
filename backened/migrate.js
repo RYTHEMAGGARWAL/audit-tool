@@ -72,7 +72,7 @@ const AuditReport = mongoose.model('AuditReport', auditReportSchema);
 
 // Helper
 const getCellValue = (cell) => {
-  if (!cell || cell.value === null || cell.value === undefined) return '';
+  if (cell?.value === null || cell?.value === undefined) return '';
   if (typeof cell.value === 'object') {
     if (cell.value.text) return cell.value.text.toString().trim();
     if (cell.value.richText) return cell.value.richText.map(rt => rt.text).join('').trim();

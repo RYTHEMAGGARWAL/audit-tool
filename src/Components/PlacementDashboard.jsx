@@ -65,7 +65,7 @@ const isWorkingDay = (d) => {
   const day = d.getDay();
   if (day === 0 || day === 6) return false;
   const ds = d.toISOString().split('T')[0];
-  return !(HOLIDAYS[d.getFullYear()] || []).includes(ds);
+  return !HOLIDAYS[d.getFullYear()]?.includes(ds);
 };
 const getRemainingWorkingDays = (deadlineDate) => {
   if (!deadlineDate) return null;
@@ -180,7 +180,7 @@ const PlacementCheckpointRow = ({ cpId, i, area, selectedReport, isLocked, ppRem
 
 
 const PlacementAreaSection = ({ area, selectedReport, isLocked, tdStyle, ppRemarks, setPpRemarks }) => {
-                    const areaTotal = area.keys.reduce((s, k) => s + (Number.parseFloat((selectedReport[k]||{}).score)||0), 0);
+                    const areaTotal = area.keys.reduce((s, k) => s + (Number.parseFloat(selectedReport[k]?.score)||0), 0);
                     const isNA = area.isPlacement && selectedReport.placementApplicable === 'no';
                     return (
                       <React.Fragment key={area.label}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUsers } from '../contexts/UsersContext';
 import Audit from './Audit';
@@ -23,7 +23,7 @@ const UserDashboard = () => {
     <div className="admin-container">
       <header className="admin-header">
         <h1>User Dashboard - Welcome, {loggedUser.firstname}</h1>
-        <button onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
+        <button type="button" onClick={() => { localStorage.removeItem('loggedUser'); navigate('/'); }}>Logout</button>
       </header>
       
       <main className="admin-content">
