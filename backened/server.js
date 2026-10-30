@@ -86,6 +86,7 @@ const toPlainObject = (doc) => {
 // ========================================
 const transporter = nodemailer.createTransport({
   service: 'gmail',
+  secure: true, // Gmail SMTP over TLS (port 465), same as the 'gmail' preset
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
